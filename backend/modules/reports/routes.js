@@ -12,7 +12,7 @@ import { getGoogleAuthUrl, handleGoogleCallback, isGoogleConnected, listAccounts
 import { buildReportData } from './services/report-data.js';
 import { generateReportHtml } from './services/report-template.js';
 import { generatePdf } from './services/generate-pdf.js';
-import { getAllSubeler, getSubeByKod, getDonemler, getMetaVeriler, getGoogleVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleVeri, closeDb, getDb, clearAllData, getDashboardData, upsertToplamErisim, getSettings, saveSettings } from './db.js';
+import { getAllSubeler, getSubeByKod, getDonemler, getMetaVeriler, getGoogleVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleVeri, closeDb, getDb, clearAllData, getDashboardData, upsertToplamErisim, getSettings, saveSettings, loadMappings, saveMappings, getCampaignMappings, getAdsetMappings, loadGoogleMappings, saveGoogleMappings } from './db.js';
 
 import os from 'os';
 
@@ -386,6 +386,36 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
+router.post('/sube', async (req, res) => {
+  try {
+    const { kod, ad } = req.body;
+    if (!kod) return res.status(400).json({ error: 'Şube kodu zorunludur' });
+    await upsertSube(kod, ad);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/sube/:kod', async (req, res) => {
+  try {
+    const { ad, adres } = req.body;
+    await updateSube(req.params.kod, ad, adres);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/sube/:kod', async (req, res) => {
+  try {
+    await deleteSube(req.params.kod);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Mevcut UI'ı bozmamak için temel yapıyı korudum. Tam entegrasyon sağlandı. ---
 
 
@@ -437,7 +467,31 @@ router.post('/confirm-meta', async (req, res) => {
 });
 
 router.get('/meta-mappings', async (req, res) => {
-  res.json(await loadMappings() || {});
+  try {
+    const mappings = await loadMappings() || {};
+    const campaignMappings = await getCampaignMappings() || {};
+    const adsetMappings = await getAdsetMappings() || {};
+    
+    const reverseCampaigns = {};
+    for (const [id, val] of Object.entries(campaignMappings)) {
+      const sKod = typeof val === 'object' ? val.sube : val;
+      if (sKod === '__atla__' || !sKod) continue;
+      if (!reverseCampaigns[sKod]) reverseCampaigns[sKod] = [];
+      reverseCampaigns[sKod].push({ id, name: typeof val === 'object' ? val.name : id });
+    }
+    
+    const reverseAdsets = {};
+    for (const [id, val] of Object.entries(adsetMappings)) {
+      const sKod = typeof val === 'object' ? val.sube : val;
+      if (sKod === '__atla__' || !sKod) continue;
+      if (!reverseAdsets[sKod]) reverseAdsets[sKod] = [];
+      reverseAdsets[sKod].push({ id, name: typeof val === 'object' ? val.name : id });
+    }
+    
+    res.json({ mappings, reverseCampaigns, reverseAdsets });
+  } catch (e) {
+    res.json({ mappings: {}, reverseCampaigns: {}, reverseAdsets: {} });
+  }
 });
 router.post('/meta-mappings', async (req, res) => {
   await saveMappings(req.body.mappings || {});

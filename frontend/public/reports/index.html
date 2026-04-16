@@ -1056,7 +1056,16 @@ async function loadCampaigns() {
 async function saveCampaignMappings() {
   const selects = document.querySelectorAll('[data-campaign-id]');
   const mappings = {};
-  selects.forEach(s => { mappings[s.dataset.campaignId] = s.value; });
+  selects.forEach(s => { 
+    if (s.value !== '__atla__') {
+      const row = s.closest('div[style*="display:flex"]');
+      const titleElem = row ? row.querySelector('[title]') : null;
+      mappings[s.dataset.campaignId] = { 
+        sube: s.value, 
+        name: titleElem ? titleElem.getAttribute('title') : s.dataset.campaignId 
+      };
+    }
+  });
 
   const btn = document.getElementById('saveCampaignBtn');
   btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i> Kaydediliyor...';
@@ -1198,7 +1207,16 @@ function filterAdsets() {
 async function saveAdsetMappings() {
   const selects = document.querySelectorAll('[data-adset-id]');
   const mappings = {};
-  selects.forEach(s => { mappings[s.dataset.adsetId] = s.value; });
+  selects.forEach(s => { 
+    if (s.value !== '__atla__') {
+      const row = s.closest('.adset-item');
+      const titleElem = row ? row.querySelector('[title]') : null;
+      mappings[s.dataset.adsetId] = { 
+        sube: s.value, 
+        name: titleElem ? titleElem.getAttribute('title') : s.dataset.adsetId 
+      };
+    }
+  });
 
   const btn = document.getElementById('saveAdsetBtn');
   btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i> Kaydediliyor...';
@@ -1561,13 +1579,15 @@ async function bulkDownloadPdf(){
     
     // Eğer şube kampanyaya veya reklam setine eşlenmişse, prefix kısmını iptal et ve bilgi ver
     if (_reverseAdsets[subeKod] && _reverseAdsets[subeKod].length > 0) {
-      sel.innerHTML = `<option value="__adset_mapped__">🎯 ${_reverseAdsets[subeKod].length} reklam seti ile eşleşti</option>`;
+      const names = _reverseAdsets[subeKod].map(x => x.name).join(', ');
+      sel.innerHTML = `<option value="__adset_mapped__">🎯 ${_reverseAdsets[subeKod].length} reklam seti ile eşleşti (${names})</option>`;
       sel.disabled = true;
       sel.style.opacity = '0.7';
       return;
     }
     if (_reverseCampaigns[subeKod] && _reverseCampaigns[subeKod].length > 0) {
-      sel.innerHTML = `<option value="__campaign_mapped__">🎯 ${_reverseCampaigns[subeKod].length} kampanya ile eşleşti</option>`;
+      const names = _reverseCampaigns[subeKod].map(x => x.name).join(', ');
+      sel.innerHTML = `<option value="__campaign_mapped__">🎯 ${_reverseCampaigns[subeKod].length} kampanya ile eşleşti (${names})</option>`;
       sel.disabled = true;
       sel.style.opacity = '0.7';
       return;
