@@ -1,18 +1,21 @@
 {
-    "name": "sutlucekadayif-web",
-    "version": "1.0.0",
-    "description": "Sütlüce Kadayıf - Monorepo",
-    "private": true,
-    "scripts": {
-        "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
-        "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-        "start:backend": "cd backend && npm start",
-        "start:frontend": "cd frontend && npm run dev",
-        "dev:backend": "cd backend && npm run dev",
-        "dev:frontend": "cd frontend && npm run dev",
-        "install:all": "cd backend && npm install && cd ../frontend && npm install"
-    },
-    "devDependencies": {
-        "concurrently": "^9.1.2"
-    }
+  "name": "sutlucekadayif-web",
+  "version": "1.0.0",
+  "description": "Sütlüce Kadayıf - Monorepo",
+  "private": true,
+  "scripts": {
+    "start": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "wrangler": "^4.83.0"
+  }
 }
