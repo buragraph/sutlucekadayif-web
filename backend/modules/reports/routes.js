@@ -12,7 +12,7 @@ import { getGoogleAuthUrl, handleGoogleCallback, isGoogleConnected, listAccounts
 import { buildReportData } from './services/report-data.js';
 import { generateReportHtml } from './services/report-template.js';
 import { generatePdf } from './services/generate-pdf.js';
-import { getAllSubeler, getSubeByKod, getDonemler, getMetaVeriler, getGoogleVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleVeri, closeDb, getDb, clearAllData, getDashboardData, upsertToplamErisim, getSettings, saveSettings, loadMappings, saveMappings, getCampaignMappings, getAdsetMappings, loadGoogleMappings, saveGoogleMappings } from './db.js';
+import { getAllSubeler, getSubeByKod, getDonemler, getMetaVeriler, getGoogleVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleVeri, closeDb, getDb, clearAllData, getDashboardData, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings } from './db.js';
 
 import os from 'os';
 
@@ -423,6 +423,21 @@ router.delete('/sube/:kod', async (req, res) => {
 // ── META API ENDPOINTS ──
 // ══════════════════════════════════════════════════
 
+router.post('/campaign-fetch', async (req, res) => {
+  const { accessToken, since, until } = req.body;
+  try {
+    const defaultSube = req.body.targetSubeKod || null;
+    const result = await campaignBasedImport(accessToken, since, until, defaultSube);
+    res.json(result);
+  } catch (err) {
+    if (err.message.includes("Eşleşme bulunamadı") || err.message.includes("eşleştirme")) {
+      res.status(400).json({ error: 'Kampanya eşleştirmesi bulunamadı' });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
+  }
+});
+
 router.post('/quick-fetch-meta', async (req, res) => {
   const { accessToken, since, until } = req.body;
   try {
@@ -541,7 +556,7 @@ router.get('/google-locations', async (req, res) => {
       ...loc,
       eslesmeKod: mappings[loc.name] || null
     }));
-    res.json({ locations: mapped, subeler });
+    res.json({ locations: mapped, subeler, mappings });
   } catch (err) {
     res.status(500).json({ error: err.message || 'Google lokasyonları çekilemedi.' });
   }

@@ -137,7 +137,7 @@ export async function upsertGoogleVeri(subeId, veri) {
     sube_id: subeId,
     donem_baslangic: veri.donem_baslangic,
     donem_bitis: veri.donem_bitis,
-    magaza_kodu: veri.magaza_kodu,
+    magaza_kodu: veri.magaza_kodu || null,
     arama_mobil: veri.arama_mobil || 0,
     arama_masaustu: veri.arama_masaustu || 0,
     harita_mobil: veri.harita_mobil || 0,
