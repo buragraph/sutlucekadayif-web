@@ -444,8 +444,8 @@ router.post('/meta-mappings', async (req, res) => {
   res.json({ success: true });
 });
 
-router.get('/meta-campaigns', async (req, res) => {
-  const { accessToken, since, until } = req.query;
+router.post('/meta-campaigns', async (req, res) => {
+  const { accessToken, since, until } = req.body;
   try {
     res.json(await fetchCampaigns(accessToken, since, until));
   } catch (err) {
@@ -458,8 +458,8 @@ router.post('/save-campaign-mappings', async (req, res) => {
   res.json({ success: true, message: 'Kampanya eşleştirmeleri kaydedildi.' });
 });
 
-router.get('/meta-adsets', async (req, res) => {
-  const { accessToken, since, until } = req.query;
+router.post('/meta-adsets', async (req, res) => {
+  const { accessToken, since, until } = req.body;
   try {
     res.json(await fetchAdsets(accessToken, since, until));
   } catch (err) {
