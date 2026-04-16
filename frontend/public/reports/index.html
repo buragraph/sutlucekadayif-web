@@ -1,0 +1,1819 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sütlüce Kadayıf — Rapor Sistemi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@0.344.0"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --bg:#f8fafc;--sidebar:#ffffff;--surface:#ffffff;
+      --border:#e2e8f0;--accent:#22c55e;--accent-dim:rgba(34,197,94,.1);
+      --purple:#8b5cf6;--blue:#3b82f6;--amber:#f59e0b;--rose:#ef4444;
+      --text:#0f172a;--text2:#475569;--muted:#94a3b8;--radius:12px;--radius-sm:6px;
+    }
+    html,body{height:100%}
+    body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
+
+    /* App Shell */
+    .app{display:grid;grid-template-columns:1fr;grid-template-rows:56px auto 1fr;height:100vh}
+    .split{display:grid;grid-template-columns:320px 1fr;overflow:hidden;max-width:1400px;margin:0 auto 32px;width:calc(100% - 64px);border:1px solid var(--border);border-radius:16px;background:transparent}
+
+    /* Topbar */
+    .topbar{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 32px;background:var(--sidebar);border-bottom:1px solid var(--border);z-index:10}
+    .tb-left{display:flex;align-items:center;gap:12px}
+    .tb-logo{width:28px;height:28px;background:var(--surface);border:1px solid var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center}
+    .tb-name{font-size:14px;font-weight:600;letter-spacing:-.2px;color:var(--text)}
+    .tb-right{display:flex;align-items:center;gap:8px}
+
+    .tb-btn{display:flex;align-items:center;gap:6px;padding:6px 14px;border:1px solid var(--border);background:var(--surface);color:var(--text2);border-radius:var(--radius-sm);font-family:inherit;font-size:12px;font-weight:500;cursor:pointer;transition:.2s}
+    .tb-btn:hover{background:#f1f5f9;color:var(--text)}
+    
+    /* Toolbar (Filters Row) */
+    .toolbar-wrapper{padding:24px 32px 0;max-width:1400px;margin:0 auto;width:100%;display:flex;justify-content:center}
+    .toolbar{display:inline-flex;align-items:center;gap:12px;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);white-space:nowrap;z-index:5}
+    .tool-label{font-size:12px;color:var(--text);font-weight:600;display:flex;align-items:center;gap:6px}
+    .tool-group{display:flex;align-items:center;gap:6px;background:var(--bg);padding:4px 8px;border-radius:6px;border:1px solid var(--border);transition:.2s}
+    .tool-group:hover{border-color:var(--muted)}
+    .tool-input{background:transparent;border:none;color:var(--text);font-size:12px;font-weight:500;font-family:inherit;color-scheme:light;outline:none;cursor:pointer;padding:0}
+    .tool-sep{width:1px;height:14px;background:var(--border);margin:0 4px}
+    .tool-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;font-family:inherit;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text);transition:.2s}
+    .stat-card-inner:hover{transform:translateY(-2px);background:#f8fafc;border-color:var(--muted)}
+    .tool-btn-primary{background:var(--text);color:var(--bg);font-weight:600;border:none}
+    .tool-btn-primary:hover{background:#cbd5e1}
+    .tool-btn:disabled{opacity:.4;cursor:not-allowed}
+    .tool-status{font-size:11px;color:var(--muted);margin-left:auto}
+
+    /* Add Branch Button */
+    .add-branch-btn{display:inline-flex;align-items:center;gap:10px;padding:10px 22px;border:1px solid rgba(34,197,94,.2);border-radius:var(--radius);background:rgba(34,197,94,.06);color:var(--accent);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .25s ease;outline:none;letter-spacing:.2px}
+    .add-branch-btn:hover{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.35);box-shadow:0 0 20px rgba(34,197,94,.08);transform:translateY(-1px)}
+    .add-branch-btn:active{transform:translateY(0);box-shadow:none}
+    .add-branch-icon{width:26px;height:26px;border-radius:6px;background:rgba(34,197,94,.12);display:flex;align-items:center;justify-content:center;color:var(--accent);transition:background .25s}
+    .add-branch-btn:hover .add-branch-icon{background:rgba(34,197,94,.2)}
+
+    /* Sidebar */
+    .sidebar{background:transparent;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;min-width:0}
+    .sb-head{padding:16px 20px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+    .sb-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+    .sb-label{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:1px}
+    .sb-count{font-size:10px;font-weight:600;color:var(--muted);background:var(--surface);padding:2px 8px;border-radius:6px;border:1px solid var(--border)}
+    .sb-search{position:relative}
+    .sb-search input{width:100%;padding:8px 10px 8px 32px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:inherit;font-size:12px;outline:none;transition:.2s}
+    .sb-search input:focus{border-color:var(--muted)}
+    .sb-search input::placeholder{color:var(--muted)}
+    .sb-search .ico{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+    .sb-list{flex:1;overflow-y:auto;padding:8px}
+    .sb-list::-webkit-scrollbar{width:3px}.sb-list::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1);border-radius:3px}
+    .sb-item{padding:10px 12px;cursor:pointer;margin-bottom:2px;transition:background-color .15s, border-color .15s;border-radius:8px;position:relative;border:1px solid transparent}
+    .sb-item:hover{background:var(--surface)}
+    .sb-item.active{background:var(--surface);border-color:var(--border)}
+    .sb-item-name{font-size:12px;font-weight:500;color:var(--text2);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.2px}
+    .sb-item.active .sb-item-name{color:var(--text);font-weight:600}
+    .sb-item-row{display:flex;gap:8px;font-size:10px;color:var(--muted)}
+    .sb-item-row b{color:var(--text2);font-weight:600}
+    .sb-item.active .sb-item-row b{color:var(--text)}
+
+    /* Content */
+    .content{overflow-y:auto;position:relative;background:transparent}
+    .content::-webkit-scrollbar{width:5px}.content::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px}
+
+    /* Welcome */
+    .welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100% - 60px);text-align:center;padding:40px}
+    .welcome-ico{width:48px;height:48px;border-radius:12px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin-bottom:16px;color:var(--muted)}
+    .welcome h2{font-size:16px;font-weight:600;margin-bottom:6px;color:var(--text)}
+    .welcome p{font-size:13px;color:var(--muted);max-width:280px;line-height:1.5}
+
+    /* Detail */
+    .detail{padding:32px}
+
+    .d-hero{display:flex;align-items:center;margin-bottom:24px}
+    .d-hero-left{display:flex;align-items:center;gap:16px;flex:1}
+    .d-avatar{width:40px;height:40px;border-radius:8px;background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;color:var(--text2);flex-shrink:0}
+    .d-name{font-size:22px;font-weight:600;letter-spacing:-.5px;color:var(--text);margin-bottom:2px}
+    .d-sub{font-size:12px;color:var(--muted)}
+
+    /* Stats */
+    .d-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:32px}
+    .d-stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 20px;transition:.2s}
+    .d-stat-val{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--text);margin-bottom:4px;letter-spacing:-.5px}
+    .d-stat-label{font-size:11px;font-weight:500;color:var(--muted)}
+
+    /* Periods */
+    .d-sec{font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px}
+    
+    .d-table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow-x:auto}
+    .d-table{width:100%;border-collapse:collapse;min-width:700px}
+    .d-table th{font-size:11px;font-weight:500;color:var(--muted);padding:12px 16px;text-align:left;border-bottom:1px solid var(--border);background:var(--sidebar)}
+    .d-table th.r{text-align:right}
+    .d-table td{font-size:13px;padding:14px 16px;border-bottom:1px solid var(--border);font-variant-numeric:tabular-nums;color:var(--text)}
+    .d-table td.r{text-align:right}
+    .d-table tr:last-child td{border-bottom:none}
+    .d-table tr:hover{background:var(--bg)}
+    .date-badge{font-size:10px;padding:3px 8px;border-radius:5px;background:var(--accent-dim);color:var(--accent);font-weight:600;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+    .d-tag{font-size:8px;font-weight:700;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.3px;display:inline-block}
+    .d-tag.meta{background:rgba(139,92,246,.1);color:#c4b5fd}
+    .d-tag.google{background:rgba(59,130,246,.1);color:#93c5fd}
+    .d-tag.both{background:var(--accent-dim);color:var(--accent)}
+    .d-actions{display:flex;gap:4px;justify-content:flex-end}
+    .d-btn{display:inline-flex;align-items:center;gap:3px;padding:5px 10px;border-radius:6px;font-size:10px;font-weight:600;font-family:inherit;cursor:pointer;border:none;transition:.2s;text-decoration:none}
+    .d-btn-view{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(34,197,94,.08)}
+    .d-btn-view:hover{background:rgba(34,197,94,.16)}
+    .d-btn-pdf{background:rgba(139,92,246,.08);color:#c4b5fd;border:1px solid rgba(139,92,246,.08)}
+    .d-btn-pdf:hover{background:rgba(139,92,246,.16)}
+
+    /* Modal */
+    .modal-overlay{display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.4);backdrop-filter:blur(10px);align-items:center;justify-content:center}
+    .modal-overlay.active{display:flex;animation:fadeIn .2s}
+    .modal-box{width:520px;max-width:96vw;max-height:92vh;background:var(--surface);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(0,0,0,.1);border:1px solid var(--border)}
+    .modal-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+    .modal-head h3{font-size:13px;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:6px}
+    .modal-body{flex:1;overflow-y:auto;display:flex;justify-content:center;background:#f1f5f9;padding:12px}
+    .modal-body iframe{width:480px;min-height:1600px;border:none;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.05);background:#fff}
+    @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+    /* Progress Overlay */
+    .progress-overlay{display:none;position:fixed;inset:0;z-index:3000;background:rgba(255,255,255,.8);backdrop-filter:blur(6px);align-items:center;justify-content:center}
+    .progress-overlay.active{display:flex}
+    .progress-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px 28px;min-width:380px;max-width:460px;box-shadow:0 20px 60px rgba(0,0,0,.05)}
+    .progress-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+    .progress-sube{font-size:11px;color:var(--text2);margin-bottom:6px;min-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .progress-track{background:var(--bg);border-radius:4px;height:6px;overflow:hidden;margin-bottom:8px}
+    .progress-fill{height:100%;background:linear-gradient(90deg,var(--accent),#34d399);width:0%;transition:width .3s;border-radius:4px}
+    .progress-info{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+
+    /* Toast */
+    .toast-wrap{position:fixed;top:68px;right:16px;z-index:3001;display:flex;flex-direction:column;gap:6px}
+    .toast{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;box-shadow:0 8px 28px rgba(0,0,0,.05);display:flex;align-items:center;gap:8px;animation:toastIn .35s cubic-bezier(.34,1.56,.64,1);max-width:360px}
+    .toast.success{border-left:3px solid var(--accent)}.toast.error{border-left:3px solid var(--rose)}.toast.info{border-left:3px solid var(--purple)}
+    .toast-msg{font-size:12px;flex:1;color:var(--text2)}
+    @keyframes toastIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}
+    @keyframes toastOut{from{opacity:1}to{transform:translateX(120%);opacity:0}}
+    .spinner{width:14px;height:14px;border:2px solid rgba(0,0,0,.1);border-top-color:currentColor;border-radius:50%;animation:spin .6s linear infinite}
+
+    /* Modal Overlay & Basics */
+    .edit-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);backdrop-filter:blur(4px);z-index:99;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:.2s}
+    .edit-overlay.active{opacity:1;pointer-events:auto}
+    .edit-modal{background:var(--bg);border:1px solid var(--border);border-radius:12px;width:500px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,.05);transform:translateY(20px);transition:.3s;display:flex;flex-direction:column;overflow:hidden}
+    .edit-overlay.active .edit-modal{transform:translateY(0)}
+    .edit-modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface)}
+    .edit-modal-header h3{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--text);margin:0}
+    .btn-edit-icon{background:none;border:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;padding:0}
+    .btn-edit-icon:hover{color:var(--text)}
+    .edit-modal-body{padding:20px;overflow-y:auto;max-height:70vh}
+    .edit-modal-footer{padding:16px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;gap:12px;background:var(--surface)}
+    
+    .form-row{display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+    .fg{display:flex;flex-direction:column;gap:6px;flex:1;min-width:140px}
+    .fg label{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+    .fg input,.fg select{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none;transition:.2s}
+    .fg input:focus,.fg select:focus{border-color:var(--text2)}
+    #dataEditOverlay .fg{gap:4px;min-width:0}
+    #dataEditOverlay .fg label{font-size:9px}
+    #dataEditOverlay .fg input[type="number"]{width:100%;box-sizing:border-box;-moz-appearance:textfield;appearance:textfield}
+    #dataEditOverlay .fg input[type="number"]::-webkit-inner-spin-button,
+    #dataEditOverlay .fg input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+    .de-grid{padding:12px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    
+    .spin{animation:spin 1s linear infinite}
+    @keyframes spin{100%{transform:rotate(360deg)}}
+
+    /* Responsive: Data Edit Modal grid on small screens */
+    @media(max-width:768px){
+      .edit-modal{width:95vw!important;max-width:none!important}
+      .edit-modal-body{padding:14px!important}
+      .de-grid{grid-template-columns:1fr!important}
+      .form-row{flex-direction:column;gap:10px}
+      .fg{min-width:0!important}
+    }
+
+    @media(max-width:900px){
+      .app{grid-template-rows:56px auto 1fr}
+      .split{grid-template-columns:1fr;grid-template-rows:auto 1fr;margin:0 16px 16px;width:calc(100% - 32px)}
+      .sidebar{border-right:none;border-bottom:1px solid var(--border);max-height:35vh}
+      .content{border:none}
+      .d-stats{grid-template-columns:repeat(2,1fr)}
+      .detail{padding:16px 14px 40px}
+      #toolbar{flex-direction:column!important;gap:12px;padding:16px!important;position:static!important}
+      #toolbar > div{position:static!important;transform:none!important}
+      .toolbar{padding:12px 16px}
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="tb-left">
+      <div class="tb-logo"><i data-lucide="bar-chart-2" style="width:16px;height:16px;color:var(--muted)"></i></div>
+      <span class="tb-name">Sütlüce Kadayıf</span>
+    </div>
+    <div class="tb-right">
+      <button class="tb-btn" onclick="openSettingsModal()" style="margin-right:8px"><i data-lucide="settings" style="width:14px;height:14px"></i> Ayarlar</button>
+      <button class="tb-btn" onclick="loadDashboard()"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> Yenile</button>
+    </div>
+  </div>
+
+  <!-- AYARLAR MODAL -->
+  <div class="edit-overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettingsModal()">
+    <div class="edit-modal" style="width:560px">
+      <div class="edit-modal-header">
+        <h3><i data-lucide="settings" style="width:16px;height:16px;color:var(--muted)"></i> Ayarlar</h3>
+        <button class="btn-edit-icon" onclick="closeSettingsModal()"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+      </div>
+      <div class="edit-modal-body">
+        <div class="form-row" style="margin-bottom:16px">
+          <div class="fg">
+            <label>Meta API Access Token</label>
+            <input type="password" id="settingsMetaToken" placeholder="EAAI..." style="font-family:monospace;font-size:12px">
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">Meta verilerini çekmek için gerekli Graph API token'ı. (Sadece bu tarayıcıda saklanır).</div>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px">
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Google Entegrasyonu</label>
+          <div class="form-row" style="margin-bottom:8px">
+            <div class="fg">
+              <label>Client ID</label>
+              <input type="text" id="settingsGoogleClientId" placeholder="103617...apps.googleusercontent.com" style="font-family:monospace;font-size:12px">
+            </div>
+            <div class="fg">
+              <label>Client Secret</label>
+              <input type="password" id="settingsGoogleClientSecret" placeholder="GOCSPX-..." style="font-family:monospace;font-size:12px">
+            </div>
+          </div>
+          <div class="form-row" style="margin-bottom:12px">
+            <div class="fg">
+              <label>Yönlendirme (Redirect URI)</label>
+              <input type="text" id="settingsGoogleRedirectUri" placeholder="Örn: https://sutlucekadayif.com/api/reports/auth/google/callback" style="font-family:monospace;font-size:12px">
+            </div>
+          </div>
+          
+          <button class="tool-btn" id="googleConnectBtn" onclick="window.open('https://api-fyfp72cohq-uc.a.run.app/api/reports/auth/google','_blank','width=500,height=600')" style="display:none;width:100%;justify-content:center;color:#fb923c;border-color:rgba(251,146,60,.2);background:rgba(251,146,60,.05)">
+            <i data-lucide="link" style="width:14px;height:14px"></i>
+            Google İşletme Hesabını Bağla
+          </button>
+
+          <label style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-top:8px">Veri Eşleştirme Araçları</label>
+          <button class="tool-btn" id="campaignMapBtn" onclick="openCampaignModal(); closeSettingsModal()" style="display:none;width:100%;justify-content:center;color:#a78bfa;border-color:rgba(167,139,250,.2);background:rgba(167,139,250,.05)">
+
+            <i data-lucide="git-branch" style="width:14px;height:14px"></i>
+            Kampanya Eşleştir
+          </button>
+          <button class="tool-btn" id="adsetMapBtn" onclick="openAdsetModal(); closeSettingsModal()" style="display:none;width:100%;justify-content:center;color:#f472b6;border-color:rgba(244,114,182,.2);background:rgba(244,114,182,.05)">
+            <i data-lucide="target" style="width:14px;height:14px"></i>
+            Reklam Seti Eşleştir
+          </button>
+        </div>
+      </div>
+      <div class="edit-modal-footer">
+        <button class="tool-btn" onclick="closeSettingsModal()">Kapat</button>
+        <button class="tool-btn tool-btn-primary" onclick="saveSettingsModal()"><i data-lucide="check" style="width:14px;height:14px"></i> Kaydet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toolbar: şube ekle + veri yükle + tarih -->
+  <div id="toolbar" style="padding:24px 0; display:flex; align-items:center; max-width:1400px; margin:0 auto; width:calc(100% - 64px)">
+    <div style="display:flex; gap:10px; align-items:center">
+      <!-- Şube Ekle butonu global şubeler kullanıldığı için kaldırıldı -->
+      <button onclick="openBulkUploadModal()" class="add-branch-btn" style="border-color:rgba(59,130,246,.2);color:#60a5fa;background:rgba(59,130,246,.06)">
+        <span class="add-branch-icon" style="background:rgba(59,130,246,.12);color:#60a5fa"><i data-lucide="upload-cloud" style="width:14px;height:14px"></i></span>
+        <span>Veri Yükle</span>
+      </button>
+      <div class="toolbar" id="toolbarBadge" style="display:none">
+        <div class="tool-label"><i data-lucide="calendar" style="width:14px;height:14px"></i> Dönem</div>
+        <div class="tool-group">
+          <select id="globalSinceDay" class="tool-input" style="padding:0 2px;cursor:pointer;min-width:36px"></select>
+          <select id="globalSinceMonth" class="tool-input" style="padding:0 4px;cursor:pointer;min-width:75px"></select>
+          <select id="globalSinceYear" class="tool-input" style="padding:0 2px;cursor:pointer;min-width:50px"></select>
+        </div>
+        <span style="color:var(--muted);font-size:11px;font-weight:400">→</span>
+        <div class="tool-group">
+          <select id="globalUntilDay" class="tool-input" style="padding:0 2px;cursor:pointer;min-width:36px"></select>
+          <select id="globalUntilMonth" class="tool-input" style="padding:0 4px;cursor:pointer;min-width:75px"></select>
+          <select id="globalUntilYear" class="tool-input" style="padding:0 2px;cursor:pointer;min-width:50px"></select>
+        </div>
+        <input type="hidden" id="globalSince">
+        <input type="hidden" id="globalUntil">
+        <div class="tool-sep" style="margin: 0 4px"></div>
+        <button class="tool-btn" id="metaFetchBtn" onclick="globalMetaFetch()" style="display:none;color:#3b82f6;border-color:rgba(59,130,246,.2);background:rgba(59,130,246,.05)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg>
+          Meta Verilerini Çek
+        </button>
+        <button class="tool-btn" id="googleFetchBtn" onclick="globalGoogleFetch()" style="display:none;color:#fb923c;border-color:rgba(251,146,60,.2);background:rgba(251,146,60,.05)">
+          <i data-lucide="map-pin" style="width:14px;height:14px"></i>
+          Google Verilerini Çek
+        </button>
+
+        <button class="tool-btn tool-btn-primary" onclick="bulkDownloadPdf()">
+          <i data-lucide="download" style="width:14px;height:14px"></i> Toplu PDF Al
+        </button>
+        <span class="tool-status" id="toolStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="sidebar">
+      <div class="sb-head">
+        <div class="sb-top"><span class="sb-label">Şubeler</span><span class="sb-count" id="branchCount">—</span></div>
+        <div class="sb-search">
+          <i data-lucide="search" class="ico" style="width:12px;height:12px"></i>
+          <input type="text" id="searchInput" placeholder="Ara..." oninput="filterBranches()">
+        </div>
+      </div>
+      <div class="sb-list" id="branchList"></div>
+    </div>
+
+    <div class="content" id="contentArea">
+      <div class="welcome" id="welcomeView">
+        <div class="welcome-ico"><i data-lucide="layout-dashboard" style="width:28px;height:28px"></i></div>
+        <h2>Şube Seçin</h2>
+        <p>Soldaki listeden bir şubeye tıklayarak detayları görüntüleyin.</p>
+      </div>
+      <div class="detail" id="detailView" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Preview Modal -->
+<div class="modal-overlay" id="previewOverlay" onclick="if(event.target===this)closePreview()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3><i data-lucide="eye" style="width:13px;height:13px"></i> Rapor Önizleme</h3>
+      <div style="display:flex;gap:5px">
+        <button class="d-btn d-btn-view" id="prevDlBtn" onclick="downloadFromPreview()"><i data-lucide="download" style="width:11px;height:11px"></i> PDF İndir</button>
+        <button class="d-btn" style="background:rgba(244,63,94,.08);color:#fda4af;border:1px solid rgba(244,63,94,.08)" onclick="closePreview()"><i data-lucide="x" style="width:11px;height:11px"></i></button>
+      </div>
+    </div>
+    <div class="modal-body"><iframe id="previewFrame" frameborder="0"></iframe></div>
+  </div>
+</div>
+
+<!-- Progress Overlay (Bulk PDF) -->
+<div class="progress-overlay" id="progressOverlay">
+  <div class="progress-box">
+    <div class="progress-title"><i data-lucide="file-text" style="width:16px;height:16px;color:var(--accent)"></i> PDF Raporları Oluşturuluyor</div>
+    <div class="progress-sube" id="progSube"></div>
+    <div class="progress-track"><div class="progress-fill" id="progBar"></div></div>
+    <div class="progress-info"><span id="progCount">0/0</span><span id="progTime"></span></div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- ADD DATA MODAL (Upload) -->
+<div class="edit-overlay" id="addDataOverlay" onclick="if(event.target===this)closeAddData()">
+  <div class="edit-modal" style="width:500px">
+    <div class="edit-modal-header">
+      <h3><i data-lucide="upload-cloud" style="width:16px;height:16px;color:#3b82f6"></i> Şubeye Veri Yükle</h3>
+      <button class="btn-edit-icon" onclick="closeAddData()"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+    </div>
+    <div class="edit-modal-body" style="padding:20px;display:flex;flex-direction:column;gap:14px">
+      <form id="addDataForm">
+        <input type="hidden" id="adSubeKod">
+
+        <div style="font-size:10px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">📡 API ile Veri Çek</div>
+        <div class="form-row" style="margin-bottom:10px">
+          <div class="fg">
+            <label>Başlangıç</label>
+            <div style="display:flex;gap:4px">
+              <select id="adFetchSinceDay" class="tool-input" style="width:50px;padding:6px 4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
+              <select id="adFetchSinceMonth" class="tool-input" style="flex:1;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
+              <select id="adFetchSinceYear" class="tool-input" style="width:70px;padding:6px 4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
+            </div>
+          </div>
+          <div class="fg">
+            <label>Bitiş</label>
+            <div style="display:flex;gap:4px">
+              <select id="adFetchUntilDay" class="tool-input" style="width:50px;padding:6px 4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
+              <select id="adFetchUntilMonth" class="tool-input" style="flex:1;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
+              <select id="adFetchUntilYear" class="tool-input" style="width:70px;padding:6px 4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
+            </div>
+          </div>
+        </div>
+        <input type="hidden" id="adFetchSince">
+        <input type="hidden" id="adFetchUntil">
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <button type="button" class="tool-btn" id="adMetaFetchBtn" onclick="fetchMetaForBranch()" style="flex:1;color:#3b82f6;border-color:rgba(59,130,246,.2);background:rgba(59,130,246,.05);justify-content:center">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg>
+            Meta Çek
+          </button>
+          <button type="button" class="tool-btn" id="adGoogleFetchBtn" onclick="fetchGoogleForBranch()" style="flex:1;color:#fb923c;border-color:rgba(251,146,60,.2);background:rgba(251,146,60,.05);justify-content:center">
+            <i data-lucide="map-pin" style="width:13px;height:13px"></i>
+            Google Çek
+          </button>
+        </div>
+
+        <div style="border-top:1px solid var(--border);margin-bottom:14px"></div>
+        <div style="font-size:10px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">📁 CSV ile Yükle</div>
+        <div class="form-row" style="margin-bottom:12px">
+          <div class="fg"><label>Meta CSV</label><input type="file" id="adMetaCsv" accept=".csv" style="padding:4px"></div>
+          <div class="fg"><label>Google İşletme CSV</label><input type="file" id="adGoogleCsv" accept=".csv" style="padding:4px"></div>
+        </div>
+
+        <div style="border-top:1px solid var(--border);margin-bottom:14px"></div>
+        <div style="font-size:10px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">💰 Bütçe Girişleri (İsteğe Bağlı)</div>
+        <div class="form-row">
+          <div class="fg"><label>Planlanan Bütçe (₺)</label><input type="number" id="adPlanlananButce" step="any" placeholder="0"></div>
+          <div class="fg"><label>Devredilen Miktar (₺)</label><input type="number" id="adDevredilen" step="any" placeholder="0"></div>
+        </div>
+        <div class="fg" style="margin-bottom:0"><label>Hesap Özeti Toplam Erişim</label><input type="number" id="adToplamErisim" step="1" placeholder="Hesap panelinden net değer..."></div>
+      </form>
+    </div>
+    <div class="edit-modal-footer">
+      <button class="tool-btn" onclick="closeAddData()">Vazgeç</button>
+      <button class="tool-btn tool-btn-primary" id="addDataSaveBtn" onclick="submitAddData()"><i data-lucide="upload" style="width:14px;height:14px"></i> CSV Verilerini Aktar</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK UPLOAD MODAL -->
+<div class="edit-overlay" id="bulkUploadOverlay" onclick="if(event.target===this)closeBulkUpload()">
+  <div class="edit-modal" style="width:520px">
+    <div class="edit-modal-header">
+      <h3><i data-lucide="upload-cloud" style="width:16px;height:16px;color:#60a5fa"></i> Toplu CSV Veri Yükleme</h3>
+      <button class="btn-edit-icon" onclick="closeBulkUpload()"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+    </div>
+    <div class="edit-modal-body">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.5">Meta veya Google CSV dosyalarını yükleyin. Şube otomatik algılanır ya da aşağıdan belirtebilirsiniz.</p>
+      <div class="form-row">
+        <div class="fg"><label>Şube Kodu</label><input type="text" id="buSubeKod" placeholder="Boş bırakılırsa CSV'den algılanır"></div>
+        <div class="fg"><label>Şube Adı</label><input type="text" id="buSubeAd" placeholder="İsteğe bağlı"></div>
+      </div>
+      <div class="form-row">
+        <div class="fg"><label>Meta CSV</label><input type="file" id="buMetaCsv" accept=".csv" multiple style="padding:4px"></div>
+        <div class="fg"><label>Google İşletme CSV</label><input type="file" id="buGoogleCsv" accept=".csv" multiple style="padding:4px"></div>
+      </div>
+      <div style="font-size:10px;font-weight:700;color:var(--text);text-transform:uppercase;margin:8px 0;letter-spacing:1px">Bütçe Girişleri (İsteğe Bağlı)</div>
+      <div class="form-row">
+        <div class="fg"><label>Planlanan Bütçe (₺)</label><input type="number" id="buPlanlananButce" step="any" placeholder="0"></div>
+        <div class="fg"><label>Devredilen Miktar (₺)</label><input type="number" id="buDevredilen" step="any" placeholder="0"></div>
+      </div>
+      <div class="fg" style="margin-bottom:0"><label>Hesap Özeti Toplam Erişim</label><input type="number" id="buToplamErisim" step="1" placeholder="Hesap panelinden net değer..."></div>
+    </div>
+    <div class="edit-modal-footer">
+      <button class="tool-btn" onclick="closeBulkUpload()">Vazgeç</button>
+      <button class="tool-btn tool-btn-primary" id="bulkUploadBtn" onclick="submitBulkUpload()"><i data-lucide="upload" style="width:14px;height:14px"></i> Verileri İçe Aktar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD BRANCH MODAL -->
+<div class="edit-overlay" id="addBranchOverlay" onclick="if(event.target===this)this.classList.remove('active')">
+  <div class="edit-modal" style="width:400px">
+    <div class="edit-modal-header">
+      <h3><i data-lucide="plus-circle" style="width:16px;height:16px;color:var(--accent)"></i> Yeni Şube Ekle</h3>
+      <button class="btn-edit-icon" onclick="document.getElementById('addBranchOverlay').classList.remove('active')"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+    </div>
+    <div class="edit-modal-body">
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="fg">
+          <label>Şube Kodu</label>
+          <input type="text" id="addBranchKod" placeholder="örn: antalya">
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="fg">
+          <label>Şube Adı</label>
+          <input type="text" id="addBranchAd" placeholder="örn: Sütlüce Kadayıf Antalya">
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom:0">
+        <div class="fg">
+          <label>Adres (İsteğe Bağlı)</label>
+          <input type="text" id="addBranchAdres" placeholder="Açık adres">
+        </div>
+      </div>
+    </div>
+    <div class="edit-modal-footer">
+      <button class="tool-btn" onclick="document.getElementById('addBranchOverlay').classList.remove('active')">Vazgeç</button>
+      <button class="tool-btn tool-btn-primary" id="addBranchBtn" onclick="addBranch()"><i data-lucide="check" style="width:14px;height:14px"></i> Ekle</button>
+    </div>
+  </div>
+</div>
+
+<!-- CAMPAIGN MAPPING MODAL -->
+<div class="edit-overlay" id="campaignOverlay" onclick="if(event.target===this)closeCampaignModal()">
+  <div class="edit-modal" style="width:620px;max-height:80vh">
+    <div class="edit-modal-header">
+      <h3><i data-lucide="git-branch" style="width:16px;height:16px;color:#a78bfa"></i> Kampanya Eşleştirme</h3>
+      <button class="btn-edit-icon" onclick="closeCampaignModal()"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+    </div>
+    <div class="edit-modal-body" style="padding:16px;max-height:55vh;overflow-y:auto">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Her kampanyayı bir şubeye eşleştirin. Kayıt edildikten sonra "Meta Verilerini Çek" ile veri çekin.</p>
+      <div id="campaignList" style="display:flex;flex-direction:column;gap:8px">
+        <div style="text-align:center;padding:30px;color:var(--muted)"><i data-lucide="loader-2" class="spin" style="width:20px;height:20px"></i></div>
+      </div>
+    </div>
+    <div class="edit-modal-footer" style="justify-content:space-between">
+      <span id="campaignCount" style="font-size:11px;color:var(--muted)"></span>
+      <div style="display:flex;gap:8px">
+        <button class="tool-btn" onclick="closeCampaignModal()">Vazgeç</button>
+        <button class="tool-btn tool-btn-primary" id="saveCampaignBtn" onclick="saveCampaignMappings()"><i data-lucide="check" style="width:14px;height:14px"></i> Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- AD SET MAPPING MODAL -->
+<div class="edit-overlay" id="adsetOverlay" onclick="if(event.target===this)closeAdsetModal()">
+  <div class="edit-modal" style="width:680px;max-height:85vh">
+    <div class="edit-modal-header">
+      <h3><i data-lucide="target" style="width:16px;height:16px;color:#f472b6"></i> Reklam Seti Eşleştirme</h3>
+      <button class="btn-edit-icon" onclick="closeAdsetModal()"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+    </div>
+    <div class="edit-modal-body" style="padding:16px;max-height:60vh;overflow-y:auto">
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Her reklam setini özel olarak bir şubeye manuel eşleştirebilirsiniz (kampanya veya isimlendirme bazlı sınırları ezer). Arama yaparak istediğiniz reklam setlerini kolayca bulun.</p>
+      
+      <div style="margin-bottom:12px; position:relative">
+        <i data-lucide="search" style="position:absolute;left:10px;top:8px;width:14px;height:14px;color:var(--muted)"></i>
+        <input type="text" id="adsetSearchInput" placeholder="Reklam seti veya kampanya adına göre ara..." oninput="filterAdsets()" style="width:100%;padding:8px 10px 8px 32px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
+      </div>
+
+      <!-- BULK ACTION BAR -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px;background:rgba(244,114,182,0.05);border:1px solid rgba(244,114,182,0.15);border-radius:6px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer">
+          <input type="checkbox" id="selectAllAdsets" onchange="toggleAllAdsets(this.checked)"> Tümünü Seç
+        </label>
+        <div style="flex:1"></div>
+        <select id="bulkAdsetBranchSelect" style="width:160px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:11px">
+        </select>
+        <button type="button" class="tool-btn" onclick="applyBulkAdsetBranch()" style="padding:6px 10px;font-size:11px;color:#f472b6;border-color:rgba(244,114,182,.3)">Toplu Uygula</button>
+      </div>
+
+      <div id="adsetList" style="display:flex;flex-direction:column;gap:8px">
+        <div style="text-align:center;padding:30px;color:var(--muted)"><i data-lucide="loader-2" class="spin" style="width:20px;height:20px"></i></div>
+      </div>
+    </div>
+    <div class="edit-modal-footer" style="justify-content:space-between">
+      <span id="adsetCount" style="font-size:11px;color:var(--muted)"></span>
+      <div style="display:flex;gap:8px">
+        <button class="tool-btn" onclick="closeAdsetModal()">Vazgeç</button>
+        <button class="tool-btn tool-btn-primary" id="saveAdsetBtn" onclick="saveAdsetMappings()"><i data-lucide="check" style="width:14px;height:14px"></i> Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT BRANCH MODAL -->
+<div class="edit-overlay" id="editBranchOverlay" onclick="if(event.target===this)closeEditBranch()">
+  <div class="edit-modal" style="width:440px">
+    <div class="edit-modal-header">
+      <h3><i data-lucide="edit-2" style="width:16px;height:16px;color:#60a5fa"></i> Şubeyi Düzenle</h3>
+      <button class="btn-edit-icon" onclick="closeEditBranch()"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+    </div>
+    <div class="edit-modal-body">
+      <input type="hidden" id="ebKod">
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="fg"><label>Şube Kodu</label><input type="text" id="ebKodDisplay" disabled style="opacity:.5;cursor:not-allowed"></div>
+      </div>
+      <div class="form-row" style="margin-bottom:12px">
+        <div class="fg"><label>Şube Adı</label><input type="text" id="ebAd" placeholder="Şube adını girin"></div>
+      </div>
+      <div class="form-row" style="margin-bottom:0">
+        <div class="fg"><label>Adres (İsteğe Bağlı)</label><input type="text" id="ebAdres" placeholder="Açık adres"></div>
+      </div>
+
+      <!-- Meta Eşleştirme -->
+      <div style="margin-top:16px;border:1px solid rgba(59,130,246,.15);border-radius:10px;overflow:hidden">
+        <div style="padding:8px 14px;background:rgba(59,130,246,.06);display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(59,130,246,.1)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="#3b82f6"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg>
+          <span style="font-size:10px;font-weight:700;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px">Meta Reklam Hesabı Eşleştirmesi</span>
+        </div>
+        <div style="padding:10px 14px">
+          <div class="fg"><label>Reklam Hesabı Prefix</label>
+            <select id="ebMetaPrefix" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+              <option value="">Yükleniyor...</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Google İşletme Eşleştirme -->
+      <div style="margin-top:16px;border:1px solid rgba(251,146,60,.15);border-radius:10px;overflow:hidden">
+        <div style="padding:8px 14px;background:rgba(251,146,60,.06);display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(251,146,60,.1)">
+          <i data-lucide="map-pin" style="width:13px;height:13px;color:#fb923c"></i>
+          <span style="font-size:10px;font-weight:700;color:#fdba74;text-transform:uppercase;letter-spacing:.5px">Google İşletme Eşleştirmesi</span>
+        </div>
+        <div style="padding:10px 14px">
+          <div class="fg"><label>Google Lokasyon</label>
+            <select id="ebGoogleLocation" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
+              <option value="">Yükleniyor...</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="edit-modal-footer" style="justify-content:space-between">
+      <button class="tool-btn" onclick="deleteBranchFromEdit()" style="color:#f87171;border-color:rgba(248,113,113,.2);background:rgba(248,113,113,.06)">
+        <i data-lucide="trash-2" style="width:14px;height:14px"></i> Sil
+      </button>
+      <div style="display:flex;gap:8px">
+        <button class="tool-btn" onclick="closeEditBranch()">Vazgeç</button>
+        <button class="tool-btn tool-btn-primary" id="editBranchSaveBtn" onclick="saveEditBranch()"><i data-lucide="check" style="width:14px;height:14px"></i> Kaydet</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DATA EDIT MODAL (Overrides) -->
+<div class="edit-overlay" id="dataEditOverlay" onclick="if(event.target===this)closeDataEdit()">
+  <div class="edit-modal" style="width:580px">
+    <div class="edit-modal-header">
+      <h3><i data-lucide="sliders-horizontal" style="width:16px;height:16px;color:var(--accent)"></i> Rapor Verilerini Düzenle</h3>
+      <button class="btn-edit-icon" onclick="closeDataEdit()"><i data-lucide="x" style="width:18px;height:18px"></i></button>
+    </div>
+    <div class="edit-modal-body" style="padding:20px;display:flex;flex-direction:column;gap:20px">
+      <input type="hidden" id="deKod"><input type="hidden" id="deBaslangic"><input type="hidden" id="deBitis">
+      
+      <!-- Period indicator -->
+      <div id="deDonemBadge" style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);border-radius:10px">
+        <i data-lucide="calendar-range" style="width:16px;height:16px;color:var(--accent)"></i>
+        <span style="font-size:12px;font-weight:600;color:var(--text)" id="deDonemLabel">—</span>
+      </div>
+
+      <!-- Section: Bütçe -->
+      <div style="border:1px solid rgba(34,197,94,.15);border-radius:12px;overflow:hidden">
+        <div style="padding:10px 16px;background:rgba(34,197,94,.06);display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(34,197,94,.1)">
+          <i data-lucide="wallet" style="width:14px;height:14px;color:var(--accent)"></i>
+          <span style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px">Bütçe</span>
+        </div>
+        <div class="de-grid">
+          <div class="fg"><label>Planlanan Bütçe (₺)</label><input type="number" id="dePlanlananButce" step="any" placeholder="0"></div>
+          <div class="fg"><label>Devredilen Miktar (₺)</label><input type="number" id="deDevredilenMiktar" step="any" placeholder="0"></div>
+        </div>
+      </div>
+
+      <!-- Section: Meta Reklam -->
+      <div style="border:1px solid rgba(59,130,246,.15);border-radius:12px;overflow:hidden">
+        <div style="padding:10px 16px;background:rgba(59,130,246,.06);display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(59,130,246,.1)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg>
+          <span style="font-size:11px;font-weight:700;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px">Meta Reklam Verileri</span>
+        </div>
+        <div class="de-grid">
+          <div class="fg"><label>Toplam Harcama (₺)</label><input type="number" id="deHarcama" step="any" placeholder="0"></div>
+          <div class="fg"><label>Toplam Erişim</label><input type="number" id="deErisim" step="1" placeholder="0"></div>
+          <div class="fg"><label>Toplam Gösterim</label><input type="number" id="deGosterim" step="1" placeholder="0"></div>
+          <div class="fg"><label>Toplam Sonuç</label><input type="number" id="deSonuc" step="1" placeholder="0"></div>
+        </div>
+      </div>
+
+      <!-- Section: Etkileşim -->
+      <div style="border:1px solid rgba(168,85,247,.15);border-radius:12px;overflow:hidden">
+        <div style="padding:10px 16px;background:rgba(168,85,247,.06);display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(168,85,247,.1)">
+          <i data-lucide="mouse-pointer-click" style="width:14px;height:14px;color:#a855f7"></i>
+          <span style="font-size:11px;font-weight:700;color:#c084fc;text-transform:uppercase;letter-spacing:.5px">Etkileşim Verileri</span>
+        </div>
+        <div class="de-grid">
+          <div class="fg"><label>Bağlantı Tıklaması</label><input type="number" id="deTiklama" step="1" placeholder="0"></div>
+          <div class="fg"><label>Tıklama (Tümü)</label><input type="number" id="deTiklamaTumu" step="1" placeholder="0"></div>
+          <div class="fg"><label>Paylaşım</label><input type="number" id="dePaylasim" step="1" placeholder="0"></div>
+          <div class="fg"><label>Yorum</label><input type="number" id="deYorum" step="1" placeholder="0"></div>
+          <div class="fg"><label>Mesaj</label><input type="number" id="deMesaj" step="1" placeholder="0"></div>
+        </div>
+      </div>
+
+      <!-- Section: Google İşletme -->
+      <div style="border:1px solid rgba(251,146,60,.15);border-radius:12px;overflow:hidden">
+        <div style="padding:10px 16px;background:rgba(251,146,60,.06);display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(251,146,60,.1)">
+          <i data-lucide="map-pin" style="width:14px;height:14px;color:#fb923c"></i>
+          <span style="font-size:11px;font-weight:700;color:#fdba74;text-transform:uppercase;letter-spacing:.5px">Google İşletme Verileri</span>
+        </div>
+        <div class="de-grid">
+          <div class="fg"><label>Google Arama</label><input type="number" id="deGoogleArama" step="1" placeholder="0"></div>
+          <div class="fg"><label>Google Haritalar</label><input type="number" id="deGoogleHarita" step="1" placeholder="0"></div>
+          <div class="fg"><label>Yol Tarifi</label><input type="number" id="deGoogleYol" step="1" placeholder="0"></div>
+          <div class="fg"><label>Telefon Araması</label><input type="number" id="deGoogleTelefon" step="1" placeholder="0"></div>
+          <div class="fg"><label>Web Tıklama</label><input type="number" id="deGoogleWeb" step="1" placeholder="0"></div>
+          <div class="fg"><label>Menü Tıklama</label><input type="number" id="deGoogleMenu" step="1" placeholder="0"></div>
+        </div>
+      </div>
+
+
+    </div>
+    <div class="edit-modal-footer">
+      <button class="tool-btn" onclick="closeDataEdit()">Vazgeç</button>
+      <button class="tool-btn tool-btn-primary" id="dataEditSaveBtn" onclick="saveDataEdit()"><i data-lucide="check" style="width:14px;height:14px"></i> Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const fmt=n=>n==null?'—':new Intl.NumberFormat('tr-TR').format(Math.round(n));
+const fmtC=n=>n==null?'—':new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY',maximumFractionDigits:0}).format(n);
+const fmtS=n=>{if(n==null)return'—';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return String(n)};
+
+const AY_ISIMLERI = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+
+function getDaysInMonth(month, year) {
+  return new Date(year, month + 1, 0).getDate();
+}
+
+function populateDays(daySelectId, month, year, selectedDay) {
+  const sel = document.getElementById(daySelectId);
+  const maxDay = getDaysInMonth(month, year);
+  let html = '';
+  for (let d = 1; d <= maxDay; d++) html += `<option value="${d}">${d}</option>`;
+  sel.innerHTML = html;
+  sel.value = Math.min(selectedDay || 1, maxDay);
+}
+
+function initDateSelectors() {
+  const now = new Date();
+  const curMonth = now.getMonth();
+  const curYear = now.getFullYear();
+
+  const monthOpts = AY_ISIMLERI.map((ad, i) => `<option value="${i}">${ad}</option>`).join('');
+
+  let yearOpts = '';
+  for (let y = curYear - 3; y <= curYear + 1; y++) yearOpts += `<option value="${y}">${y}</option>`;
+
+  // Toolbar dropdowns
+  ['globalSinceMonth','globalUntilMonth'].forEach(id => document.getElementById(id).innerHTML = monthOpts);
+  ['globalSinceYear','globalUntilYear'].forEach(id => document.getElementById(id).innerHTML = yearOpts);
+
+  // Veri Ekle modal dropdowns
+  ['adFetchSinceMonth','adFetchUntilMonth'].forEach(id => document.getElementById(id).innerHTML = monthOpts);
+  ['adFetchSinceYear','adFetchUntilYear'].forEach(id => document.getElementById(id).innerHTML = yearOpts);
+
+  // Default: geçen ayın 1'i → geçen ayın son günü
+  const prevMonth = curMonth === 0 ? 11 : curMonth - 1;
+  const prevYear = curMonth === 0 ? curYear - 1 : curYear;
+  const lastDayPrev = getDaysInMonth(prevMonth, prevYear);
+
+  // Toolbar defaults
+  document.getElementById('globalSinceMonth').value = prevMonth;
+  document.getElementById('globalSinceYear').value = prevYear;
+  document.getElementById('globalUntilMonth').value = prevMonth;
+  document.getElementById('globalUntilYear').value = prevYear;
+
+  populateDays('globalSinceDay', prevMonth, prevYear, 1);
+  populateDays('globalUntilDay', prevMonth, prevYear, lastDayPrev);
+
+  // Modal defaults
+  document.getElementById('adFetchSinceMonth').value = prevMonth;
+  document.getElementById('adFetchSinceYear').value = prevYear;
+  document.getElementById('adFetchUntilMonth').value = prevMonth;
+  document.getElementById('adFetchUntilYear').value = prevYear;
+
+  populateDays('adFetchSinceDay', prevMonth, prevYear, 1);
+  populateDays('adFetchUntilDay', prevMonth, prevYear, lastDayPrev);
+
+  syncDateFields();
+  syncAdFetchDateFields();
+
+  // Toolbar listeners
+  ['globalSinceMonth','globalSinceYear'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => {
+      const m = parseInt(document.getElementById('globalSinceMonth').value);
+      const y = parseInt(document.getElementById('globalSinceYear').value);
+      populateDays('globalSinceDay', m, y, parseInt(document.getElementById('globalSinceDay').value));
+      syncDateFields();
+    })
+  );
+  ['globalUntilMonth','globalUntilYear'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => {
+      const m = parseInt(document.getElementById('globalUntilMonth').value);
+      const y = parseInt(document.getElementById('globalUntilYear').value);
+      populateDays('globalUntilDay', m, y, parseInt(document.getElementById('globalUntilDay').value));
+      syncDateFields();
+    })
+  );
+  ['globalSinceDay','globalUntilDay'].forEach(id =>
+    document.getElementById(id).addEventListener('change', syncDateFields)
+  );
+
+  // Modal listeners
+  ['adFetchSinceMonth','adFetchSinceYear'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => {
+      const m = parseInt(document.getElementById('adFetchSinceMonth').value);
+      const y = parseInt(document.getElementById('adFetchSinceYear').value);
+      populateDays('adFetchSinceDay', m, y, parseInt(document.getElementById('adFetchSinceDay').value));
+      syncAdFetchDateFields();
+    })
+  );
+  ['adFetchUntilMonth','adFetchUntilYear'].forEach(id =>
+    document.getElementById(id).addEventListener('change', () => {
+      const m = parseInt(document.getElementById('adFetchUntilMonth').value);
+      const y = parseInt(document.getElementById('adFetchUntilYear').value);
+      populateDays('adFetchUntilDay', m, y, parseInt(document.getElementById('adFetchUntilDay').value));
+      syncAdFetchDateFields();
+    })
+  );
+  ['adFetchSinceDay','adFetchUntilDay'].forEach(id =>
+    document.getElementById(id).addEventListener('change', syncAdFetchDateFields)
+  );
+}
+
+function syncDateFields() {
+  const sd = parseInt(document.getElementById('globalSinceDay').value);
+  const sm = parseInt(document.getElementById('globalSinceMonth').value);
+  const sy = parseInt(document.getElementById('globalSinceYear').value);
+  const ud = parseInt(document.getElementById('globalUntilDay').value);
+  const um = parseInt(document.getElementById('globalUntilMonth').value);
+  const uy = parseInt(document.getElementById('globalUntilYear').value);
+
+  const pad = d => d.toISOString().split('T')[0];
+  document.getElementById('globalSince').value = pad(new Date(sy, sm, sd));
+  document.getElementById('globalUntil').value = pad(new Date(uy, um, ud));
+}
+
+function syncAdFetchDateFields() {
+  const sd = parseInt(document.getElementById('adFetchSinceDay').value);
+  const sm = parseInt(document.getElementById('adFetchSinceMonth').value);
+  const sy = parseInt(document.getElementById('adFetchSinceYear').value);
+  const ud = parseInt(document.getElementById('adFetchUntilDay').value);
+  const um = parseInt(document.getElementById('adFetchUntilMonth').value);
+  const uy = parseInt(document.getElementById('adFetchUntilYear').value);
+
+  const pad = d => d.toISOString().split('T')[0];
+  document.getElementById('adFetchSince').value = pad(new Date(sy, sm, sd));
+  document.getElementById('adFetchUntil').value = pad(new Date(uy, um, ud));
+}
+
+function toast(msg,type='info'){
+  const w=document.getElementById('toastWrap'),el=document.createElement('div');el.className=`toast ${type}`;
+  const i={success:'<i data-lucide="check-circle-2" style="width:14px;height:14px;color:#22c55e"></i>',error:'<i data-lucide="x-circle" style="width:14px;height:14px;color:#f43f5e"></i>',info:'<i data-lucide="info" style="width:14px;height:14px;color:#8b5cf6"></i>'};
+  el.innerHTML=`<span>${i[type]||i.info}</span><span class="toast-msg">${msg}</span>`;lucide.createIcons({nodes:[el]});w.appendChild(el);
+  setTimeout(()=>{el.style.animation='toastOut .3s ease forwards';setTimeout(()=>el.remove(),300)},4000);
+}
+
+let _all=[],_active=null,_hasMappings=false,_reverseCampaigns={},_reverseAdsets={},_appSettings={};
+
+async function loadDashboard(){
+  try{
+    const[dashRes,mapRes,setRes]=await Promise.all([fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/dashboard'),fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/meta-mappings'),fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/settings')]);
+    const{subeler}=await dashRes.json();const mapData=await mapRes.json();
+    _appSettings = await setRes.json();
+    _all=subeler;_hasMappings=mapData.hasMappings;
+    _reverseCampaigns=mapData.reverseCampaigns||{};
+    _reverseAdsets=mapData.reverseAdsets||{};
+    // Show toolbar
+    if(subeler.length){
+      document.getElementById('toolbarBadge').style.display='flex';
+      document.getElementById('metaFetchBtn').style.display=_hasMappings?'':'none';
+      document.getElementById('campaignMapBtn').style.display=_appSettings.metaApiToken?'':'none';
+      document.getElementById('adsetMapBtn').style.display=_appSettings.metaApiToken?'':'none';
+    } else {
+      document.getElementById('toolbarBadge').style.display='none';
+    }
+    renderSidebar(subeler);
+    if(_active)selectBranch(_active);else if(subeler.length)selectBranch(subeler[0].kod);
+  }catch(err){console.error(err);toast('Yükleme hatası','error')}
+}
+
+function renderSidebar(subeler){
+  const list=document.getElementById('branchList');
+  document.getElementById('branchCount').textContent=subeler.length;
+  if(!subeler.length){list.innerHTML='<div style="padding:24px 16px;text-align:center;color:var(--muted);font-size:12px">Henüz şube yok</div>';return}
+  let h='';
+  for(const s of subeler){
+    const tS=s.donemler.reduce((a,d)=>a+(d.meta?.harcama||0),0);
+
+    h+=`<div class="sb-item ${_active===s.kod?'active':''}" id="side-${s.kod}" data-kod="${s.kod}" onclick="selectBranch('${s.kod}')">
+      <div class="sb-item-name">${s.ad}</div>
+      <div class="sb-item-row"><b>${fmtC(tS)}</b> · ${s.donemSayisi} dönem</div>
+    </div>`;
+  }
+  list.innerHTML=h;
+}
+
+function filterBranches(){
+  const q=document.getElementById('searchInput').value.toLowerCase().trim();
+  renderSidebar(q?_all.filter(s=>s.ad.toLowerCase().includes(q)||s.kod.includes(q)):_all);
+}
+
+function selectBranch(kod){
+  _active=kod;const s=_all.find(b=>b.kod===kod);if(!s)return;
+  document.querySelectorAll('.sb-item').forEach(el=>el.classList.toggle('active',el.dataset.kod===kod));
+  document.getElementById('welcomeView').style.display='none';
+  const dv=document.getElementById('detailView');dv.style.display='block';
+
+  const initial=(s.ad.replace(/Sütlüce Kadayıf\s*/i,'')||s.kod).charAt(0).toUpperCase();
+  const tS=s.donemler.reduce((a,d)=>a+(d.meta?.harcama||0),0);
+  const tR=s.donemler.reduce((a,d)=>a+(d.toplamErisim||d.meta?.erisim||0),0);
+  const tV=s.donemler.reduce((a,d)=>a+(d.google?.gorunurluk||0),0);
+  const tSonuc=s.donemler.reduce((a,d)=>a+(d.meta?.sonuc||0),0);
+
+  let h=`<div class="d-hero">
+    <div class="d-hero-left">
+      <div class="d-avatar">${initial}</div>
+      <div><div class="d-name">${s.ad}</div><div class="d-sub">${s.adres||s.kod} · ${s.donemSayisi} dönem</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="tool-btn" data-action="edit" data-kod="${s.kod}" onclick="openEditBranchModal(this.dataset.kod)"> 
+        <i data-lucide="edit-2" style="width:14px;height:14px"></i> Düzenle
+      </button>
+      <button class="tool-btn" onclick="openAddDataModal('${s.kod}')">
+        <i data-lucide="plus" style="width:14px;height:14px"></i> Veri Ekle
+      </button>
+    </div>
+  </div>
+  <div class="d-stats">
+    <div class="d-stat"><div class="d-stat-val">${fmtC(tS)}</div><div class="d-stat-label">Harcama</div></div>
+    <div class="d-stat"><div class="d-stat-val">${fmt(tR)}</div><div class="d-stat-label">Erişim</div></div>
+    <div class="d-stat"><div class="d-stat-val">${fmt(tV)}</div><div class="d-stat-label">Görünürlük</div></div>
+    <div class="d-stat"><div class="d-stat-val">${fmt(tSonuc)}</div><div class="d-stat-label">Sonuç</div></div>
+  </div>
+  <div class="d-sec">Dönemler</div>
+  <div class="d-table-wrap"><table class="d-table"><thead><tr><th>Dönem</th><th>Veri</th><th class="r">Harcama</th><th class="r">Erişim</th><th class="r">Sonuç</th><th class="r">Görünürlük</th><th class="r">Telefon</th><th class="r">Yol Tarifi</th><th></th></tr></thead><tbody>`;
+
+  for(const d of s.donemler){
+    const hM=!!d.meta,hG=!!d.google;
+    const tag=hM&&hG?'<span class="d-tag both">Meta + Google</span>':hM?'<span class="d-tag meta">Meta</span>':'<span class="d-tag google">Google</span>';
+    h+=`<tr>
+      <td><span class="date-badge">${d.baslangic} → ${d.bitis}</span></td>
+      <td>${tag}</td>
+      <td class="r" style="font-weight:700;color:var(--accent)">${hM?fmtC(d.meta.harcama):'—'}</td>
+      <td class="r" style="font-weight:700">${hM?fmt(d.toplamErisim||d.meta.erisim):'—'}</td>
+      <td class="r">${hM?fmt(d.meta.sonuc):'—'}</td>
+      <td class="r">${hG?fmt(d.google.gorunurluk):'—'}</td>
+      <td class="r">${hG?fmt(d.google.telefon):'—'}</td>
+      <td class="r">${hG?fmt(d.google.yolTarifi):'—'}</td>
+      <td><div class="d-actions">
+        <button class="d-btn d-btn-view" style="color:#a5b4fc;background:rgba(99,102,241,0.1);border-color:rgba(99,102,241,0.2)" onclick="openDataEdit('${s.kod}','${d.baslangic}','${d.bitis}')"><i data-lucide="sliders-horizontal" style="width:10px;height:10px"></i> Düzenle</button>
+        <button class="d-btn d-btn-view" onclick="previewReport('${s.kod}','${s.ad.replace(/'/g,"\\'")}','${d.baslangic}','${d.bitis}')"><i data-lucide="eye" style="width:10px;height:10px"></i> Önizle</button>
+        ${d.rapor
+          ?`<a href="${d.rapor.url}" download="${d.rapor.dosya}" class="d-btn d-btn-pdf"><i data-lucide="file-down" style="width:10px;height:10px"></i> İndir</a>`
+          :`<button class="d-btn d-btn-pdf" onclick="genReport('${s.kod}','${s.ad.replace(/'/g,"\\'")}','${d.baslangic}','${d.bitis}',this)"><i data-lucide="file-bar-chart" style="width:10px;height:10px"></i> PDF</button>`}
+        <button class="d-btn" style="color:#f87171;background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2)" onclick="deleteDonem('${s.kod}','${d.baslangic}','${d.bitis}')"><i data-lucide="trash-2" style="width:10px;height:10px"></i></button>
+      </div></td>
+    </tr>`;
+  }
+  h+='</tbody></table></div>';
+  dv.innerHTML=h;lucide.createIcons();document.getElementById('contentArea').scrollTop=0;
+}
+
+// ── Preview ──
+let _pk='',_pb='',_pe='';
+async function previewReport(kod,ad,b,e){
+  _pk=kod;_pb=b;_pe=e;document.getElementById('previewOverlay').classList.add('active');
+  const f=document.getElementById('previewFrame');
+  f.srcdoc='<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:Inter;color:#999;font-size:13px"><div style="width:18px;height:18px;border:2px solid #eee;border-top-color:#22c55e;border-radius:50%;animation:s .6s linear infinite"></div>&nbsp;Yükleniyor...</div><style>@keyframes s{to{transform:rotate(360deg)}}</style>';
+  try{const r=await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subeKod:kod,donemBaslangic:b,donemBitis:e})});if(!r.ok)throw new Error('Yüklenemedi');f.srcdoc=await r.text()}catch(err){toast(err.message,'error');closePreview()}
+}
+function closePreview(){document.getElementById('previewOverlay').classList.remove('active')}
+
+async function downloadFromPreview(){
+  const btn=document.getElementById('prevDlBtn');btn.disabled=true;btn.innerHTML='<div class="spinner"></div>';
+  try{const r=await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/rapor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subeKod:_pk,donemBaslangic:_pb,donemBitis:_pe})});const d=await r.json();
+  if(r.ok){Object.assign(document.createElement('a'),{href:d.pdfUrl,download:d.fileName}).click();toast('PDF indirildi!','success')}else toast(d.error,'error')}catch{toast('Bağlantı hatası','error')}
+  btn.disabled=false;btn.innerHTML='<i data-lucide="download" style="width:11px;height:11px"></i> PDF İndir';lucide.createIcons({nodes:[btn]});
+}
+
+async function genReport(kod,ad,b,e,btn){
+  btn.disabled=true;btn.innerHTML='<div class="spinner"></div>';
+  try{const r=await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/rapor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subeKod:kod,donemBaslangic:b,donemBitis:e})});const d=await r.json();
+  if(r.ok){Object.assign(document.createElement('a'),{href:d.pdfUrl,download:d.fileName}).click();toast(`${ad} raporu oluşturuldu!`,'success');loadDashboard()}
+  else{toast(d.error,'error');btn.disabled=false;btn.innerHTML='<i data-lucide="file-bar-chart" style="width:10px;height:10px"></i> PDF';lucide.createIcons({nodes:[btn]})}}
+  catch{toast('Hata','error');btn.disabled=false;btn.innerHTML='<i data-lucide="file-bar-chart" style="width:10px;height:10px"></i> PDF';lucide.createIcons({nodes:[btn]})}
+}
+
+// ── Toplu Meta API Çekme ──
+async function globalMetaFetch(){
+  const since=document.getElementById('globalSince').value;
+  const until=document.getElementById('globalUntil').value;
+  if(!since||!until)return toast('Önce tarih seçin.','error');
+  const token=_appSettings.metaApiToken;
+  if(!token)return toast('Ana panelden veya ayarlardan Meta token girmeniz gerekli.','error');
+  const btn=document.getElementById('metaFetchBtn');const status=document.getElementById('toolStatus');
+  btn.disabled=true;btn.innerHTML='<div class="spinner"></div> Çekiliyor...';status.textContent='Tüm şubeler için veri çekiliyor...';
+  try{
+    // Kampanya eşleştirmesi varsa campaign-fetch kullan
+    const r=await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/campaign-fetch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accessToken:token,since,until})});
+    const d=await r.json();
+    if(r.ok){toast(d.message,'success');status.innerHTML=`<span style="color:var(--accent)">✓ ${d.subeSayisi} şube, ${d.count} reklam seti</span>`;loadDashboard()}
+    else{
+      // Kampanya eşleştirmesi yoksa prefix bazlı dene
+      if(d.error && d.error.includes('eşleştirme')) {
+        const r2=await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/quick-fetch-meta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accessToken:token,since,until})});
+        const d2=await r2.json();
+        if(r2.ok){toast(d2.message,'success');status.innerHTML=`<span style="color:var(--accent)">✓ ${d2.subeSayisi} şube</span>`;loadDashboard()}
+        else{toast(d2.error||'Hata','error');status.textContent=''}
+      } else {toast(d.error||'Hata','error');status.textContent=''}
+    }
+  }catch{toast('Bağlantı hatası','error');status.textContent=''}
+  finally{btn.disabled=false;btn.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg> Meta Toplu Çek'}
+}
+
+/* Kampanya Eşleştirme */
+function closeCampaignModal() { document.getElementById('campaignOverlay').classList.remove('active'); }
+
+async function openCampaignModal() {
+  document.getElementById('campaignOverlay').classList.add('active');
+  lucide.createIcons();
+  await loadCampaigns();
+}
+
+async function loadCampaigns() {
+  const list = document.getElementById('campaignList');
+  list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)"><i data-lucide="loader-2" class="spin" style="width:20px;height:20px"></i></div>';
+  lucide.createIcons({nodes:[list]});
+
+  const token = _appSettings.metaApiToken;
+  if (!token) { list.innerHTML = '<p style="color:#f87171;text-align:center;padding:20px">Meta token bulunamadı. Ayarlardan ayarlayın.</p>'; return; }
+
+  const since = document.getElementById('globalSince').value || '2025-01-01';
+  const until = document.getElementById('globalUntil').value || '2026-12-31';
+
+  try {
+    const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/meta-campaigns', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken: token, since, until })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    const campaigns = data.kampanyalar || [];
+    const subeler = data.mevcutSubeler || [];
+
+    if (campaigns.length === 0) { list.innerHTML = '<p style="text-align:center;padding:20px;color:var(--muted)">Kampanya bulunamadı.</p>'; return; }
+
+    let html = '';
+    for (const c of campaigns) {
+      const spend = (c.spend || 0).toLocaleString('tr-TR', {minimumFractionDigits:0, maximumFractionDigits:0});
+      html += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${c.name}">${c.name}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">₺${spend} · ${(c.reach||0).toLocaleString('tr-TR')} erişim</div>
+        </div>
+        <select data-campaign-id="${c.id}" style="width:160px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:11px;font-family:inherit">
+          <option value="__atla__">— Atla —</option>
+          ${subeler.map(s => `<option value="${s.kod}" ${c.eslesmeKod === s.kod ? 'selected' : ''}>${s.ad}</option>`).join('')}
+        </select>
+      </div>`;
+    }
+    list.innerHTML = html;
+    document.getElementById('campaignCount').textContent = `${campaigns.length} kampanya`;
+  } catch (err) {
+    list.innerHTML = `<p style="color:#f87171;text-align:center;padding:20px">${err.message}</p>`;
+  }
+}
+
+async function saveCampaignMappings() {
+  const selects = document.querySelectorAll('[data-campaign-id]');
+  const mappings = {};
+  selects.forEach(s => { mappings[s.dataset.campaignId] = s.value; });
+
+  const btn = document.getElementById('saveCampaignBtn');
+  btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i> Kaydediliyor...';
+  lucide.createIcons({nodes:[btn]});
+
+  try {
+    const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/save-campaign-mappings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mappings })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      toast(data.message, 'success');
+      closeCampaignModal();
+      await loadDashboard(); // Sayfayı yenilemeye gerek kalmadan arayüzü güncelle
+    } else toast(data.error || 'Hata', 'error');
+  } catch { toast('Bağlantı hatası', 'error'); }
+  finally {
+    btn.disabled = false; btn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px"></i> Kaydet';
+    lucide.createIcons({nodes:[btn]});
+  }
+}
+
+/* Reklam Seti Eşleştirme */
+function closeAdsetModal() { document.getElementById('adsetOverlay').classList.remove('active'); }
+
+async function openAdsetModal() {
+  document.getElementById('adsetOverlay').classList.add('active');
+  document.getElementById('adsetSearchInput').value = '';
+  lucide.createIcons();
+  await loadAdsets();
+}
+
+async function loadAdsets() {
+  const list = document.getElementById('adsetList');
+  list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)"><i data-lucide="loader-2" class="spin" style="width:20px;height:20px"></i></div>';
+  lucide.createIcons({nodes:[list]});
+
+  const token = _appSettings.metaApiToken;
+  if (!token) { list.innerHTML = '<p style="color:#f87171;text-align:center;padding:20px">Meta token bulunamadı. Ayarlardan ayarlayın.</p>'; return; }
+
+  const since = document.getElementById('globalSince').value || '2025-01-01';
+  const until = document.getElementById('globalUntil').value || '2026-12-31';
+
+  try {
+    const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/meta-adsets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessToken: token, since, until })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    const adsets = data.adsets || [];
+    const subeler = data.mevcutSubeler || [];
+
+    // Populate bulk select
+    const bulkSelect = document.getElementById('bulkAdsetBranchSelect');
+    if (bulkSelect) {
+      bulkSelect.innerHTML = '<option value="">— Şube Seçin —</option><option value="__atla__">— Atla —</option>' + subeler.map(s => `<option value="${s.kod}">${s.ad}</option>`).join('');
+    }
+
+    if (adsets.length === 0) { list.innerHTML = '<p style="text-align:center;padding:20px;color:var(--muted)">Reklam seti bulunamadı.</p>'; document.getElementById('adsetCount').textContent = '0 reklam seti'; return; }
+
+    let html = '';
+    for (const a of adsets) {
+      const spend = (a.spend || 0).toLocaleString('tr-TR', {minimumFractionDigits:0, maximumFractionDigits:0});
+      html += `<div class="adset-item" data-search="${(a.name+' '+a.campaignName).toLowerCase()}" style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px">
+        <input type="checkbox" class="adset-checkbox" value="${a.id}" style="margin-top:2px;cursor:pointer">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${a.name}">${a.name}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">Kampanya: ${a.campaignName}</div>
+          <div style="font-size:10px;color:var(--blue-400);margin-top:2px;opacity:0.8">₺${spend} · ${(a.reach||0).toLocaleString('tr-TR')} erişim</div>
+        </div>
+        <select data-adset-id="${a.id}" style="width:160px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--text);font-size:11px;font-family:inherit">
+          <option value="__atla__">— Atla —</option>
+          ${subeler.map(s => `<option value="${s.kod}" ${a.eslesmeKod === s.kod ? 'selected' : ''}>${s.ad}</option>`).join('')}
+        </select>
+      </div>`;
+    }
+    list.innerHTML = html;
+    document.getElementById('adsetCount').textContent = `${adsets.length} reklam seti (gösteriliyor)`;
+  } catch (err) {
+    list.innerHTML = `<p style="color:#f87171;text-align:center;padding:20px">${err.message}</p>`;
+  }
+}
+
+function toggleAllAdsets(checked) {
+  const checkboxes = document.querySelectorAll('.adset-checkbox');
+  checkboxes.forEach(cb => {
+    const item = cb.closest('.adset-item');
+    if (item.style.display !== 'none') {
+      cb.checked = checked;
+    }
+  });
+}
+
+function applyBulkAdsetBranch() {
+  const branch = document.getElementById('bulkAdsetBranchSelect').value;
+  if (!branch) return toast('Toplu atama için bir şube seçin.', 'error');
+  
+  const checkboxes = document.querySelectorAll('.adset-checkbox:checked');
+  if (checkboxes.length === 0) return toast('En az bir reklam seti seçmelisiniz.', 'error');
+  
+  let count = 0;
+  checkboxes.forEach(cb => {
+    const item = cb.closest('.adset-item');
+    if (item.style.display !== 'none') {
+      const select = item.querySelector('select[data-adset-id]');
+      if (select) { select.value = branch; count++; }
+      cb.checked = false;
+    }
+  });
+  
+  const sa = document.getElementById('selectAllAdsets');
+  if(sa) sa.checked = false;
+  document.getElementById('bulkAdsetBranchSelect').value = '';
+  
+  // Kullanıcı "Uygula" dediğinde otomatik kaydet
+  saveAdsetMappings();
+}
+
+function filterAdsets() {
+  const query = document.getElementById('adsetSearchInput').value.toLowerCase();
+  const items = document.querySelectorAll('.adset-item');
+  let visible = 0;
+  items.forEach(el => {
+    if (el.dataset.search.includes(query)) {
+      el.style.display = 'flex';
+      visible++;
+    } else {
+      el.style.display = 'none';
+    }
+  });
+  document.getElementById('adsetCount').textContent = `${visible} reklam seti (gösteriliyor)`;
+}
+
+async function saveAdsetMappings() {
+  const selects = document.querySelectorAll('[data-adset-id]');
+  const mappings = {};
+  selects.forEach(s => { mappings[s.dataset.adsetId] = s.value; });
+
+  const btn = document.getElementById('saveAdsetBtn');
+  btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i> Kaydediliyor...';
+  lucide.createIcons({nodes:[btn]});
+
+  try {
+    const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/save-adset-mappings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mappings })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      toast(data.message, 'success');
+      closeAdsetModal();
+      await loadDashboard();
+    } else toast(data.error || 'Hata', 'error');
+  } catch { toast('Bağlantı hatası', 'error'); }
+  finally {
+    btn.disabled = false; btn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px"></i> Kaydet';
+    lucide.createIcons({nodes:[btn]});
+  }
+}
+
+/* Ayarlar */
+function openSettingsModal() {
+  document.getElementById('settingsOverlay').classList.add('active');
+  document.getElementById('settingsMetaToken').value = _appSettings.metaApiToken || '';
+  document.getElementById('settingsGoogleClientId').value = _appSettings.googleClientId || '';
+  document.getElementById('settingsGoogleClientSecret').value = _appSettings.googleClientSecret || '';
+  document.getElementById('settingsGoogleRedirectUri').value = _appSettings.googleRedirectUri || 'https://api-fyfp72cohq-uc.a.run.app/api/reports/auth/google/callback';
+  lucide.createIcons();
+}
+function closeSettingsModal() {
+  document.getElementById('settingsOverlay').classList.remove('active');
+}
+async function saveSettingsModal() {
+  const token = document.getElementById('settingsMetaToken').value.trim();
+  const clientId = document.getElementById('settingsGoogleClientId').value.trim();
+  const clientSecret = document.getElementById('settingsGoogleClientSecret').value.trim();
+  const redirectUri = document.getElementById('settingsGoogleRedirectUri').value.trim();
+  const btn = document.querySelector('#settingsOverlay .tool-btn-primary');
+  btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i> Kaydediliyor...';
+  
+  try {
+    const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/save-settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ metaApiToken: token, googleClientId: clientId, googleClientSecret: clientSecret, googleRedirectUri: redirectUri })
+    });
+    if (res.ok) {
+      toast('Meta token veritabanına kaydedildi.', 'success');
+      closeSettingsModal();
+      await loadDashboard(); 
+    } else {
+      toast('Kaydedilemedi.', 'error');
+    }
+  } catch (err) { toast('Hata oluştu.', 'error'); }
+  finally {
+    btn.disabled = false; btn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px"></i> Kaydet';
+  }
+}
+
+
+// ── Toplu PDF İndir (SSE + Progress) ──
+async function bulkDownloadPdf(){
+  const since=document.getElementById('globalSince').value;
+  const until=document.getElementById('globalUntil').value;
+  if(!since||!until)return toast('Önce tarih seçin.','error');
+
+  const overlay=document.getElementById('progressOverlay');
+  const bar=document.getElementById('progBar');
+  const sube=document.getElementById('progSube');
+  const count=document.getElementById('progCount');
+  const time=document.getElementById('progTime');
+  overlay.classList.add('active');bar.style.width='0%';
+
+  const es=new EventSource(`/api/bulk-pdf-stream?since=${since}&until=${until}`);
+  es.onmessage=e=>{
+    const d=JSON.parse(e.data);
+    switch(d.type){
+      case'scanning':sube.textContent=d.sube?`Taranıyor: ${d.sube}`:'Veriler taranıyor...';if(d.current!=null)count.textContent=`${d.current}/${d.total} tarandı`;time.textContent='Şubeler tespit ediliyor...';break;
+      case'start':count.textContent=`0/${d.total}`;break;
+      case'progress':{const pct=Math.round(d.current/d.total*100);bar.style.width=pct+'%';sube.textContent=d.sube;count.textContent=`${d.current}/${d.total}`;const em=Math.floor(d.eta/60),es2=d.eta%60;time.textContent=`${d.elapsed}s | ~${em>0?em+'dk ':''}${es2}s kaldı`;break}
+      case'zipping':sube.textContent='📦 ZIP oluşturuluyor...';bar.style.width='100%';break;
+      case'done':es.close();overlay.classList.remove('active');{const a=document.createElement('a');a.href=d.downloadUrl;a.download='';document.body.appendChild(a);a.click();a.remove()}toast(`✓ ${d.count} PDF, ZIP olarak indirildi (${d.elapsed}s)`,'success');break;
+      case'error':es.close();overlay.classList.remove('active');toast(d.message,'error');break;
+    }
+  };
+  es.onerror=()=>{es.close();overlay.classList.remove('active');toast('Bağlantı hatası','error')};
+}
+
+  /* Add Data Logic */
+  function openAddDataModal(kod) {
+    document.getElementById('adSubeKod').value = kod;
+    document.getElementById('addDataForm').reset();
+    document.getElementById('addDataOverlay').classList.add('active');
+  }
+  function closeAddData() { document.getElementById('addDataOverlay').classList.remove('active'); }
+
+  async function fetchMetaForBranch() {
+    const kod = document.getElementById('adSubeKod').value;
+    const since = document.getElementById('adFetchSince').value;
+    const until = document.getElementById('adFetchUntil').value;
+    if (!since || !until) return toast('Tarih aralığı seçin.', 'info');
+
+    const btn = document.getElementById('adMetaFetchBtn');
+    btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:13px;height:13px"></i> Çekiliyor...';
+    lucide.createIcons({nodes:[btn]});
+
+    try {
+      const token = _appSettings.metaApiToken;
+      if (!token) return toast('Meta token bulunamadı. Ayarlardan ayarlayın.', 'error');
+
+      // Önce kampanya eşleştirmesi ile dene
+      const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/campaign-fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: token, since, until, subeKod: kod })
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        toast(data.message || 'Meta verileri çekildi!', 'success');
+        await loadDashboard();
+        if (_active) selectBranch(_active);
+      } else {
+        // Kampanya eşleştirmesi yoksa prefix bazlı dene
+        if(data.error && data.error.includes('eşleştirme')) {
+          const res2 = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/quick-fetch-meta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accessToken: token, since, until, subeKod: kod })
+          });
+          const data2 = await res2.json();
+          if (res2.ok) {
+            toast(data2.message || 'Meta verileri çekildi!', 'success');
+            await loadDashboard();
+            if (_active) selectBranch(_active);
+          } else {
+            toast(data2.error || 'Hata', 'error');
+          }
+        } else {
+          toast(data.error || 'Hata', 'error');
+        }
+      }
+    } catch(e) { toast('Bağlantı hatası', 'error'); }
+    finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg> Meta Çek';
+    }
+  }
+
+  async function fetchGoogleForBranch() {
+    const kod = document.getElementById('adSubeKod').value;
+    const since = document.getElementById('adFetchSince').value;
+    const until = document.getElementById('adFetchUntil').value;
+    if (!since || !until) return toast('Tarih aralığı seçin.', 'info');
+
+    const btn = document.getElementById('adGoogleFetchBtn');
+    btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:13px;height:13px"></i> Çekiliyor...';
+    lucide.createIcons({nodes:[btn]});
+
+    try {
+      const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/google-fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ since, until, subeKod: kod })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast(data.message || 'Google verileri çekildi!', 'success');
+        await loadDashboard();
+        if (_active) selectBranch(_active);
+      } else toast(data.error || 'Hata', 'error');
+    } catch(e) { toast('Bağlantı hatası', 'error'); }
+    finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="map-pin" style="width:13px;height:13px"></i> Google Çek';
+      lucide.createIcons({nodes:[btn]});
+    }
+  }
+
+  async function submitAddData() {
+    const metaCsv = document.getElementById('adMetaCsv').files[0];
+    const googleCsv = document.getElementById('adGoogleCsv').files[0];
+    if (!metaCsv && !googleCsv) return toast('En az bir CSV dosyası seçin.', 'info');
+
+    const btn = document.getElementById('addDataSaveBtn');
+    btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i> Yükleniyor...';
+    lucide.createIcons({nodes:[btn]});
+
+    const fd = new FormData();
+    fd.append('subeKod', document.getElementById('adSubeKod').value);
+    if (metaCsv) fd.append('metaCsv', metaCsv);
+    if (googleCsv) fd.append('googleCsv', googleCsv);
+    
+    if(document.getElementById('adPlanlananButce').value) fd.append('planlananButce', document.getElementById('adPlanlananButce').value);
+    if(document.getElementById('adDevredilen').value) fd.append('devredilenMiktar', document.getElementById('adDevredilen').value);
+    if(document.getElementById('adToplamErisim').value) fd.append('toplamErisim', document.getElementById('adToplamErisim').value);
+
+    try {
+      const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Yükleme hatası');
+      toast('Veriler başarıyla yüklendi!', 'success');
+      closeAddData();
+      await loadDashboard();
+      if(document.getElementById('side-'+document.getElementById('adSubeKod').value)) document.getElementById('side-'+document.getElementById('adSubeKod').value).click();
+    } catch (err) { toast(err.message, 'error'); } 
+    finally {
+      btn.disabled = false; btn.innerHTML = '<i data-lucide="upload" style="width:14px;height:14px"></i> Verileri Aktar'; lucide.createIcons({nodes:[btn]});
+    }
+  }
+
+  /* Data Edit Logic */
+  async function openDataEdit(kod, baslangic, bitis) {
+    document.getElementById('deKod').value = kod;
+    document.getElementById('deBaslangic').value = baslangic;
+    document.getElementById('deBitis').value = bitis;
+    document.getElementById('deDonemLabel').textContent = baslangic + ' → ' + bitis;
+    document.getElementById('dataEditOverlay').classList.add('active');
+    lucide.createIcons();
+
+    ['deHarcama','deErisim','deGosterim','deSonuc','deTiklama','deTiklamaTumu','dePaylasim','deYorum','deMesaj','deGoogleArama','deGoogleHarita','deGoogleYol','deGoogleTelefon','deGoogleWeb','deGoogleMenu','dePlanlananButce','deDevredilenMiktar'].forEach(id => document.getElementById(id).value = '');
+
+    try {
+      const res = await fetch(`https://api-fyfp72cohq-uc.a.run.app/api/reports/sube/${kod}/donem/veriler?baslangic=${baslangic}&bitis=${bitis}`);
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Hata', 'error'); closeDataEdit(); return; }
+
+      const c = data.computed;
+      const o = data.overrides || {};
+      document.getElementById('deHarcama').value = o.toplamHarcama ?? c.toplamHarcama ?? '';
+      document.getElementById('deErisim').value = o.toplamErisim ?? c.toplamErisim ?? '';
+      document.getElementById('deGosterim').value = o.toplamGosterim ?? c.toplamGosterim ?? '';
+      document.getElementById('deSonuc').value = o.toplamSonuc ?? c.toplamSonuc ?? '';
+      document.getElementById('deTiklama').value = o.toplamTiklama ?? c.toplamTiklama ?? '';
+      document.getElementById('deTiklamaTumu').value = o.toplamTiklamaTumu ?? c.toplamTiklamaTumu ?? '';
+      document.getElementById('dePaylasim').value = o.toplamPaylasim ?? c.toplamPaylasim ?? '';
+      document.getElementById('deYorum').value = o.toplamYorum ?? c.toplamYorum ?? '';
+      document.getElementById('deMesaj').value = o.toplamMesaj ?? c.toplamMesaj ?? '';
+      document.getElementById('deGoogleArama').value = o.googleArama ?? c.googleArama ?? '';
+      document.getElementById('deGoogleHarita').value = o.googleHarita ?? c.googleHarita ?? '';
+      document.getElementById('deGoogleYol').value = o.googleYolTarifi ?? c.googleYolTarifi ?? '';
+      document.getElementById('deGoogleTelefon').value = o.googleTelefon ?? c.googleTelefon ?? '';
+      document.getElementById('deGoogleWeb').value = o.googleWebTiklama ?? c.googleWebTiklama ?? '';
+      document.getElementById('deGoogleMenu').value = o.googleMenuTiklama ?? c.googleMenuTiklama ?? '';
+      document.getElementById('dePlanlananButce').value = o.planlananButce ?? c.planlananButce ?? '';
+      document.getElementById('deDevredilenMiktar').value = o.devredilenMiktar ?? c.devredilenMiktar ?? '';
+      lucide.createIcons();
+    } catch (err) { toast('Veri yüklenemedi', 'error'); closeDataEdit(); }
+  }
+
+  function closeDataEdit() { document.getElementById('dataEditOverlay').classList.remove('active'); }
+
+  async function deleteDonem(kod, baslangic, bitis) {
+    if (!confirm(`${baslangic} → ${bitis} dönemine ait tüm verileri silmek istediğinize emin misiniz?`)) return;
+    try {
+      const res = await fetch(`https://api-fyfp72cohq-uc.a.run.app/api/reports/sube/${kod}/donem?baslangic=${baslangic}&bitis=${bitis}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok) {
+        toast('Dönem verileri silindi.', 'success');
+        await loadDashboard();
+        if (_active) selectBranch(_active);
+      } else toast(data.error || 'Hata', 'error');
+    } catch(e) { toast('Bağlantı hatası', 'error'); }
+  }
+
+  async function saveDataEdit() {
+    const kod = document.getElementById('deKod').value;
+    const baslangic = document.getElementById('deBaslangic').value;
+    const bitis = document.getElementById('deBitis').value;
+
+    const overrides = {
+      toplamHarcama: parseFloat(document.getElementById('deHarcama').value) || 0,
+      toplamErisim: parseInt(document.getElementById('deErisim').value) || 0,
+      toplamGosterim: parseInt(document.getElementById('deGosterim').value) || 0,
+      toplamSonuc: parseInt(document.getElementById('deSonuc').value) || 0,
+      toplamTiklama: parseInt(document.getElementById('deTiklama').value) || 0,
+      toplamTiklamaTumu: parseInt(document.getElementById('deTiklamaTumu').value) || 0,
+      toplamPaylasim: parseInt(document.getElementById('dePaylasim').value) || 0,
+      toplamYorum: parseInt(document.getElementById('deYorum').value) || 0,
+      toplamMesaj: parseInt(document.getElementById('deMesaj').value) || 0,
+      googleArama: parseInt(document.getElementById('deGoogleArama').value) || 0,
+      googleHarita: parseInt(document.getElementById('deGoogleHarita').value) || 0,
+      googleYolTarifi: parseInt(document.getElementById('deGoogleYol').value) || 0,
+      googleTelefon: parseInt(document.getElementById('deGoogleTelefon').value) || 0,
+      googleWebTiklama: parseInt(document.getElementById('deGoogleWeb').value) || 0,
+      googleMenuTiklama: parseInt(document.getElementById('deGoogleMenu').value) || 0,
+      planlananButce: parseFloat(document.getElementById('dePlanlananButce').value) || 0,
+      devredilenMiktar: parseFloat(document.getElementById('deDevredilenMiktar').value) || 0,
+    };
+
+    const btn = document.getElementById('dataEditSaveBtn');
+    btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i>';
+    lucide.createIcons({nodes:[btn]});
+    try {
+      const res = await fetch(`https://api-fyfp72cohq-uc.a.run.app/api/reports/sube/${kod}/donem/overrides`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ baslangic, bitis, overrides }), });
+      const data = await res.json();
+      if (res.ok) {
+        toast('Rapor verileri güncellendi!', 'success');
+        closeDataEdit();
+        await loadDashboard();
+        if(document.getElementById('side-'+kod)) document.getElementById('side-'+kod).click();
+      } else toast(data.error || 'Hata', 'error');
+    } catch (err) { toast('Bağlantı hatası', 'error'); }
+    finally { btn.disabled = false; btn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px"></i> Kaydet'; lucide.createIcons({ nodes: [btn] }); }
+  }
+
+  /* Add Branch Logic */
+  function openAddBranchModal() {
+    document.getElementById('addBranchKod').value = '';
+    document.getElementById('addBranchAd').value = '';
+    document.getElementById('addBranchAdres').value = '';
+    document.getElementById('addBranchOverlay').classList.add('active');
+    setTimeout(() => document.getElementById('addBranchKod').focus(), 100);
+  }
+
+  async function addBranch() {
+    const kod = document.getElementById('addBranchKod').value.trim().toLowerCase().replace(/\s+/g, '-');
+    const ad = document.getElementById('addBranchAd').value.trim();
+    const adres = document.getElementById('addBranchAdres').value.trim();
+    if(!kod || !ad) return toast('Kod ve Ad zorunludur.', 'error');
+
+    const btn = document.getElementById('addBranchBtn');
+    btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i>';
+    lucide.createIcons({nodes:[btn]});
+
+    try {
+      const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/sube', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kod, ad, adres }) });
+      const d = await res.json();
+      if(res.ok) {
+        toast('Şube eklendi', 'success');
+        document.getElementById('addBranchOverlay').classList.remove('active');
+        await loadDashboard();
+        selectBranch(kod);
+      } else toast(d.error || 'Hata', 'error');
+    } catch(e) { toast('Bağlantı hatası', 'error'); }
+    finally {
+      btn.disabled = false; btn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px"></i> Ekle'; lucide.createIcons({nodes:[btn]});
+    }
+  }
+
+  /* Edit Branch Logic */
+  function openEditBranchModal(kod) {
+    const sube = _all.find(s => s.kod === kod);
+    document.getElementById('ebKod').value = kod;
+    document.getElementById('ebKodDisplay').value = kod;
+    document.getElementById('ebAd').value = sube ? sube.ad : '';
+    document.getElementById('ebAdres').value = sube ? (sube.adres || '') : '';
+    document.getElementById('editBranchOverlay').classList.add('active');
+    lucide.createIcons();
+    setTimeout(() => document.getElementById('ebAd').focus(), 100);
+    loadMetaPrefixes(kod);
+    loadGoogleLocations(kod);
+  }
+
+  async function loadMetaPrefixes(subeKod) {
+    const sel = document.getElementById('ebMetaPrefix');
+    
+    // Eğer şube kampanyaya veya reklam setine eşlenmişse, prefix kısmını iptal et ve bilgi ver
+    if (_reverseAdsets[subeKod] && _reverseAdsets[subeKod].length > 0) {
+      sel.innerHTML = `<option value="__adset_mapped__">🎯 ${_reverseAdsets[subeKod].length} reklam seti ile eşleşti</option>`;
+      sel.disabled = true;
+      sel.style.opacity = '0.7';
+      return;
+    }
+    if (_reverseCampaigns[subeKod] && _reverseCampaigns[subeKod].length > 0) {
+      sel.innerHTML = `<option value="__campaign_mapped__">🎯 ${_reverseCampaigns[subeKod].length} kampanya ile eşleşti</option>`;
+      sel.disabled = true;
+      sel.style.opacity = '0.7';
+      return;
+    }
+    
+    sel.disabled = false;
+    sel.style.opacity = '1';
+    sel.innerHTML = '<option value="">Yükleniyor...</option>';
+
+    const token = _appSettings.metaApiToken;
+    if (!token) {
+      sel.innerHTML = '<option value="">— Token yok (Ayarlar\'dan ayarlayın) —</option>';
+      return;
+    }
+
+    let mappings = {};
+    try {
+      const mRes = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/meta-mappings');
+      const mData = await mRes.json();
+      mappings = mData.mappings || {};
+    } catch {}
+    let currentPrefix = '';
+    for (const [slug, sKod] of Object.entries(mappings)) {
+      if (sKod === subeKod) { currentPrefix = slug; break; }
+    }
+
+    if (!window._metaPrefixCache) {
+      try {
+        const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/preview-meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessToken: token, since: '2025-06-01', until: '2026-12-31' }) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'API hatası');
+        window._metaPrefixCache = data.gruplar.filter(g => g.kayitSayisi >= 3).sort((a,b) => a.prefix.localeCompare(b.prefix,'tr'));
+      } catch (err) {
+        sel.innerHTML = `<option value="">✗ ${err.message}</option>`;
+        return;
+      }
+    }
+
+    let html = '<option value="">— Bağlı değil —</option>';
+    for (const g of window._metaPrefixCache) {
+      const selected = g.slug === currentPrefix ? 'selected' : '';
+      html += `<option value="${g.slug}" ${selected}>${g.prefix} (${g.kayitSayisi} set)</option>`;
+    }
+    sel.innerHTML = html;
+  }
+  function closeEditBranch() { document.getElementById('editBranchOverlay').classList.remove('active'); }
+
+  async function saveEditBranch() {
+    const kod = document.getElementById('ebKod').value;
+    const ad = document.getElementById('ebAd').value.trim();
+    const adres = document.getElementById('ebAdres').value.trim();
+    if(!ad) return toast('Şube adı boş olamaz.', 'error');
+
+    const btn = document.getElementById('editBranchSaveBtn');
+    btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i> Kaydediliyor...';
+    lucide.createIcons({nodes:[btn]});
+
+    try {
+      const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/sube/' + kod, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ad, adres })
+      });
+      const d = await res.json();
+
+      // Meta prefix eşleştirmesini kaydet
+      const selectedPrefix = document.getElementById('ebMetaPrefix').value;
+      if (selectedPrefix !== '__campaign_mapped__' && selectedPrefix !== '__adset_mapped__') {
+        try {
+          const mRes = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/meta-mappings');
+          const mData = await mRes.json();
+          const newMappings = { ...(mData.mappings || {}) };
+          for (const [slug, sKod] of Object.entries(newMappings)) {
+            if (sKod === kod) delete newMappings[slug];
+          }
+          if (selectedPrefix) newMappings[selectedPrefix] = kod;
+          await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/confirm-meta', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ saveMappingsOnly: true, eslesmeler: newMappings }) });
+        } catch {}
+      }
+
+      // Google lokasyon eşleştirmesini kaydet
+      const selectedGoogleLoc = document.getElementById('ebGoogleLocation').value;
+      try {
+        const gRes = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/google-locations');
+        const gData = await gRes.json();
+        const newGMappings = { ...(gData.mappings || {}) };
+        for (const [locName, sKod] of Object.entries(newGMappings)) {
+          if (sKod === kod) delete newGMappings[locName];
+        }
+        if (selectedGoogleLoc) newGMappings[selectedGoogleLoc] = kod;
+        await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/google-mappings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mappings: newGMappings }) });
+      } catch {}
+
+      if(res.ok) {
+        toast('Şube güncellendi.', 'success');
+        closeEditBranch();
+        await loadDashboard();
+        selectBranch(kod);
+      } else toast(d.error || 'Hata', 'error');
+    } catch(e) { toast('Bağlantı hatası', 'error'); }
+    finally {
+      btn.disabled = false; btn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px"></i> Kaydet'; lucide.createIcons({nodes:[btn]});
+    }
+  }
+
+  async function deleteBranchFromEdit() {
+    const kod = document.getElementById('ebKod').value;
+    const ad = document.getElementById('ebAd').value;
+    if(!confirm(`"${ad}" şubesini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`)) return;
+
+    try {
+      const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/sube/' + kod, { method: 'DELETE' });
+      const d = await res.json();
+      if(res.ok) {
+        toast('Şube silindi.', 'success');
+        closeEditBranch();
+        _active = null;
+        await loadDashboard();
+      } else toast(d.error || 'Hata', 'error');
+    } catch(e) { toast('Bağlantı hatası', 'error'); }
+  }
+
+  async function loadGoogleLocations(subeKod) {
+    const sel = document.getElementById('ebGoogleLocation');
+    sel.innerHTML = '<option value="">Yükleniyor...</option>';
+    try {
+      const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/google-locations');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      const mappings = data.mappings || {};
+      let currentLoc = '';
+      for (const [locName, sKod] of Object.entries(mappings)) {
+        if (sKod === subeKod) { currentLoc = locName; break; }
+      }
+
+      let html = '<option value="">— Bağlı değil —</option>';
+      for (const loc of data.locations) {
+        const selected = loc.name === currentLoc ? 'selected' : '';
+        html += `<option value="${loc.name}" ${selected}>${loc.title}</option>`;
+      }
+      sel.innerHTML = html;
+    } catch (err) {
+      sel.innerHTML = `<option value="">— Google bağlı değil —</option>`;
+    }
+  }
+
+  async function checkGoogleStatus() {
+    try {
+      const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/google-status');
+      const data = await res.json();
+      const fetchBtn = document.getElementById('googleFetchBtn');
+      const connBtn = document.getElementById('googleConnectBtn');
+      if (data.connected) {
+        if (fetchBtn) fetchBtn.style.display = '';
+        if (connBtn) connBtn.style.display = 'none';
+      } else {
+        if (fetchBtn) fetchBtn.style.display = 'none';
+        if (connBtn) connBtn.style.display = '';
+      }
+    } catch {
+      const connBtn = document.getElementById('googleConnectBtn');
+      if (connBtn) connBtn.style.display = '';
+    }
+  }
+
+  async function globalGoogleFetch() {
+    const since = document.getElementById('globalSince').value;
+    const until = document.getElementById('globalUntil').value;
+    if (!since || !until) return toast('Tarih aralığı seçin.', 'info');
+
+    const btn = document.getElementById('googleFetchBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i> Çekiliyor...';
+    lucide.createIcons({nodes:[btn]});
+
+    try {
+      const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/google-fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ since, until })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast(data.message, 'success');
+        if (data.errors?.length) toast(`${data.errors.length} hata oluştu`, 'error');
+        await loadDashboard();
+        if (_active) selectBranch(_active);
+      } else toast(data.error || 'Hata', 'error');
+    } catch(e) { toast('Bağlantı hatası', 'error'); }
+    finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="map-pin" style="width:14px;height:14px"></i> Google Verilerini Çek';
+      lucide.createIcons({nodes:[btn]});
+    }
+  }
+
+  /* Bulk Upload Logic */
+  function openBulkUploadModal() {
+    ['buSubeKod','buSubeAd','buPlanlananButce','buDevredilen','buToplamErisim'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('buMetaCsv').value = '';
+    document.getElementById('buGoogleCsv').value = '';
+    document.getElementById('bulkUploadOverlay').classList.add('active');
+    lucide.createIcons();
+  }
+  function closeBulkUpload() { document.getElementById('bulkUploadOverlay').classList.remove('active'); }
+
+  async function submitBulkUpload() {
+    const metaFiles = document.getElementById('buMetaCsv').files;
+    const googleFiles = document.getElementById('buGoogleCsv').files;
+    if (metaFiles.length === 0 && googleFiles.length === 0) return toast('En az bir CSV dosyası seçin.', 'info');
+
+    const btn = document.getElementById('bulkUploadBtn');
+    btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i> Yükleniyor...';
+    lucide.createIcons({nodes:[btn]});
+
+    const fd = new FormData();
+    const kod = document.getElementById('buSubeKod').value.trim().toLowerCase();
+    const ad = document.getElementById('buSubeAd').value.trim();
+    if(kod) fd.append('subeKod', kod);
+    if(ad) fd.append('subeAd', ad);
+    for (const f of metaFiles) fd.append('metaCsv', f);
+    for (const f of googleFiles) fd.append('googleCsv', f);
+    if(document.getElementById('buPlanlananButce').value) fd.append('planlananButce', document.getElementById('buPlanlananButce').value);
+    if(document.getElementById('buDevredilen').value) fd.append('devredilenMiktar', document.getElementById('buDevredilen').value);
+    if(document.getElementById('buToplamErisim').value) fd.append('toplamErisim', document.getElementById('buToplamErisim').value);
+
+    try {
+      const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if(res.ok) {
+        toast(data.message + ' (' + (data.subeAd || data.subeKod) + ')', 'success');
+        closeBulkUpload();
+        await loadDashboard();
+        if(data.subeKod && document.getElementById('side-'+data.subeKod)) document.getElementById('side-'+data.subeKod).click();
+      } else toast(data.error || 'Hata', 'error');
+    } catch(e) { toast('Bağlantı hatası', 'error'); }
+    finally {
+      btn.disabled = false; btn.innerHTML = '<i data-lucide="upload" style="width:14px;height:14px"></i> Verileri İçe Aktar'; lucide.createIcons({nodes:[btn]});
+    }
+  }
+
+lucide.createIcons();
+initDateSelectors();
+loadDashboard();
+checkGoogleStatus();
+</script>
+</body>
+</html>

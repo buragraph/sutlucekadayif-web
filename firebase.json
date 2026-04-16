@@ -1,0 +1,20 @@
+{
+  "functions": {
+    "source": "backend",
+    "runtime": "nodejs20",
+    "codebase": "default",
+    "predeploy": [],
+    "ignore": [
+      "node_modules",
+      ".git",
+      "firebase-debug.log",
+      "firebase-debug.*.log",
+      "*.local"
+    ]
+  },
+  "emulators": {
+    "functions": {
+      "port": 5002
+    }
+  }
+}

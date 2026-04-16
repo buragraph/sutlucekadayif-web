@@ -1,0 +1,30 @@
+# .gitignore - Sütlüce Kadayıf Web
+
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Firebase credentials
+serviceAccountKey.json
+**/serviceAccountKey*.json
+*firebase-adminsdk*.json
+
+# Build output
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
