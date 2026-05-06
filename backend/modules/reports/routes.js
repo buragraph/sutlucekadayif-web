@@ -12,16 +12,13 @@ import { getGoogleAuthUrl, handleGoogleCallback, isGoogleConnected, listAccounts
 import { buildReportData } from './services/report-data.js';
 import { generateReportHtml } from './services/report-template.js';
 import { generatePdf } from './services/generate-pdf.js';
-import { getAllSubeler, getSubeByKod, getDonemler, getMetaVeriler, getGoogleVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleVeri, closeDb, getDb, clearAllData, getDashboardData, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings } from './db.js';
+import { getAllSubeler, getSubeByKod, getDonemler, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleToplanlar, closeDb, getDb, clearAllData, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings, recalcSubeAggregates } from './db.js';
 
 import os from 'os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// Cloud Run (Firebase) ortamında sadece /tmp yazılabilir olduğu için os.tmpdir() kullanıyoruz.
 const ROOT_DIR = join(os.tmpdir(), 'sutluce_reports');
-const RAPORLAR_DIR = join(ROOT_DIR, 'raporlar');
 const UPLOAD_DIR = join(ROOT_DIR, 'temp_uploads');
-
 
 if (!existsSync(ROOT_DIR)) mkdirSync(ROOT_DIR, { recursive: true });
 
@@ -30,20 +27,7 @@ else {
   try { readdirSync(UPLOAD_DIR).forEach(f => unlinkSync(join(UPLOAD_DIR, f))); } catch {}
 }
 
-try {
-  if (existsSync(RAPORLAR_DIR)) {
-    readdirSync(RAPORLAR_DIR).filter(f => f.endsWith('.zip')).forEach(f => {
-      try { unlinkSync(join(RAPORLAR_DIR, f)); } catch {}
-    });
-  } else {
-    mkdirSync(RAPORLAR_DIR, { recursive: true });
-  }
-} catch {}
-
 const router = Router();
-
-// frontend'in "raporlar" dizininden indirdiği PDF'leri statik sunuyoruz
-router.use('/raporlar', express.static(RAPORLAR_DIR));
 
 // Rapor UI tarafından çağrılan API ayarları
 router.get('/settings', async (req, res) => {
@@ -332,6 +316,8 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
 
     const count = typeof result === 'number' ? result : (result.count || 0);
 
+    // Aggregates yeni db katmanında otomatik güncellenir
+
     res.json({
        success: true,
        message: autoMatched ? `${result.subeAd} için ${count} kayıt otomatik eşleşti.` : `${count} satır başarıyla kaydedildi.`,
@@ -343,44 +329,52 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
   }
 });
 
-// Dashboard API
+// Dashboard API — Sadece şube listesi (aggregate alanlar subeler dokümanından, dönem yok)
 router.get('/dashboard', async (req, res) => {
   try {
     const subeler = await getAllSubeler();
-    const { metaMap, googleMap, butceMap } = await getDashboardData();
-    const dashData = [];
-    
-    for (const sube of subeler) {
-      const allPeriods = new Map();
-      for (const [key, m] of Object.entries(metaMap)) {
-        if (m.sube_id !== sube.id) continue;
-        const pKey = `${m.donem_baslangic}|${m.donem_bitis}`;
-        if (!allPeriods.has(pKey)) allPeriods.set(pKey, { baslangic: m.donem_baslangic, bitis: m.donem_bitis, meta: null, google: null });
-        allPeriods.get(pKey).meta = { harcama: m.harcama, erisim: m.erisim, sonuc: m.sonuc, tiklama: m.tiklama, reklamSetiSayisi: m.reklam_seti_sayisi };
-      }
-      for (const [key, g] of Object.entries(googleMap)) {
-        if (g.sube_id !== sube.id) continue;
-        const pKey = `${g.donem_baslangic}|${g.donem_bitis}`;
-        if (!allPeriods.has(pKey)) allPeriods.set(pKey, { baslangic: g.donem_baslangic, bitis: g.donem_bitis, meta: null, google: null });
-        allPeriods.get(pKey).google = { gorunurluk: (g.arama_mobil || 0) + (g.arama_masaustu || 0) + (g.harita_mobil || 0) + (g.harita_masaustu || 0), telefon: g.telefon, yolTarifi: g.yol_tarifi, webTiklama: g.web_tiklama };
-      }
-
-      const periodList = [...allPeriods.values()].sort((a, b) => b.bitis.localeCompare(a.bitis));
-
-      for (const period of periodList) {
-        const fileName = getRaporDosyaAdi(sube.ad, period.baslangic, period.bitis);
-        const filePath = join(RAPORLAR_DIR, sube.kod || sube.id, fileName);
-        period.rapor = existsSync(filePath) ? { url: `/api/reports/raporlar/${sube.kod || sube.id}/${encodeURIComponent(fileName)}`, dosya: fileName } : null;
-        const bKey = `${sube.id}|${period.baslangic}|${period.bitis}`;
-        const butce = butceMap[bKey];
-        period.planlananButce = butce?.planlanan_butce || null;
-        period.devredilenMiktar = butce?.devredilen_miktar || null;
-        period.toplamErisim = butce?.toplam_erisim || null;
-      }
-      dashData.push({ ...sube, donemSayisi: periodList.length, donemler: periodList, raporlar: [] });
-    }
-    
+    const dashData = subeler.map(sube => ({
+      ...sube,
+      donemSayisi: sube.donem_sayisi || 0,
+      // Aggregate alanlar subeler dokümanından
+      toplamHarcama: sube.toplam_harcama || 0,
+      toplamErisim: sube.toplam_erisim || 0,
+      toplamGosterim: sube.toplam_gosterim || 0,
+      toplamSonuc: sube.toplam_sonuc || 0,
+      toplamTiklama: sube.toplam_tiklama || 0,
+    }));
     res.json({ subeler: dashData });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Şubenin dönemlerini döner (şubeye tıklandığında çağrılır)
+router.get('/sube/:kod/donemler', async (req, res) => {
+  try {
+    const { kod } = req.params;
+    const donemlerResult = await getDonemler(kod);
+    const donemler = donemlerResult.meta.map(veri => ({
+      baslangic: veri.donem_baslangic,
+      bitis: veri.donem_bitis,
+      meta: veri.harcama !== undefined ? {
+        harcama: veri.harcama || 0,
+        erisim: veri.erisim || 0,
+        sonuc: veri.sonuc || 0,
+        tiklama: veri.tiklama || 0,
+      } : null,
+      google: veri.google_arama !== undefined ? {
+        gorunurluk: (veri.google_arama || 0) + (veri.google_harita || 0),
+        telefon: veri.google_telefon || 0,
+        yolTarifi: veri.google_yol_tarifi || 0,
+        webTiklama: veri.google_web_tiklama || 0,
+      } : null,
+      rapor: null,
+      planlananButce: veri.planlanan_butce || null,
+      devredilenMiktar: veri.devredilen_miktar || null,
+      toplamErisim: veri.erisim || null,
+    }));
+    res.json({ donemler });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -416,6 +410,84 @@ router.delete('/sube/:kod', async (req, res) => {
   }
 });
 
+router.delete('/sube/:kod/donem', async (req, res) => {
+  try {
+    const { kod } = req.params;
+    const { baslangic, bitis } = req.query;
+    if (!baslangic || !bitis) return res.status(400).json({ error: 'Tarih parametreleri eksik' });
+    
+    const sube = await getSubeByKod(kod);
+    if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
+
+    await deleteDonem(sube.kod, baslangic, bitis);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/sube/:kod/donem/veriler', async (req, res) => {
+  try {
+    const { kod } = req.params;
+    const { baslangic, bitis } = req.query;
+    
+    const sube = await getSubeByKod(kod);
+    if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
+
+    const veri = await getDonemVeri(sube.kod, baslangic, bitis);
+    
+    const computed = {
+      toplamHarcama: veri?.harcama || 0,
+      toplamErisim: veri?.erisim || 0,
+      toplamGosterim: veri?.gosterim || 0,
+      toplamSonuc: veri?.sonuc || 0,
+      toplamTiklama: veri?.tiklama || 0,
+      toplamTiklamaTumu: veri?.tiklama_tumu || 0,
+      toplamPaylasim: veri?.paylasim || 0,
+      toplamYorum: veri?.yorum || 0,
+      toplamMesaj: veri?.mesaj || 0,
+      googleArama: veri?.google_arama || 0,
+      googleHarita: veri?.google_harita || 0,
+      googleYolTarifi: veri?.google_yol_tarifi || 0,
+      googleTelefon: veri?.google_telefon || 0,
+      googleWebTiklama: veri?.google_web_tiklama || 0,
+      googleMenuTiklama: veri?.google_menu_tiklama || 0,
+      planlananButce: veri?.planlanan_butce || 0,
+      devredilenMiktar: veri?.devredilen_miktar || 0,
+    };
+
+    const overrides = veri?.veri_overrides || {};
+
+    res.json({ computed, overrides });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/sube/:kod/donem/overrides', async (req, res) => {
+  try {
+    const { kod } = req.params;
+    const { baslangic, bitis, overrides } = req.body;
+    
+    const sube = await getSubeByKod(kod);
+    if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
+
+    await updateOverrides(sube.kod, baslangic, bitis, overrides);
+
+    if (overrides.planlananButce !== undefined || overrides.devredilenMiktar !== undefined) {
+      const bRow = await getButce(sube.kod, baslangic, bitis) || {};
+      const plan = overrides.planlananButce !== undefined ? overrides.planlananButce : (bRow.planlanan_butce || 0);
+      const devr = overrides.devredilenMiktar !== undefined ? overrides.devredilenMiktar : (bRow.devredilen_miktar || 0);
+      await upsertButce(sube.kod, baslangic, bitis, plan, devr);
+    }
+    
+    await recalcSubeAggregates(sube.kod);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- Mevcut UI'ı bozmamak için temel yapıyı korudum. Tam entegrasyon sağlandı. ---
 
 
@@ -424,9 +496,9 @@ router.delete('/sube/:kod', async (req, res) => {
 // ══════════════════════════════════════════════════
 
 router.post('/campaign-fetch', async (req, res) => {
-  const { accessToken, since, until } = req.body;
+  const { accessToken, since, until, subeKod, targetSubeKod } = req.body;
   try {
-    const defaultSube = req.body.targetSubeKod || null;
+    const defaultSube = targetSubeKod || subeKod || null;
     const result = await campaignBasedImport(accessToken, since, until, defaultSube);
     res.json(result);
   } catch (err) {
@@ -439,16 +511,15 @@ router.post('/campaign-fetch', async (req, res) => {
 });
 
 router.post('/quick-fetch-meta', async (req, res) => {
-  const { accessToken, since, until } = req.body;
+  const { accessToken, since, until, subeKod, targetSubeKod } = req.body;
   try {
-    const defaultSube = req.body.targetSubeKod || null; // for campaign-based if needed
-    // First try campaignBasedImport, if it errors because mapping not found, fallback to importFromMetaApi
+    const defaultSube = targetSubeKod || subeKod || null; 
     try {
       const result = await campaignBasedImport(accessToken, since, until, defaultSube);
       res.json(result);
     } catch (e) {
-      if (e.message.includes("Eşleştirme bulunamadı")) {
-         const result = await importFromMetaApi(accessToken, since, until);
+      if (e.message.includes("Eşleştirme bulunamadı") || e.message.includes("eşleştirme")) {
+         const result = await importFromMetaApi(accessToken, since, until, defaultSube);
          res.json(result);
       } else throw e;
     }
@@ -474,7 +545,7 @@ router.post('/confirm-meta', async (req, res) => {
       return res.json({ success: true });
     }
     const result = await confirmMetaImport(accessToken, since, until, eslesmeler);
-    await saveMappings({}); 
+    await saveMappings({});
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -528,9 +599,9 @@ router.post('/save-campaign-mappings', async (req, res) => {
 });
 
 router.post('/meta-adsets', async (req, res) => {
-  const { accessToken, since, until } = req.body;
+  const { accessToken, since, until, forceRefresh } = req.body;
   try {
-    res.json(await fetchAdsets(accessToken, since, until));
+    res.json(await fetchAdsets(accessToken, since, until, forceRefresh));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -572,37 +643,58 @@ router.post('/google-mappings', async (req, res) => {
 });
 
 router.post('/google-fetch', async (req, res) => {
-  const { since, until } = req.body;
+  const { since, until, subeKod } = req.body;
   try {
     const mappings = await loadGoogleMappings();
     if (Object.keys(mappings).length === 0) throw new Error("Önce eşleştirmeleri yapmalısınız.");
     
-    // Parse ISODates: "2024-05-01" -> { year:2024, month:5, day:1 }
     const sDate = { year: parseInt(since.split('-')[0]), month: parseInt(since.split('-')[1]), day: parseInt(since.split('-')[2]) };
     const eDate = { year: parseInt(until.split('-')[0]), month: parseInt(until.split('-')[1]), day: parseInt(until.split('-')[2]) };
     
-    const results = await fetchAllLocationMetrics(sDate, eDate);
-    
-    // veritabanına kaydet
+    const subeler = await getAllSubeler();
     let savedCount = 0;
-    for (const r of results) {
-      if (r.error) continue;
-      const subeKod = mappings[r.name];
-      if (!subeKod || subeKod === '__atla__') continue;
+
+    if (subeKod) {
+      const locationName = Object.keys(mappings).find(k => mappings[k] === subeKod);
+      if (!locationName) throw new Error("Bu şube için Google lokasyon eşleştirmesi bulunamadı.");
       
-      const subeler = await getAllSubeler();
       const sube = subeler.find(s => s.kod === subeKod);
-      if (!sube) continue;
-      
-      await upsertGoogleVeri(sube.id, {
-        donem_baslangic: since,
-        donem_bitis: until,
-        ...r.metrics
+      if (!sube) throw new Error("Şube veritabanında bulunamadı.");
+
+      const metrics = await fetchLocationMetrics(locationName, sDate, eDate);
+      await upsertGoogleToplanlar(sube.kod, since, until, {
+        google_arama: (metrics.arama_mobil || 0) + (metrics.arama_masaustu || 0),
+        google_harita: (metrics.harita_mobil || 0) + (metrics.harita_masaustu || 0),
+        google_telefon: metrics.telefon || 0,
+        google_yol_tarifi: metrics.yol_tarifi || 0,
+        google_web_tiklama: metrics.web_tiklama || 0,
+        google_menu_tiklama: metrics.menu_tiklama || 0,
       });
-      savedCount++;
+      savedCount = 1;
+    } else {
+      const results = await fetchAllLocationMetrics(sDate, eDate);
+      for (const r of results) {
+        if (r.error) continue;
+        const mappedKod = mappings[r.name];
+        if (!mappedKod || mappedKod === '__atla__') continue;
+        
+        const sube = subeler.find(s => s.kod === mappedKod);
+        if (!sube) continue;
+        
+        await upsertGoogleToplanlar(sube.kod, since, until, {
+          google_arama: (r.metrics.arama_mobil || 0) + (r.metrics.arama_masaustu || 0),
+          google_harita: (r.metrics.harita_mobil || 0) + (r.metrics.harita_masaustu || 0),
+          google_telefon: r.metrics.telefon || 0,
+          google_yol_tarifi: r.metrics.yol_tarifi || 0,
+          google_web_tiklama: r.metrics.web_tiklama || 0,
+          google_menu_tiklama: r.metrics.menu_tiklama || 0,
+        });
+        savedCount++;
+      }
     }
     
-    res.json({ success: true, message: `${savedCount} şube için Google verileri güncellendi!`, details: results });
+    // Aggregates yeni db katmanında otomatik güncellenir
+    res.json({ success: true, message: `${savedCount} şube için Google verileri güncellendi!` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -1,6 +1,9 @@
 import { db } from '../../config/firebase.js';
+import { FieldValue } from 'firebase-admin/firestore';
 
-// --- Şube CRUD ---
+// ═══════════════════════════════════════════════════
+// ── Şube CRUD (subeler collection) ──
+// ═══════════════════════════════════════════════════
 
 export async function upsertSube(kod, ad, adres = null) {
   const docRef = db.collection('subeler').doc(kod);
@@ -41,277 +44,267 @@ export async function deleteSube(kod) {
   const docRef = db.collection('subeler').doc(kod);
   const doc = await docRef.get();
   if (!doc.exists) return false;
-  
-  // Alt koleksiyonları silmek client SDK'larda zordur ama Admin SDK'da kolayca 
-  // recursive silebiliriz veya bulk/batch silme yapabiliriz.
-  // Basitlik adina once reports/ altindaki o subenin dosyasini recursive siliyoruz.
-  await db.recursiveDelete(db.collection('reports').doc(kod));
+
+  // Alt koleksiyonları sil (donemler)
+  await db.recursiveDelete(docRef.collection('donemler'));
 
   await docRef.delete();
   return true;
 }
 
-// --- Meta Veri CRUD (Subcollection: meta_data) ---
 
-export async function upsertMetaVeri(subeId, veri) {
-  const docId = `${veri.donem_baslangic}_${veri.donem_bitis}_${veri.reklam_seti.replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  const docRef = db.collection('reports').doc(subeId).collection('meta_data').doc(docId);
-  
-  const payload = {
-    sube_id: subeId,
-    donem_baslangic: veri.donem_baslangic,
-    donem_bitis: veri.donem_bitis,
-    reklam_seti: veri.reklam_seti,
-    durum: veri.durum,
-    harcama: veri.harcama || 0,
-    erisim: veri.erisim || 0,
-    gosterim: veri.gosterim || 0,
-    sonuc: veri.sonuc || 0,
-    sonuc_basina_ucret: veri.sonuc_basina_ucret || 0,
-    siklik: veri.siklik || 0,
-    hook_rate: veri.hook_rate || 0,
-    hold_rate: veri.hold_rate || 0,
-    ctr: veri.ctr || 0,
-    ctr_link: veri.ctr_link || 0,
-    cpc: veri.cpc || 0,
-    cpc_link: veri.cpc_link || 0,
-    cpm: veri.cpm || 0,
-    baglanti_tiklamalari: veri.baglanti_tiklamalari || 0,
-    tiklamalar_tumu: veri.tiklamalar_tumu || 0,
-    mesajlasmalar: veri.mesajlasmalar || 0,
-    mesaj_basina_ucret: veri.mesaj_basina_ucret || 0,
-    telefon_aramalari: veri.telefon_aramalari || 0,
-    yorumlar: veri.yorumlar || 0,
-    paylasimlar: veri.paylasimlar || 0
-  };
+// ═══════════════════════════════════════════════════
+// ── Dönem CRUD (subeler/{kod}/donemler subcollection) ──
+// ═══════════════════════════════════════════════════
 
-  await docRef.set(payload, { merge: true });
+function donemDocId(baslangic, bitis) {
+  return `${baslangic}_${bitis}`;
 }
 
-export async function getMetaVeriler(subeId, donemBaslangic, donemBitis) {
-  const snap = await db.collection('reports').doc(subeId).collection('meta_data')
-    .where('donem_baslangic', '==', donemBaslangic)
-    .where('donem_bitis', '==', donemBitis)
-    .orderBy('harcama', 'desc')
-    .get();
-  
-  const arr = [];
-  snap.forEach(d => arr.push(d.data()));
-  return arr;
-}
+/**
+ * Meta toplamlarını dönem dokümanına yazar.
+ * Import/API'den gelen veriler önceden toplanıp buraya geçilir.
+ */
+export async function upsertMetaToplanlar(subeKod, donemBaslangic, donemBitis, toplamlar) {
+  const docId = donemDocId(donemBaslangic, donemBitis);
+  const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
 
-export async function getOncekiDonemMeta(subeId, donemBaslangic) {
-  // SQLite'ta bitişi öncekinden küçük olan son dönemi buluyorduk
-  const snap = await db.collection('reports').doc(subeId).collection('meta_data')
-    .where('donem_bitis', '<=', donemBaslangic)
-    .orderBy('donem_bitis', 'desc')
-    .limit(1)
-    .get();
-
-  if (snap.empty) return [];
-  const onceki = snap.docs[0].data();
-  
-  // O dönemin tüm verilerini getir
-  return await getMetaVeriler(subeId, onceki.donem_baslangic, onceki.donem_bitis);
-}
-
-export async function deleteMetaVeriByDonem(subeId, donemBaslangic, donemBitis) {
-  const snap = await db.collection('reports').doc(subeId).collection('meta_data')
-    .where('donem_baslangic', '==', donemBaslangic)
-    .where('donem_bitis', '==', donemBitis)
-    .get();
-  
-  const batch = db.batch();
-  snap.docs.forEach(doc => batch.delete(doc.ref));
-  await batch.commit();
-}
-
-
-// --- Google Veri CRUD (Subcollection: google_data) ---
-
-export async function upsertGoogleVeri(subeId, veri) {
-  const docId = `${veri.donem_baslangic}_${veri.donem_bitis}`;
-  const docRef = db.collection('reports').doc(subeId).collection('google_data').doc(docId);
-  
-  const payload = {
-    sube_id: subeId,
-    donem_baslangic: veri.donem_baslangic,
-    donem_bitis: veri.donem_bitis,
-    magaza_kodu: veri.magaza_kodu || null,
-    arama_mobil: veri.arama_mobil || 0,
-    arama_masaustu: veri.arama_masaustu || 0,
-    harita_mobil: veri.harita_mobil || 0,
-    harita_masaustu: veri.harita_masaustu || 0,
-    telefon: veri.telefon || 0,
-    mesajlar: veri.mesajlar || 0,
-    rezervasyonlar: veri.rezervasyonlar || 0,
-    yol_tarifi: veri.yol_tarifi || 0,
-    web_tiklama: veri.web_tiklama || 0,
-    yemek_siparisleri: veri.yemek_siparisleri || 0,
-    menu_tiklama: veri.menu_tiklama || 0,
-    otel_rezervasyonu: veri.otel_rezervasyonu || 0
-  };
-
-  await docRef.set(payload, { merge: true });
-}
-
-export async function getGoogleVeri(subeId, donemBaslangic, donemBitis) {
-  const docId = `${donemBaslangic}_${donemBitis}`;
-  const doc = await db.collection('reports').doc(subeId).collection('google_data').doc(docId).get();
-  return doc.exists ? doc.data() : null;
-}
-
-export async function getOncekiDonemGoogle(subeId, donemBaslangic) {
-  const snap = await db.collection('reports').doc(subeId).collection('google_data')
-    .where('donem_bitis', '<=', donemBaslangic)
-    .orderBy('donem_bitis', 'desc')
-    .limit(1)
-    .get();
-
-  return snap.empty ? null : snap.docs[0].data();
-}
-
-
-// --- Bütçe CRUD (Subcollection: budgets) ---
-
-export async function upsertButce(subeId, donemBaslangic, donemBitis, planlananButce, devredilenMiktar = 0, toplamErisim = 0) {
-  const docId = `${donemBaslangic}_${donemBitis}`;
-  const docRef = db.collection('reports').doc(subeId).collection('budgets').doc(docId);
-  
   await docRef.set({
-    sube_id: subeId,
+    donem_baslangic: donemBaslangic,
+    donem_bitis: donemBitis,
+    harcama: toplamlar.harcama || 0,
+    erisim: toplamlar.erisim || 0,
+    gosterim: toplamlar.gosterim || 0,
+    sonuc: toplamlar.sonuc || 0,
+    tiklama: toplamlar.tiklama || 0,
+    tiklama_tumu: toplamlar.tiklama_tumu || 0,
+    mesaj: toplamlar.mesaj || 0,
+    yorum: toplamlar.yorum || 0,
+    paylasim: toplamlar.paylasim || 0,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  // Aggregate güncelle
+  await recalcSubeAggregates(subeKod);
+}
+
+/**
+ * Google toplamlarını dönem dokümanına yazar.
+ */
+export async function upsertGoogleToplanlar(subeKod, donemBaslangic, donemBitis, toplamlar) {
+  const docId = donemDocId(donemBaslangic, donemBitis);
+  const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
+
+  await docRef.set({
+    donem_baslangic: donemBaslangic,
+    donem_bitis: donemBitis,
+    google_arama: toplamlar.google_arama || 0,
+    google_harita: toplamlar.google_harita || 0,
+    google_telefon: toplamlar.google_telefon || 0,
+    google_yol_tarifi: toplamlar.google_yol_tarifi || 0,
+    google_web_tiklama: toplamlar.google_web_tiklama || 0,
+    google_menu_tiklama: toplamlar.google_menu_tiklama || 0,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  // Aggregate güncelle
+  await recalcSubeAggregates(subeKod);
+}
+
+/**
+ * Bütçe verilerini dönem dokümanına yazar.
+ */
+export async function upsertButce(subeKod, donemBaslangic, donemBitis, planlananButce, devredilenMiktar = 0) {
+  const docId = donemDocId(donemBaslangic, donemBitis);
+  const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
+
+  await docRef.set({
     donem_baslangic: donemBaslangic,
     donem_bitis: donemBitis,
     planlanan_butce: planlananButce,
     devredilen_miktar: devredilenMiktar,
-    toplam_erisim: toplamErisim
+    updatedAt: new Date().toISOString(),
   }, { merge: true });
 }
 
-export async function upsertToplamErisim(subeId, donemBaslangic, donemBitis, toplamErisim) {
-  const docId = `${donemBaslangic}_${donemBitis}`;
-  const docRef = db.collection('reports').doc(subeId).collection('budgets').doc(docId);
+/**
+ * Toplam erişim override'ını dönem dokümanına yazar.
+ * Kampanya seviyesinde tekil erişim (deduplicated).
+ */
+export async function upsertToplamErisim(subeKod, donemBaslangic, donemBitis, toplamErisim) {
+  const docId = donemDocId(donemBaslangic, donemBitis);
+  const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
+
   await docRef.set({
-    sube_id: subeId,
     donem_baslangic: donemBaslangic,
     donem_bitis: donemBitis,
-    toplam_erisim: toplamErisim
+    erisim: toplamErisim,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+
+  await recalcSubeAggregates(subeKod);
+}
+
+/**
+ * Override'ları dönem dokümanına yazar.
+ */
+export async function updateOverrides(subeKod, donemBaslangic, donemBitis, overrides) {
+  const docId = donemDocId(donemBaslangic, donemBitis);
+  const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
+
+  await docRef.set({
+    donem_baslangic: donemBaslangic,
+    donem_bitis: donemBitis,
+    veri_overrides: overrides,
+    updatedAt: new Date().toISOString(),
   }, { merge: true });
 }
 
-export async function getButce(subeId, donemBaslangic, donemBitis) {
-  const docId = `${donemBaslangic}_${donemBitis}`;
-  const docRef = db.collection('reports').doc(subeId).collection('budgets').doc(docId);
-  const doc = await docRef.get();
+/**
+ * Tek bir dönemin tüm verisini döner (1 read).
+ */
+export async function getDonemVeri(subeKod, donemBaslangic, donemBitis) {
+  const docId = donemDocId(donemBaslangic, donemBitis);
+  const doc = await db.collection('subeler').doc(subeKod).collection('donemler').doc(docId).get();
   if (!doc.exists) return null;
-  const data = doc.data();
-  // Ensure same format as SQLite JSON string
-  if (data.veri_overrides && typeof data.veri_overrides === 'object') {
-     data.veri_overrides = JSON.stringify(data.veri_overrides);
+  return doc.data();
+}
+
+/**
+ * Bütçe verisini döner (getDonemVeri wrapper — uyumluluk için).
+ */
+export async function getButce(subeKod, donemBaslangic, donemBitis) {
+  const veri = await getDonemVeri(subeKod, donemBaslangic, donemBitis);
+  if (!veri) return null;
+  // Eski format uyumluluğu
+  const result = {
+    planlanan_butce: veri.planlanan_butce || 0,
+    devredilen_miktar: veri.devredilen_miktar || 0,
+    toplam_erisim: veri.erisim || 0,
+  };
+  if (veri.veri_overrides) {
+    result.veri_overrides = typeof veri.veri_overrides === 'object'
+      ? JSON.stringify(veri.veri_overrides)
+      : veri.veri_overrides;
   }
-  return data;
+  return result;
 }
 
-export async function updateOverrides(subeId, donemBaslangic, donemBitis, overrides) {
-  const docId = `${donemBaslangic}_${donemBitis}`;
-  const docRef = db.collection('reports').doc(subeId).collection('budgets').doc(docId);
-  // overrides object expected
-  await docRef.set({
-    sube_id: subeId,
-    donem_baslangic: donemBaslangic,
-    donem_bitis: donemBitis,
-    veri_overrides: overrides
-  }, { merge: true });
-}
-
-
-// --- Ortak ve Genel Sorgular ---
-
-export async function getDonemler(subeId) {
-  // DISTINCT in Firestore requires fetching or maintaining a set. We fetch all docs and extract.
-  const metaSnap = await db.collection('reports').doc(subeId).collection('meta_data')
-    .orderBy('donem_baslangic', 'desc')
-    .get();
-  const googleSnap = await db.collection('reports').doc(subeId).collection('google_data')
+/**
+ * Şubenin tüm dönemlerini VERİLERİYLE birlikte döner (tek sorgu).
+ */
+export async function getDonemler(subeKod) {
+  const snap = await db.collection('subeler').doc(subeKod).collection('donemler')
     .orderBy('donem_baslangic', 'desc')
     .get();
 
-  const mSet = new Set();
-  const metaArr = [];
-  metaSnap.forEach(d => {
-    const data = d.data();
-    const k = `${data.donem_baslangic}_${data.donem_bitis}`;
-    if (!mSet.has(k)) { mSet.add(k); metaArr.push({donem_baslangic: data.donem_baslangic, donem_bitis: data.donem_bitis}); }
+  const donemler = [];
+  snap.forEach(d => {
+    donemler.push(d.data());
   });
 
-  const gSet = new Set();
-  const googleArr = [];
-  googleSnap.forEach(d => {
-    const data = d.data();
-    const k = `${data.donem_baslangic}_${data.donem_bitis}`;
-    if (!gSet.has(k)) { gSet.add(k); googleArr.push({donem_baslangic: data.donem_baslangic, donem_bitis: data.donem_bitis}); }
-  });
-
-  return { meta: metaArr, google: googleArr };
+  // Eski API uyumluluğu — meta ve google ayrı dönem listeleri döndürüyordu
+  return { meta: donemler, google: donemler };
 }
 
-export async function deleteDonem(subeId, donemBaslangic, donemBitis) {
-  await deleteMetaVeriByDonem(subeId, donemBaslangic, donemBitis);
-  
-  const docId = `${donemBaslangic}_${donemBitis}`;
-  await db.collection('reports').doc(subeId).collection('google_data').doc(docId).delete();
-  await db.collection('reports').doc(subeId).collection('budgets').doc(docId).delete();
-  
+/**
+ * Önceki dönem verisini döner (karşılaştırma için).
+ */
+export async function getOncekiDonem(subeKod, donemBaslangic) {
+  const snap = await db.collection('subeler').doc(subeKod).collection('donemler')
+    .where('donem_bitis', '<=', donemBaslangic)
+    .orderBy('donem_bitis', 'desc')
+    .limit(1)
+    .get();
+
+  if (snap.empty) return null;
+  return snap.docs[0].data();
+}
+
+/**
+ * Dönemi siler ve aggregate'leri günceller.
+ */
+export async function deleteDonem(subeKod, donemBaslangic, donemBitis) {
+  const docId = donemDocId(donemBaslangic, donemBitis);
+  await db.collection('subeler').doc(subeKod).collection('donemler').doc(docId).delete();
+  await recalcSubeAggregates(subeKod);
   return true;
 }
 
+
+// ═══════════════════════════════════════════════════
+// ── Şube Aggregate Alanları ──
+// ═══════════════════════════════════════════════════
+
+/**
+ * Şubenin tüm dönemlerini tarayarak aggregate alanlarını günceller.
+ * Veri ekleme, silme, güncelleme işlemlerinden sonra çağrılır.
+ */
+export async function recalcSubeAggregates(subeKod) {
+  const snap = await db.collection('subeler').doc(subeKod).collection('donemler')
+    .orderBy('donem_baslangic', 'desc')
+    .get();
+
+  let toplam_harcama = 0;
+  let toplam_erisim = 0;
+  let toplam_gosterim = 0;
+  let toplam_sonuc = 0;
+  let toplam_tiklama = 0;
+  let son_donem = null;
+  let donem_sayisi = 0;
+
+  snap.forEach(d => {
+    const data = d.data();
+    toplam_harcama += (data.harcama || 0);
+    toplam_erisim += (data.erisim || 0);
+    toplam_gosterim += (data.gosterim || 0);
+    toplam_sonuc += (data.sonuc || 0);
+    toplam_tiklama += (data.tiklama || 0);
+    donem_sayisi++;
+
+    if (!son_donem) {
+      son_donem = `${data.donem_baslangic}_${data.donem_bitis}`;
+    }
+  });
+
+  await db.collection('subeler').doc(subeKod).set({
+    toplam_harcama,
+    toplam_erisim,
+    toplam_gosterim,
+    toplam_sonuc,
+    toplam_tiklama,
+    son_donem,
+    donem_sayisi,
+  }, { merge: true });
+}
+
+
+// ═══════════════════════════════════════════════════
+// ── Genel ──
+// ═══════════════════════════════════════════════════
+
 export async function clearAllData() {
-  const reportsSnap = await db.collection('reports').get();
-  for (const doc of reportsSnap.docs) {
-    await db.recursiveDelete(doc.ref);
+  // Tüm şubelerin donemler subcollection'ını sil
+  const subeSnap = await db.collection('subeler').get();
+  for (const doc of subeSnap.docs) {
+    await db.recursiveDelete(doc.ref.collection('donemler'));
+    // Aggregate alanlarını temizle
+    await doc.ref.update({
+      toplam_harcama: FieldValue.delete(),
+      toplam_erisim: FieldValue.delete(),
+      toplam_gosterim: FieldValue.delete(),
+      toplam_sonuc: FieldValue.delete(),
+      toplam_tiklama: FieldValue.delete(),
+      son_donem: FieldValue.delete(),
+      donem_sayisi: FieldValue.delete(),
+    });
   }
 }
 
-// ── Batch Dashboard Query ──
-export async function getDashboardData() {
-  // Firestore'da N+1 yerine Collection Group Query ile tek seferde verileri alabiliriz!
-  const metaSnap = await db.collectionGroup('meta_data').get();
-  const googleSnap = await db.collectionGroup('google_data').get();
-  const butceSnap = await db.collectionGroup('budgets').get();
 
-  const metaMap = {};  
-  metaSnap.forEach(d => {
-    const m = d.data();
-    const key = `${m.sube_id}|${m.donem_baslangic}|${m.donem_bitis}`;
-    if (!metaMap[key]) {
-      metaMap[key] = {
-        sube_id: m.sube_id, donem_baslangic: m.donem_baslangic, donem_bitis: m.donem_bitis,
-        harcama: 0, erisim: 0, sonuc: 0, tiklama: 0, reklam_seti_sayisi: 0
-      };
-    }
-    metaMap[key].harcama += (m.harcama || 0);
-    metaMap[key].erisim += (m.erisim || 0);
-    metaMap[key].sonuc += (m.sonuc || 0);
-    metaMap[key].tiklama += (m.baglanti_tiklamalari || 0);
-    metaMap[key].reklam_seti_sayisi++;
-  });
-
-  const googleMap = {};
-  googleSnap.forEach(d => {
-    const g = d.data();
-    const key = `${g.sube_id}|${g.donem_baslangic}|${g.donem_bitis}`;
-    googleMap[key] = g;
-  });
-
-  const butceMap = {};
-  butceSnap.forEach(d => {
-    const b = d.data();
-    const key = `${b.sube_id}|${b.donem_baslangic}|${b.donem_bitis}`;
-    butceMap[key] = b;
-  });
-
-  return { metaMap, googleMap, butceMap };
-}
+// ═══════════════════════════════════════════════════
+// ── Settings & Mappings (reports collection'da kalır) ──
+// ═══════════════════════════════════════════════════
 
 // Stubs for API compatibility
 export async function getDb() { return true; }
@@ -369,4 +362,13 @@ export async function getAdsetMappings() {
 }
 export async function saveAdsetMappings(mappings) {
   await db.collection('reports').doc('adset_mappings').set(mappings, { merge: false });
+}
+
+// ── Meta Adset Cache ──
+export async function getAdsetsCache() {
+  const doc = await db.collection('reports').doc('adsets_cache').get();
+  return doc.exists ? doc.data() : null;
+}
+export async function saveAdsetsCache(cacheData) {
+  await db.collection('reports').doc('adsets_cache').set(cacheData, { merge: false });
 }

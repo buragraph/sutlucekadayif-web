@@ -30,15 +30,16 @@ export async function generatePdf(htmlContent) {
       timeout: 30000,
     });
 
+    const contentHeight = await page.evaluate(() => {
+      const el = document.querySelector('.report');
+      return el ? el.offsetHeight : document.documentElement.scrollHeight;
+    });
+
     const pdfBuffer = await page.pdf({
-      format: 'A4',
       printBackground: true,
-      margin: {
-        top: '10mm',
-        right: '10mm',
-        bottom: '10mm',
-        left: '10mm',
-      },
+      width: '480px',
+      height: `${contentHeight}px`,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 }
     });
 
     console.log(`📄 PDF oluşturuldu (${(pdfBuffer.length / 1024).toFixed(0)} KB)`);

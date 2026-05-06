@@ -190,12 +190,14 @@ export async function fetchLocationMetrics(locationName, startDate, endDate) {
   const metricMapping = { 'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH': 'arama_masaustu', 'BUSINESS_IMPRESSIONS_MOBILE_SEARCH': 'arama_mobil', 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS': 'harita_masaustu', 'BUSINESS_IMPRESSIONS_MOBILE_MAPS': 'harita_mobil', 'BUSINESS_DIRECTION_REQUESTS': 'yol_tarifi', 'CALL_CLICKS': 'telefon', 'WEBSITE_CLICKS': 'web_tiklama', 'BUSINESS_FOOD_MENU_CLICKS': 'menu_tiklama' };
 
   for (const series of res.data.multiDailyMetricTimeSeries || []) {
-    const metricName = series.dailyMetricTimeSeries?.[0]?.dailyMetric;
-    const fieldName = metricMapping[metricName];
-    if (!fieldName) continue;
+    for (const metricSeries of series.dailyMetricTimeSeries || []) {
+      const metricName = metricSeries.dailyMetric;
+      const fieldName = metricMapping[metricName];
+      if (!fieldName) continue;
 
-    for (const dp of series.dailyMetricTimeSeries?.[0]?.timeSeries?.datedValues || []) {
-      totals[fieldName] += parseInt(dp.value || '0', 10);
+      for (const dp of metricSeries.timeSeries?.datedValues || []) {
+        totals[fieldName] += parseInt(dp.value || '0', 10);
+      }
     }
   }
   return totals;

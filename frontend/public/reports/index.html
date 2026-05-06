@@ -6,6 +6,9 @@
   <title>Sütlüce Kadayıf — Rapor Sistemi</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <script src="https://unpkg.com/lucide@0.344.0"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://npmcdn.com/flatpickr/dist/l10n/tr.js"></script>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     :root{
@@ -18,8 +21,8 @@
     body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);overflow:hidden}
 
     /* App Shell */
-    .app{display:grid;grid-template-columns:1fr;grid-template-rows:56px auto 1fr;height:100vh}
-    .split{display:grid;grid-template-columns:320px 1fr;overflow:hidden;max-width:1400px;margin:0 auto 32px;width:calc(100% - 64px);border:1px solid var(--border);border-radius:16px;background:transparent}
+    .app{display:grid;grid-template-columns:1fr;grid-template-rows:1fr;height:100vh}
+    .split{display:grid;grid-template-columns:320px 1fr;overflow:hidden;width:100%;margin:0;border:none;border-radius:0;background:transparent}
 
     /* Topbar */
     .topbar{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:0 32px;background:var(--sidebar);border-bottom:1px solid var(--border);z-index:10}
@@ -33,18 +36,38 @@
     
     /* Toolbar (Filters Row) */
     .toolbar-wrapper{padding:24px 32px 0;max-width:1400px;margin:0 auto;width:100%;display:flex;justify-content:center}
-    .toolbar{display:inline-flex;align-items:center;gap:12px;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);white-space:nowrap;z-index:5}
+    .toolbar{display:inline-flex;align-items:center;gap:12px;padding:12px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);z-index:5;flex-wrap:wrap}
     .tool-label{font-size:12px;color:var(--text);font-weight:600;display:flex;align-items:center;gap:6px}
     .tool-group{display:flex;align-items:center;gap:6px;background:var(--bg);padding:4px 8px;border-radius:6px;border:1px solid var(--border);transition:.2s}
     .tool-group:hover{border-color:var(--muted)}
     .tool-input{background:transparent;border:none;color:var(--text);font-size:12px;font-weight:500;font-family:inherit;color-scheme:light;outline:none;cursor:pointer;padding:0}
     .tool-sep{width:1px;height:14px;background:var(--border);margin:0 4px}
-    .tool-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;font-family:inherit;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text);transition:.2s}
+    .tool-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500;font-family:inherit;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text);transition:.2s;white-space:nowrap;flex-shrink:0}
     .stat-card-inner:hover{transform:translateY(-2px);background:#f8fafc;border-color:var(--muted)}
     .tool-btn-primary{background:var(--text);color:var(--bg);font-weight:600;border:none}
-    .tool-btn-primary:hover{background:#cbd5e1}
+    .tool-btn-primary:hover{background:#1e293b; color:var(--bg)}
     .tool-btn:disabled{opacity:.4;cursor:not-allowed}
     .tool-status{font-size:11px;color:var(--muted);margin-left:auto}
+
+    /* Button Modifiers */
+    .btn-blue { color:#3b82f6; background:rgba(59,130,246,.06); border-color:rgba(59,130,246,.2); }
+    .btn-blue:hover { background:rgba(59,130,246,.12); border-color:rgba(59,130,246,.35); }
+    .btn-blue .add-branch-icon { background:rgba(59,130,246,.12); color:#3b82f6; }
+    .btn-blue:hover .add-branch-icon { background:rgba(59,130,246,.2); }
+
+    .btn-orange { color:#fb923c; background:rgba(251,146,60,.06); border-color:rgba(251,146,60,.2); }
+    .btn-orange:hover { background:rgba(251,146,60,.12); border-color:rgba(251,146,60,.35); }
+
+    .btn-purple { color:#8b5cf6; background:rgba(139,92,246,.06); border-color:rgba(139,92,246,.2); }
+    .btn-purple:hover { background:rgba(139,92,246,.12); border-color:rgba(139,92,246,.35); }
+
+    .btn-dark { background:#0f172a; color:#fff; border-color:#0f172a; }
+    .btn-dark:hover { background:#1e293b; border-color:#1e293b; color:#fff; }
+
+    .btn-gray { color:#64748b; background:var(--surface); border-color:rgba(100,116,139,.2); }
+    .btn-gray:hover { background:rgba(100,116,139,.08); border-color:rgba(100,116,139,.35); }
+    .btn-gray .add-branch-icon { background:rgba(100,116,139,.06); color:#64748b; }
+    .btn-gray:hover .add-branch-icon { background:rgba(100,116,139,.12); }
 
     /* Add Branch Button */
     .add-branch-btn{display:inline-flex;align-items:center;gap:10px;padding:10px 22px;border:1px solid rgba(34,197,94,.2);border-radius:var(--radius);background:rgba(34,197,94,.06);color:var(--accent);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .25s ease;outline:none;letter-spacing:.2px}
@@ -76,8 +99,9 @@
     .sb-item.active .sb-item-row b{color:var(--text)}
 
     /* Content */
-    .content{overflow-y:auto;position:relative;background:transparent}
-    .content::-webkit-scrollbar{width:5px}.content::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px}
+    .content{display:flex;flex-direction:column;overflow:hidden;position:relative;background:transparent}
+    .content-body{flex:1;overflow-y:auto;position:relative}
+    .content-body::-webkit-scrollbar{width:5px}.content-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:5px}
 
     /* Welcome */
     .welcome{display:flex;flex-direction:column;align-items:center;justify-content:center;height:calc(100% - 60px);text-align:center;padding:40px}
@@ -118,10 +142,18 @@
     .d-tag.both{background:var(--accent-dim);color:var(--accent)}
     .d-actions{display:flex;gap:4px;justify-content:flex-end}
     .d-btn{display:inline-flex;align-items:center;gap:3px;padding:5px 10px;border-radius:6px;font-size:10px;font-weight:600;font-family:inherit;cursor:pointer;border:none;transition:.2s;text-decoration:none}
-    .d-btn-view{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(34,197,94,.08)}
+    
+    .d-btn-edit{background:rgba(99,102,241,0.08);color:#a5b4fc;border:1px solid rgba(99,102,241,0.15)}
+    .d-btn-edit:hover{background:rgba(99,102,241,0.16)}
+
+    .d-btn-view{background:var(--accent-dim);color:var(--accent);border:1px solid rgba(34,197,94,.1)}
     .d-btn-view:hover{background:rgba(34,197,94,.16)}
-    .d-btn-pdf{background:rgba(139,92,246,.08);color:#c4b5fd;border:1px solid rgba(139,92,246,.08)}
+
+    .d-btn-pdf{background:rgba(139,92,246,.08);color:#c4b5fd;border:1px solid rgba(139,92,246,.1)}
     .d-btn-pdf:hover{background:rgba(139,92,246,.16)}
+
+    .d-btn-del{background:rgba(239,68,68,.08);color:#f87171;border:1px solid rgba(239,68,68,.15)}
+    .d-btn-del:hover{background:rgba(239,68,68,.16)}
 
     /* Modal */
     .modal-overlay{display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.4);backdrop-filter:blur(10px);align-items:center;justify-content:center}
@@ -155,13 +187,14 @@
     /* Modal Overlay & Basics */
     .edit-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);backdrop-filter:blur(4px);z-index:99;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:.2s}
     .edit-overlay.active{opacity:1;pointer-events:auto}
-    .edit-modal{background:var(--bg);border:1px solid var(--border);border-radius:12px;width:500px;max-width:90%;box-shadow:0 10px 40px rgba(0,0,0,.05);transform:translateY(20px);transition:.3s;display:flex;flex-direction:column;overflow:hidden}
+    .edit-modal{background:var(--bg);border:1px solid var(--border);border-radius:12px;width:500px;max-width:90%;max-height:90vh;box-shadow:0 10px 40px rgba(0,0,0,.05);transform:translateY(20px);transition:.3s;display:flex;flex-direction:column;overflow:hidden}
     .edit-overlay.active .edit-modal{transform:translateY(0)}
     .edit-modal-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface)}
     .edit-modal-header h3{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--text);margin:0}
     .btn-edit-icon{background:none;border:none;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.2s;padding:0}
     .btn-edit-icon:hover{color:var(--text)}
-    .edit-modal-body{padding:20px;overflow-y:auto;max-height:70vh}
+    .edit-modal-body{padding:20px;overflow-y:auto;flex:1;min-height:0}
+    .edit-modal-body > *{flex-shrink:0}
     .edit-modal-footer{padding:16px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;gap:12px;background:var(--surface)}
     
     .form-row{display:flex;gap:16px;margin-bottom:16px;flex-wrap:wrap}
@@ -189,30 +222,55 @@
     }
 
     @media(max-width:900px){
-      .app{grid-template-rows:56px auto 1fr}
-      .split{grid-template-columns:1fr;grid-template-rows:auto 1fr;margin:0 16px 16px;width:calc(100% - 32px)}
+      .app{grid-template-rows:1fr}
+      .split{grid-template-columns:1fr;grid-template-rows:auto 1fr;margin:0;width:100%;border-top:none}
       .sidebar{border-right:none;border-bottom:1px solid var(--border);max-height:35vh}
       .content{border:none}
       .d-stats{grid-template-columns:repeat(2,1fr)}
       .detail{padding:16px 14px 40px}
-      #toolbar{flex-direction:column!important;gap:12px;padding:16px!important;position:static!important}
-      #toolbar > div{position:static!important;transform:none!important}
+      #contentToolbar{flex-direction:column!important;gap:12px;padding:16px!important;position:static!important;align-items:flex-start!important;}
+      #contentToolbar > div{position:static!important;transform:none!important}
       .toolbar{padding:12px 16px}
     }
+    /* Flatpickr Minimalist Dark-Slate Theme */
+    .flatpickr-calendar { font-family: 'Inter', sans-serif !important; background: var(--surface) !important; border: 1px solid var(--border) !important; box-shadow: 0 4px 20px -2px rgba(0,0,0,0.05) !important; border-radius: 12px !important; padding: 16px !important; width: 300px !important; }
+    .flatpickr-calendar::before, .flatpickr-calendar::after { display: none !important; }
+    
+    .flatpickr-months { margin-bottom: 16px !important; }
+    .flatpickr-current-month { width: 100% !important; left: 0 !important; padding-top: 4px !important; display: flex !important; align-items: center !important; justify-content: center !important; gap: 4px !important; }
+    
+    .flatpickr-months .flatpickr-prev-month, .flatpickr-months .flatpickr-next-month { color: var(--text2) !important; fill: var(--text2) !important; border-radius: 8px !important; padding: 6px !important; transition: 0.2s !important; top: 12px !important; }
+    .flatpickr-months .flatpickr-prev-month:hover, .flatpickr-months .flatpickr-next-month:hover { color: var(--text) !important; fill: var(--text) !important; background: var(--bg) !important; }
+    
+    .flatpickr-weekdays { margin-bottom: 8px !important; }
+    span.flatpickr-weekday { font-size: 11px !important; font-weight: 500 !important; color: var(--muted) !important; text-transform: uppercase !important; letter-spacing: 0.5px !important; }
+    
+    .flatpickr-days { width: 100% !important; border: none !important; }
+    .dayContainer { width: 100% !important; min-width: 100% !important; max-width: 100% !important; justify-content: space-around !important; }
+    .flatpickr-day { display: flex !important; align-items: center !important; justify-content: center !important; border-radius: 8px !important; font-size: 13px !important; font-weight: 400 !important; color: var(--text) !important; height: 34px !important; line-height: normal !important; border: none !important; margin: 2px 0 !important; box-shadow: none !important; transition: background 0.2s, color 0.2s !important; max-width: 36px !important; flex-basis: 14.285% !important; }
+    
+    .flatpickr-day:hover { background: #f8fafc !important; color: var(--text) !important; }
+    .flatpickr-day.selected, .flatpickr-day.selected:hover { background: #2a3342 !important; color: white !important; font-weight: 500 !important; border: none !important; box-shadow: none !important; }
+    .flatpickr-day.today { border: none !important; background: #f8fafc !important; font-weight: 500 !important; color: var(--text) !important; }
+    .flatpickr-day.prevMonthDay, .flatpickr-day.nextMonthDay { color: #cbd5e1 !important; }
+    
+    .flatpickr-current-month .flatpickr-monthDropdown-months { appearance: none !important; -webkit-appearance: none !important; background: transparent !important; font-size: 15px !important; font-weight: 600 !important; color: var(--text) !important; outline: none !important; cursor: pointer !important; border: none !important; margin: 0 !important; padding: 4px 8px !important; border-radius: 6px !important; }
+    .flatpickr-current-month .flatpickr-monthDropdown-months:hover { background: var(--bg) !important; }
+    .flatpickr-current-month .numInputWrapper { width: 6ch !important; border-radius: 6px !important; border: none !important; }
+    .flatpickr-current-month .numInputWrapper:hover { background: var(--bg) !important; }
+    .flatpickr-current-month .numInputWrapper input { font-size: 15px !important; font-weight: 600 !important; color: var(--text) !important; background: transparent !important; border: none !important; outline: none !important; cursor: text !important; padding: 4px 8px !important; width: 100% !important; box-sizing: border-box !important; }
+    .flatpickr-current-month .numInputWrapper span.arrowUp, .flatpickr-current-month .numInputWrapper span.arrowDown { display: none !important; }
+    
+    .date-picker-input {
+      padding: 6px 12px; cursor: pointer; font-family: inherit;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      font-size: 13px; color: var(--text); outline: none; transition: border-color 0.2s;
+    }
+    .date-picker-input:focus { border-color: var(--muted); }
   </style>
 </head>
 <body>
 <div class="app">
-  <div class="topbar">
-    <div class="tb-left">
-      <div class="tb-logo"><i data-lucide="bar-chart-2" style="width:16px;height:16px;color:var(--muted)"></i></div>
-      <span class="tb-name">Sütlüce Kadayıf</span>
-    </div>
-    <div class="tb-right">
-      <button class="tb-btn" onclick="openSettingsModal()" style="margin-right:8px"><i data-lucide="settings" style="width:14px;height:14px"></i> Ayarlar</button>
-      <button class="tb-btn" onclick="loadDashboard()"><i data-lucide="refresh-cw" style="width:12px;height:12px"></i> Yenile</button>
-    </div>
-  </div>
 
   <!-- AYARLAR MODAL -->
   <div class="edit-overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettingsModal()">
@@ -273,47 +331,6 @@
     </div>
   </div>
 
-  <!-- Toolbar: şube ekle + veri yükle + tarih -->
-  <div id="toolbar" style="padding:24px 0; display:flex; align-items:center; max-width:1400px; margin:0 auto; width:calc(100% - 64px)">
-    <div style="display:flex; gap:10px; align-items:center">
-      <!-- Şube Ekle butonu global şubeler kullanıldığı için kaldırıldı -->
-      <button onclick="openBulkUploadModal()" class="add-branch-btn" style="border-color:rgba(59,130,246,.2);color:#60a5fa;background:rgba(59,130,246,.06)">
-        <span class="add-branch-icon" style="background:rgba(59,130,246,.12);color:#60a5fa"><i data-lucide="upload-cloud" style="width:14px;height:14px"></i></span>
-        <span>Veri Yükle</span>
-      </button>
-      <div class="toolbar" id="toolbarBadge" style="display:none">
-        <div class="tool-label"><i data-lucide="calendar" style="width:14px;height:14px"></i> Dönem</div>
-        <div class="tool-group">
-          <select id="globalSinceDay" class="tool-input" style="padding:0 2px;cursor:pointer;min-width:36px"></select>
-          <select id="globalSinceMonth" class="tool-input" style="padding:0 4px;cursor:pointer;min-width:75px"></select>
-          <select id="globalSinceYear" class="tool-input" style="padding:0 2px;cursor:pointer;min-width:50px"></select>
-        </div>
-        <span style="color:var(--muted);font-size:11px;font-weight:400">→</span>
-        <div class="tool-group">
-          <select id="globalUntilDay" class="tool-input" style="padding:0 2px;cursor:pointer;min-width:36px"></select>
-          <select id="globalUntilMonth" class="tool-input" style="padding:0 4px;cursor:pointer;min-width:75px"></select>
-          <select id="globalUntilYear" class="tool-input" style="padding:0 2px;cursor:pointer;min-width:50px"></select>
-        </div>
-        <input type="hidden" id="globalSince">
-        <input type="hidden" id="globalUntil">
-        <div class="tool-sep" style="margin: 0 4px"></div>
-        <button class="tool-btn" id="metaFetchBtn" onclick="globalMetaFetch()" style="display:none;color:#3b82f6;border-color:rgba(59,130,246,.2);background:rgba(59,130,246,.05)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg>
-          Meta Verilerini Çek
-        </button>
-        <button class="tool-btn" id="googleFetchBtn" onclick="globalGoogleFetch()" style="display:none;color:#fb923c;border-color:rgba(251,146,60,.2);background:rgba(251,146,60,.05)">
-          <i data-lucide="map-pin" style="width:14px;height:14px"></i>
-          Google Verilerini Çek
-        </button>
-
-        <button class="tool-btn tool-btn-primary" onclick="bulkDownloadPdf()">
-          <i data-lucide="download" style="width:14px;height:14px"></i> Toplu PDF Al
-        </button>
-        <span class="tool-status" id="toolStatus"></span>
-      </div>
-    </div>
-  </div>
-
   <div class="split">
     <div class="sidebar">
       <div class="sb-head">
@@ -327,12 +344,48 @@
     </div>
 
     <div class="content" id="contentArea">
-      <div class="welcome" id="welcomeView">
-        <div class="welcome-ico"><i data-lucide="layout-dashboard" style="width:28px;height:28px"></i></div>
-        <h2>Şube Seçin</h2>
-        <p>Soldaki listeden bir şubeye tıklayarak detayları görüntüleyin.</p>
+      <!-- Content Toolbar -->
+      <div id="contentToolbar" style="display:flex; align-items:center; justify-content:space-between; padding:16px 24px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; position:relative; z-index:10; flex-wrap:wrap; gap:12px;">
+        <div class="toolbar-left" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <div class="toolbar" id="toolbarBadge" style="display:none; padding:0; background:transparent; border:none; box-shadow:none;">
+            <div class="tool-label"><i data-lucide="calendar" style="width:14px;height:14px"></i> Dönem</div>
+            <input type="text" id="globalSince" class="date-picker-input" style="width:130px;min-width:90px;background:var(--bg)">
+            <span style="color:var(--muted);font-size:11px;font-weight:400;margin:0 2px">→</span>
+            <input type="text" id="globalUntil" class="date-picker-input" style="width:130px;min-width:90px;background:var(--bg)">
+            <div class="tool-sep" style="margin: 0 4px"></div>
+            <button class="tool-btn btn-blue" id="metaFetchBtn" onclick="globalMetaFetch()" style="display:none">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg>
+              Meta
+            </button>
+            <button class="tool-btn btn-orange" id="googleFetchBtn" onclick="globalGoogleFetch()" style="display:none">
+              <i data-lucide="map-pin" style="width:14px;height:14px"></i> Google
+            </button>
+            <button class="tool-btn btn-purple" id="fetchAllBtn" onclick="globalFetchAll()" style="display:none">
+              <i data-lucide="download-cloud" style="width:14px;height:14px"></i> Tümünü Çek
+            </button>
+            <button class="tool-btn tool-btn-primary btn-dark" id="bulkPdfBtn" onclick="bulkDownloadPdf()" style="display:none">
+              <i data-lucide="download" style="width:14px;height:14px"></i> Toplu PDF Al
+            </button>
+            <span class="tool-status" id="toolStatus"></span>
+          </div>
+        </div>
+        <div class="toolbar-right" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button onclick="openBulkUploadModal()" class="tool-btn btn-blue" style="font-weight:600">
+            <i data-lucide="upload-cloud" style="width:14px;height:14px"></i> Veri Yükle
+          </button>
+          <button class="tool-btn" onclick="openSettingsModal()">
+            <i data-lucide="settings" style="width:14px;height:14px"></i> Ayarlar
+          </button>
+        </div>
       </div>
-      <div class="detail" id="detailView" style="display:none"></div>
+      <div class="content-body">
+        <div class="welcome" id="welcomeView">
+          <div class="welcome-ico"><i data-lucide="layout-dashboard" style="width:28px;height:28px"></i></div>
+          <h2>Şube Seçin</h2>
+          <p>Soldaki listeden bir şubeye tıklayarak detayları görüntüleyin.</p>
+        </div>
+        <div class="detail" id="detailView" style="display:none"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -365,7 +418,7 @@
 
 <!-- ADD DATA MODAL (Upload) -->
 <div class="edit-overlay" id="addDataOverlay" onclick="if(event.target===this)closeAddData()">
-  <div class="edit-modal" style="width:500px">
+  <div class="edit-modal" style="width:600px">
     <div class="edit-modal-header">
       <h3><i data-lucide="upload-cloud" style="width:16px;height:16px;color:#3b82f6"></i> Şubeye Veri Yükle</h3>
       <button class="btn-edit-icon" onclick="closeAddData()"><i data-lucide="x" style="width:18px;height:18px"></i></button>
@@ -374,52 +427,49 @@
       <form id="addDataForm">
         <input type="hidden" id="adSubeKod">
 
-        <div style="font-size:10px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">📡 API ile Veri Çek</div>
-        <div class="form-row" style="margin-bottom:10px">
-          <div class="fg">
-            <label>Başlangıç</label>
-            <div style="display:flex;gap:4px">
-              <select id="adFetchSinceDay" class="tool-input" style="width:50px;padding:6px 4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
-              <select id="adFetchSinceMonth" class="tool-input" style="flex:1;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
-              <select id="adFetchSinceYear" class="tool-input" style="width:70px;padding:6px 4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
-            </div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📡 API İle Veri Çek</div>
+        <div class="form-row" style="margin-bottom:12px;background:var(--bg);padding:16px;border-radius:12px;border:1px solid var(--border)">
+          <div class="fg" style="margin-bottom:0">
+            <label style="font-size:11px">Başlangıç</label>
+            <input type="text" id="adFetchSince" class="date-picker-input" style="width:100%;padding:8px 12px;border-radius:8px">
           </div>
-          <div class="fg">
-            <label>Bitiş</label>
-            <div style="display:flex;gap:4px">
-              <select id="adFetchUntilDay" class="tool-input" style="width:50px;padding:6px 4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
-              <select id="adFetchUntilMonth" class="tool-input" style="flex:1;padding:6px 8px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
-              <select id="adFetchUntilYear" class="tool-input" style="width:70px;padding:6px 4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer"></select>
-            </div>
+          <div class="fg" style="margin-bottom:0">
+            <label style="font-size:11px">Bitiş</label>
+            <input type="text" id="adFetchUntil" class="date-picker-input" style="width:100%;padding:8px 12px;border-radius:8px">
           </div>
         </div>
-        <input type="hidden" id="adFetchSince">
-        <input type="hidden" id="adFetchUntil">
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <button type="button" class="tool-btn" id="adMetaFetchBtn" onclick="fetchMetaForBranch()" style="flex:1;color:#3b82f6;border-color:rgba(59,130,246,.2);background:rgba(59,130,246,.05);justify-content:center">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg>
-            Meta Çek
+        <div style="display:flex;gap:12px;margin-bottom:20px">
+          <button type="button" class="tool-btn btn-blue" id="adMetaFetchBtn" onclick="fetchMetaForBranch()" style="flex:1;justify-content:center;padding:10px;font-size:13px;border-radius:8px">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg> Meta Çek
           </button>
-          <button type="button" class="tool-btn" id="adGoogleFetchBtn" onclick="fetchGoogleForBranch()" style="flex:1;color:#fb923c;border-color:rgba(251,146,60,.2);background:rgba(251,146,60,.05);justify-content:center">
-            <i data-lucide="map-pin" style="width:13px;height:13px"></i>
-            Google Çek
+          <button type="button" class="tool-btn btn-orange" id="adGoogleFetchBtn" onclick="fetchGoogleForBranch()" style="flex:1;justify-content:center;padding:10px;font-size:13px;border-radius:8px">
+            <i data-lucide="map-pin" style="width:13px;height:13px"></i> Google Çek
+          </button>
+          <button type="button" class="tool-btn btn-purple" id="adFetchAllBtn" onclick="fetchAllForBranch()" style="flex:1;justify-content:center;padding:10px;font-size:13px;border-radius:8px">
+            <i data-lucide="download-cloud" style="width:13px;height:13px"></i> Tümünü Çek
           </button>
         </div>
 
-        <div style="border-top:1px solid var(--border);margin-bottom:14px"></div>
-        <div style="font-size:10px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">📁 CSV ile Yükle</div>
-        <div class="form-row" style="margin-bottom:12px">
-          <div class="fg"><label>Meta CSV</label><input type="file" id="adMetaCsv" accept=".csv" style="padding:4px"></div>
-          <div class="fg"><label>Google İşletme CSV</label><input type="file" id="adGoogleCsv" accept=".csv" style="padding:4px"></div>
+        <div style="border-top:1px solid var(--border);margin-bottom:16px"></div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📁 CSV İle Yükle</div>
+        <div class="form-row" style="margin-bottom:16px;background:var(--bg);padding:16px;border-radius:12px;border:1px solid var(--border)">
+          <div class="fg" style="margin-bottom:0"><label style="font-size:11px">Meta CSV</label><input type="file" id="adMetaCsv" accept=".csv" style="padding:6px;font-size:12px;background:var(--surface);border-radius:6px;border:1px solid var(--border)"></div>
+          <div class="fg" style="margin-bottom:0"><label style="font-size:11px">Google İşletme CSV</label><input type="file" id="adGoogleCsv" accept=".csv" style="padding:6px;font-size:12px;background:var(--surface);border-radius:6px;border:1px solid var(--border)"></div>
         </div>
 
-        <div style="border-top:1px solid var(--border);margin-bottom:14px"></div>
-        <div style="font-size:10px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">💰 Bütçe Girişleri (İsteğe Bağlı)</div>
-        <div class="form-row">
-          <div class="fg"><label>Planlanan Bütçe (₺)</label><input type="number" id="adPlanlananButce" step="any" placeholder="0"></div>
-          <div class="fg"><label>Devredilen Miktar (₺)</label><input type="number" id="adDevredilen" step="any" placeholder="0"></div>
+        <div style="border-top:1px solid var(--border);margin-bottom:16px"></div>
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">💰 Bütçe & Sonuç Girişleri (İsteğe Bağlı)</div>
+        <div class="form-row" style="background:var(--bg);padding:16px;border-radius:12px;border:1px solid var(--border);margin-bottom:0">
+          <div class="form-row" style="width:100%;margin-bottom:12px">
+            <div class="fg" style="margin-bottom:0"><label style="font-size:11px">Planlanan Bütçe (₺)</label><input type="number" id="adPlanlananButce" step="any" placeholder="0" style="padding:10px 12px;font-size:14px;border-radius:8px"></div>
+            <div class="fg" style="margin-bottom:0">
+              <label style="font-size:11px">Devredilen Miktar (₺)</label>
+              <input type="number" id="adDevredilen" step="any" placeholder="0" oninput="toggleDevredilenWarn(this, 'adDevredilenWarn')" style="padding:10px 12px;font-size:14px;border-radius:8px">
+              <div id="adDevredilenWarn" style="display:none;font-size:10px;color:#f59e0b;margin-top:4px;line-height:1.2"><i data-lucide="info" style="width:10px;height:10px;vertical-align:middle;margin-right:2px;margin-bottom:1px"></i> Eksi (-) değer: Geçen ayki fazla harcamayı telafi etmek için hedef bütçeden düşülecek tutarı ifade eder.</div>
+            </div>
+          </div>
+          <div class="fg" style="margin-bottom:0;width:100%"><label style="font-size:11px">Hesap Özeti Toplam Erişim</label><input type="number" id="adToplamErisim" step="1" placeholder="Hesap panelinden net değer..." style="padding:10px 12px;font-size:14px;border-radius:8px"></div>
         </div>
-        <div class="fg" style="margin-bottom:0"><label>Hesap Özeti Toplam Erişim</label><input type="number" id="adToplamErisim" step="1" placeholder="Hesap panelinden net değer..."></div>
       </form>
     </div>
     <div class="edit-modal-footer">
@@ -449,7 +499,11 @@
       <div style="font-size:10px;font-weight:700;color:var(--text);text-transform:uppercase;margin:8px 0;letter-spacing:1px">Bütçe Girişleri (İsteğe Bağlı)</div>
       <div class="form-row">
         <div class="fg"><label>Planlanan Bütçe (₺)</label><input type="number" id="buPlanlananButce" step="any" placeholder="0"></div>
-        <div class="fg"><label>Devredilen Miktar (₺)</label><input type="number" id="buDevredilen" step="any" placeholder="0"></div>
+        <div class="fg">
+          <label>Devredilen Miktar (₺)</label>
+          <input type="number" id="buDevredilen" step="any" placeholder="0" oninput="toggleDevredilenWarn(this, 'buDevredilenWarn')">
+          <div id="buDevredilenWarn" style="display:none;font-size:10px;color:#f59e0b;margin-top:4px;line-height:1.2"><i data-lucide="info" style="width:10px;height:10px;vertical-align:middle;margin-right:2px;margin-bottom:1px"></i> Eksi (-) değer: Geçen ayki fazla harcamayı telafi etmek için hedef bütçeden düşülecek tutarı ifade eder.</div>
+        </div>
       </div>
       <div class="fg" style="margin-bottom:0"><label>Hesap Özeti Toplam Erişim</label><input type="number" id="buToplamErisim" step="1" placeholder="Hesap panelinden net değer..."></div>
     </div>
@@ -527,9 +581,14 @@
     <div class="edit-modal-body" style="padding:16px;max-height:60vh;overflow-y:auto">
       <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Her reklam setini özel olarak bir şubeye manuel eşleştirebilirsiniz (kampanya veya isimlendirme bazlı sınırları ezer). Arama yaparak istediğiniz reklam setlerini kolayca bulun.</p>
       
-      <div style="margin-bottom:12px; position:relative">
-        <i data-lucide="search" style="position:absolute;left:10px;top:8px;width:14px;height:14px;color:var(--muted)"></i>
-        <input type="text" id="adsetSearchInput" placeholder="Reklam seti veya kampanya adına göre ara..." oninput="filterAdsets()" style="width:100%;padding:8px 10px 8px 32px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <div style="position:relative;flex:1">
+          <i data-lucide="search" style="position:absolute;left:10px;top:8px;width:14px;height:14px;color:var(--muted)"></i>
+          <input type="text" id="adsetSearchInput" placeholder="Reklam seti veya kampanya adına göre ara..." oninput="filterAdsets()" style="width:100%;padding:8px 10px 8px 32px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
+        </div>
+        <button type="button" id="refreshAdsetsBtn" onclick="loadAdsets(true)" class="btn-primary" style="padding:0 12px;font-size:12px;height:33px;white-space:nowrap;background:var(--surface);border:1px solid var(--border);color:var(--text);cursor:pointer;display:flex;align-items:center;gap:6px">
+          <i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Yenile
+        </button>
       </div>
 
       <!-- BULK ACTION BAR -->
@@ -561,20 +620,14 @@
 <div class="edit-overlay" id="editBranchOverlay" onclick="if(event.target===this)closeEditBranch()">
   <div class="edit-modal" style="width:440px">
     <div class="edit-modal-header">
-      <h3><i data-lucide="edit-2" style="width:16px;height:16px;color:#60a5fa"></i> Şubeyi Düzenle</h3>
+      <h3 id="ebModalTitle"><i data-lucide="settings" style="width:16px;height:16px;color:#60a5fa"></i> Şube Ayarları</h3>
       <button class="btn-edit-icon" onclick="closeEditBranch()"><i data-lucide="x" style="width:18px;height:18px"></i></button>
     </div>
     <div class="edit-modal-body">
       <input type="hidden" id="ebKod">
-      <div class="form-row" style="margin-bottom:12px">
-        <div class="fg"><label>Şube Kodu</label><input type="text" id="ebKodDisplay" disabled style="opacity:.5;cursor:not-allowed"></div>
-      </div>
-      <div class="form-row" style="margin-bottom:12px">
-        <div class="fg"><label>Şube Adı</label><input type="text" id="ebAd" placeholder="Şube adını girin"></div>
-      </div>
-      <div class="form-row" style="margin-bottom:0">
-        <div class="fg"><label>Adres (İsteğe Bağlı)</label><input type="text" id="ebAdres" placeholder="Açık adres"></div>
-      </div>
+      <input type="hidden" id="ebKodDisplay">
+      <input type="hidden" id="ebAd">
+      <input type="hidden" id="ebAdres">
 
       <!-- Meta Eşleştirme -->
       <div style="margin-top:16px;border:1px solid rgba(59,130,246,.15);border-radius:10px;overflow:hidden">
@@ -592,22 +645,25 @@
       </div>
 
       <!-- Google İşletme Eşleştirme -->
-      <div style="margin-top:16px;border:1px solid rgba(251,146,60,.15);border-radius:10px;overflow:hidden">
+      <div style="margin-top:16px;border:1px solid rgba(251,146,60,.15);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;max-height:280px">
         <div style="padding:8px 14px;background:rgba(251,146,60,.06);display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(251,146,60,.1)">
           <i data-lucide="map-pin" style="width:13px;height:13px;color:#fb923c"></i>
           <span style="font-size:10px;font-weight:700;color:#fdba74;text-transform:uppercase;letter-spacing:.5px">Google İşletme Eşleştirmesi</span>
         </div>
-        <div style="padding:10px 14px">
-          <div class="fg"><label>Google Lokasyon</label>
-            <select id="ebGoogleLocation" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;color:var(--text);font-size:13px;font-family:inherit;outline:none">
-              <option value="">Yükleniyor...</option>
-            </select>
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border)">
+          <div style="position:relative">
+            <i data-lucide="search" style="position:absolute;left:10px;top:8px;width:14px;height:14px;color:var(--muted)"></i>
+            <input type="text" id="ebGoogleSearch" placeholder="Lokasyon ara..." oninput="filterGoogleLocations()" style="width:100%;padding:8px 10px 8px 32px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
           </div>
         </div>
+        <div id="ebGoogleList" style="flex:1;overflow-y:auto;background:var(--surface)">
+          <div style="padding:14px;color:var(--muted);text-align:center;font-size:12px">Yükleniyor...</div>
+        </div>
+        <input type="hidden" id="ebGoogleLocation">
       </div>
     </div>
     <div class="edit-modal-footer" style="justify-content:space-between">
-      <button class="tool-btn" onclick="deleteBranchFromEdit()" style="color:#f87171;border-color:rgba(248,113,113,.2);background:rgba(248,113,113,.06)">
+      <button class="tool-btn btn-danger" onclick="deleteBranchFromEdit()">
         <i data-lucide="trash-2" style="width:14px;height:14px"></i> Sil
       </button>
       <div style="display:flex;gap:8px">
@@ -620,7 +676,11 @@
 
 <!-- DATA EDIT MODAL (Overrides) -->
 <div class="edit-overlay" id="dataEditOverlay" onclick="if(event.target===this)closeDataEdit()">
-  <div class="edit-modal" style="width:580px">
+  <div class="edit-modal" style="width:580px;position:relative;overflow:hidden">
+    <div id="deLoading" style="position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.8);backdrop-filter:blur(4px);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;opacity:0;pointer-events:none;transition:opacity 0.2s">
+      <i data-lucide="loader-2" class="spin" style="width:28px;height:28px;color:var(--accent)"></i>
+      <span style="font-size:13px;font-weight:600;color:var(--text)">Veriler Yükleniyor...</span>
+    </div>
     <div class="edit-modal-header">
       <h3><i data-lucide="sliders-horizontal" style="width:16px;height:16px;color:var(--accent)"></i> Rapor Verilerini Düzenle</h3>
       <button class="btn-edit-icon" onclick="closeDataEdit()"><i data-lucide="x" style="width:18px;height:18px"></i></button>
@@ -641,8 +701,12 @@
           <span style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px">Bütçe</span>
         </div>
         <div class="de-grid">
-          <div class="fg"><label>Planlanan Bütçe (₺)</label><input type="number" id="dePlanlananButce" step="any" placeholder="0"></div>
-          <div class="fg"><label>Devredilen Miktar (₺)</label><input type="number" id="deDevredilenMiktar" step="any" placeholder="0"></div>
+          <div class="fg"><label>Planlanan Bütçe (₺)</label><input type="text" id="dePlanlananButce" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg">
+            <label>Devredilen Miktar (₺)</label>
+            <input type="text" id="deDevredilenMiktar" oninput="fmtThousand(event); toggleDevredilenWarn(this, 'deDevredilenWarn')" placeholder="0">
+            <div id="deDevredilenWarn" style="display:none;font-size:10px;color:#f59e0b;margin-top:4px;line-height:1.2"><i data-lucide="info" style="width:10px;height:10px;vertical-align:middle;margin-right:2px;margin-bottom:1px"></i> Eksi (-) değer: Geçen ayki fazla harcamayı telafi etmek için hedef bütçeden düşülecek tutarı ifade eder.</div>
+          </div>
         </div>
       </div>
 
@@ -653,10 +717,10 @@
           <span style="font-size:11px;font-weight:700;color:#60a5fa;text-transform:uppercase;letter-spacing:.5px">Meta Reklam Verileri</span>
         </div>
         <div class="de-grid">
-          <div class="fg"><label>Toplam Harcama (₺)</label><input type="number" id="deHarcama" step="any" placeholder="0"></div>
-          <div class="fg"><label>Toplam Erişim</label><input type="number" id="deErisim" step="1" placeholder="0"></div>
-          <div class="fg"><label>Toplam Gösterim</label><input type="number" id="deGosterim" step="1" placeholder="0"></div>
-          <div class="fg"><label>Toplam Sonuç</label><input type="number" id="deSonuc" step="1" placeholder="0"></div>
+          <div class="fg"><label>Toplam Harcama (₺)</label><input type="text" id="deHarcama" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Toplam Erişim</label><input type="text" id="deErisim" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Toplam Gösterim</label><input type="text" id="deGosterim" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Toplam Sonuç</label><input type="text" id="deSonuc" oninput="fmtThousand(event)" placeholder="0"></div>
         </div>
       </div>
 
@@ -667,11 +731,11 @@
           <span style="font-size:11px;font-weight:700;color:#c084fc;text-transform:uppercase;letter-spacing:.5px">Etkileşim Verileri</span>
         </div>
         <div class="de-grid">
-          <div class="fg"><label>Bağlantı Tıklaması</label><input type="number" id="deTiklama" step="1" placeholder="0"></div>
-          <div class="fg"><label>Tıklama (Tümü)</label><input type="number" id="deTiklamaTumu" step="1" placeholder="0"></div>
-          <div class="fg"><label>Paylaşım</label><input type="number" id="dePaylasim" step="1" placeholder="0"></div>
-          <div class="fg"><label>Yorum</label><input type="number" id="deYorum" step="1" placeholder="0"></div>
-          <div class="fg"><label>Mesaj</label><input type="number" id="deMesaj" step="1" placeholder="0"></div>
+          <div class="fg"><label>Bağlantı Tıklaması</label><input type="text" id="deTiklama" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Tıklama (Tümü)</label><input type="text" id="deTiklamaTumu" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Paylaşım</label><input type="text" id="dePaylasim" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Yorum</label><input type="text" id="deYorum" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Mesaj</label><input type="text" id="deMesaj" oninput="fmtThousand(event)" placeholder="0"></div>
         </div>
       </div>
 
@@ -682,16 +746,14 @@
           <span style="font-size:11px;font-weight:700;color:#fdba74;text-transform:uppercase;letter-spacing:.5px">Google İşletme Verileri</span>
         </div>
         <div class="de-grid">
-          <div class="fg"><label>Google Arama</label><input type="number" id="deGoogleArama" step="1" placeholder="0"></div>
-          <div class="fg"><label>Google Haritalar</label><input type="number" id="deGoogleHarita" step="1" placeholder="0"></div>
-          <div class="fg"><label>Yol Tarifi</label><input type="number" id="deGoogleYol" step="1" placeholder="0"></div>
-          <div class="fg"><label>Telefon Araması</label><input type="number" id="deGoogleTelefon" step="1" placeholder="0"></div>
-          <div class="fg"><label>Web Tıklama</label><input type="number" id="deGoogleWeb" step="1" placeholder="0"></div>
-          <div class="fg"><label>Menü Tıklama</label><input type="number" id="deGoogleMenu" step="1" placeholder="0"></div>
+          <div class="fg"><label>Arama (Toplam)</label><input type="text" id="deGoogleArama" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Harita (Toplam)</label><input type="text" id="deGoogleHarita" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Yol Tarifi</label><input type="text" id="deGoogleYol" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Telefon Araması</label><input type="text" id="deGoogleTelefon" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Web Sitesi Tıklama</label><input type="text" id="deGoogleWeb" oninput="fmtThousand(event)" placeholder="0"></div>
+          <div class="fg"><label>Menü Tıklama</label><input type="text" id="deGoogleMenu" oninput="fmtThousand(event)" placeholder="0"></div>
         </div>
       </div>
-
-
     </div>
     <div class="edit-modal-footer">
       <button class="tool-btn" onclick="closeDataEdit()">Vazgeç</button>
@@ -705,132 +767,68 @@ const fmt=n=>n==null?'—':new Intl.NumberFormat('tr-TR').format(Math.round(n));
 const fmtC=n=>n==null?'—':new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY',maximumFractionDigits:0}).format(n);
 const fmtS=n=>{if(n==null)return'—';if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(0)+'K';return String(n)};
 
-const AY_ISIMLERI = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-
-function getDaysInMonth(month, year) {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-function populateDays(daySelectId, month, year, selectedDay) {
-  const sel = document.getElementById(daySelectId);
-  const maxDay = getDaysInMonth(month, year);
-  let html = '';
-  for (let d = 1; d <= maxDay; d++) html += `<option value="${d}">${d}</option>`;
-  sel.innerHTML = html;
-  sel.value = Math.min(selectedDay || 1, maxDay);
-}
-
 function initDateSelectors() {
+  if (flatpickr && flatpickr.l10ns && flatpickr.l10ns.tr) {
+    flatpickr.l10ns.tr.weekdays.shorthand = ["PZ", "PT", "SA", "ÇA", "PE", "CU", "CT"];
+  }
+
   const now = new Date();
   const curMonth = now.getMonth();
   const curYear = now.getFullYear();
 
-  const monthOpts = AY_ISIMLERI.map((ad, i) => `<option value="${i}">${ad}</option>`).join('');
-
-  let yearOpts = '';
-  for (let y = curYear - 3; y <= curYear + 1; y++) yearOpts += `<option value="${y}">${y}</option>`;
-
-  // Toolbar dropdowns
-  ['globalSinceMonth','globalUntilMonth'].forEach(id => document.getElementById(id).innerHTML = monthOpts);
-  ['globalSinceYear','globalUntilYear'].forEach(id => document.getElementById(id).innerHTML = yearOpts);
-
-  // Veri Ekle modal dropdowns
-  ['adFetchSinceMonth','adFetchUntilMonth'].forEach(id => document.getElementById(id).innerHTML = monthOpts);
-  ['adFetchSinceYear','adFetchUntilYear'].forEach(id => document.getElementById(id).innerHTML = yearOpts);
-
-  // Default: geçen ayın 1'i → geçen ayın son günü
   const prevMonth = curMonth === 0 ? 11 : curMonth - 1;
   const prevYear = curMonth === 0 ? curYear - 1 : curYear;
-  const lastDayPrev = getDaysInMonth(prevMonth, prevYear);
+  const lastDayPrev = new Date(prevYear, prevMonth + 1, 0).getDate();
 
-  // Toolbar defaults
-  document.getElementById('globalSinceMonth').value = prevMonth;
-  document.getElementById('globalSinceYear').value = prevYear;
-  document.getElementById('globalUntilMonth').value = prevMonth;
-  document.getElementById('globalUntilYear').value = prevYear;
+  const pad = n => String(n).padStart(2, '0');
+  
+  const defaultSince = `${prevYear}-${pad(prevMonth + 1)}-01`;
+  const defaultUntil = `${prevYear}-${pad(prevMonth + 1)}-${pad(lastDayPrev)}`;
 
-  populateDays('globalSinceDay', prevMonth, prevYear, 1);
-  populateDays('globalUntilDay', prevMonth, prevYear, lastDayPrev);
+  const fpOpts = {
+    locale: "tr",
+    altInput: true,
+    altFormat: "j F Y",
+    dateFormat: "Y-m-d",
+    closeOnSelect: false,
+    prevArrow: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
+    nextArrow: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+    onReady: function(selectedDates, dateStr, instance) {
+      const yearWrapper = instance.calendarContainer.querySelector('.numInputWrapper');
+      if (!yearWrapper) return;
+      yearWrapper.style.display = 'none';
+      
+      const yearDropdown = document.createElement("select");
+      yearDropdown.className = "flatpickr-monthDropdown-months flatpickr-custom-year";
+      
+      const currentYear = new Date().getFullYear();
+      for (let y = currentYear + 2; y >= 2020; y--) {
+        const option = document.createElement("option");
+        option.value = y;
+        option.text = y;
+        if (y === instance.currentYear) option.selected = true;
+        yearDropdown.appendChild(option);
+      }
+      
+      yearDropdown.addEventListener("change", function(e) {
+        instance.changeYear(Number(e.target.value));
+      });
+      
+      yearWrapper.parentNode.appendChild(yearDropdown);
+    },
+    onYearChange: function(selectedDates, dateStr, instance) {
+      const yearDropdown = instance.calendarContainer.querySelector('.flatpickr-custom-year');
+      if (yearDropdown) {
+        yearDropdown.value = instance.currentYear;
+      }
+    }
+  };
 
-  // Modal defaults
-  document.getElementById('adFetchSinceMonth').value = prevMonth;
-  document.getElementById('adFetchSinceYear').value = prevYear;
-  document.getElementById('adFetchUntilMonth').value = prevMonth;
-  document.getElementById('adFetchUntilYear').value = prevYear;
+  flatpickr("#globalSince", { ...fpOpts, defaultDate: defaultSince });
+  flatpickr("#globalUntil", { ...fpOpts, defaultDate: defaultUntil });
 
-  populateDays('adFetchSinceDay', prevMonth, prevYear, 1);
-  populateDays('adFetchUntilDay', prevMonth, prevYear, lastDayPrev);
-
-  syncDateFields();
-  syncAdFetchDateFields();
-
-  // Toolbar listeners
-  ['globalSinceMonth','globalSinceYear'].forEach(id =>
-    document.getElementById(id).addEventListener('change', () => {
-      const m = parseInt(document.getElementById('globalSinceMonth').value);
-      const y = parseInt(document.getElementById('globalSinceYear').value);
-      populateDays('globalSinceDay', m, y, parseInt(document.getElementById('globalSinceDay').value));
-      syncDateFields();
-    })
-  );
-  ['globalUntilMonth','globalUntilYear'].forEach(id =>
-    document.getElementById(id).addEventListener('change', () => {
-      const m = parseInt(document.getElementById('globalUntilMonth').value);
-      const y = parseInt(document.getElementById('globalUntilYear').value);
-      populateDays('globalUntilDay', m, y, parseInt(document.getElementById('globalUntilDay').value));
-      syncDateFields();
-    })
-  );
-  ['globalSinceDay','globalUntilDay'].forEach(id =>
-    document.getElementById(id).addEventListener('change', syncDateFields)
-  );
-
-  // Modal listeners
-  ['adFetchSinceMonth','adFetchSinceYear'].forEach(id =>
-    document.getElementById(id).addEventListener('change', () => {
-      const m = parseInt(document.getElementById('adFetchSinceMonth').value);
-      const y = parseInt(document.getElementById('adFetchSinceYear').value);
-      populateDays('adFetchSinceDay', m, y, parseInt(document.getElementById('adFetchSinceDay').value));
-      syncAdFetchDateFields();
-    })
-  );
-  ['adFetchUntilMonth','adFetchUntilYear'].forEach(id =>
-    document.getElementById(id).addEventListener('change', () => {
-      const m = parseInt(document.getElementById('adFetchUntilMonth').value);
-      const y = parseInt(document.getElementById('adFetchUntilYear').value);
-      populateDays('adFetchUntilDay', m, y, parseInt(document.getElementById('adFetchUntilDay').value));
-      syncAdFetchDateFields();
-    })
-  );
-  ['adFetchSinceDay','adFetchUntilDay'].forEach(id =>
-    document.getElementById(id).addEventListener('change', syncAdFetchDateFields)
-  );
-}
-
-function syncDateFields() {
-  const sd = parseInt(document.getElementById('globalSinceDay').value);
-  const sm = parseInt(document.getElementById('globalSinceMonth').value);
-  const sy = parseInt(document.getElementById('globalSinceYear').value);
-  const ud = parseInt(document.getElementById('globalUntilDay').value);
-  const um = parseInt(document.getElementById('globalUntilMonth').value);
-  const uy = parseInt(document.getElementById('globalUntilYear').value);
-
-  const pad = d => d.toISOString().split('T')[0];
-  document.getElementById('globalSince').value = pad(new Date(sy, sm, sd));
-  document.getElementById('globalUntil').value = pad(new Date(uy, um, ud));
-}
-
-function syncAdFetchDateFields() {
-  const sd = parseInt(document.getElementById('adFetchSinceDay').value);
-  const sm = parseInt(document.getElementById('adFetchSinceMonth').value);
-  const sy = parseInt(document.getElementById('adFetchSinceYear').value);
-  const ud = parseInt(document.getElementById('adFetchUntilDay').value);
-  const um = parseInt(document.getElementById('adFetchUntilMonth').value);
-  const uy = parseInt(document.getElementById('adFetchUntilYear').value);
-
-  const pad = d => d.toISOString().split('T')[0];
-  document.getElementById('adFetchSince').value = pad(new Date(sy, sm, sd));
-  document.getElementById('adFetchUntil').value = pad(new Date(uy, um, ud));
+  window.adFetchSinceFp = flatpickr("#adFetchSince", { ...fpOpts });
+  window.adFetchUntilFp = flatpickr("#adFetchUntil", { ...fpOpts });
 }
 
 function toast(msg,type='info'){
@@ -840,27 +838,78 @@ function toast(msg,type='info'){
   setTimeout(()=>{el.style.animation='toastOut .3s ease forwards';setTimeout(()=>el.remove(),300)},4000);
 }
 
-let _all=[],_active=null,_hasMappings=false,_reverseCampaigns={},_reverseAdsets={},_appSettings={};
+function formatDateTR(dateStr) {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+  const day = parseInt(parts[2], 10);
+  const month = months[parseInt(parts[1], 10) - 1];
+  const year = parts[0];
+  return `${day} ${month} ${year}`;
+}
+
+let _sortCol = 'donem';
+let _sortDir = 'desc';
+
+function toggleSort(col) {
+  if (_sortCol === col) {
+    _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _sortCol = col;
+    _sortDir = 'desc';
+  }
+  if (_active) selectBranch(_active);
+}
+
+function getSortIcon(col) {
+  if (_sortCol !== col) return '<i data-lucide="arrow-up-down" style="width:12px;height:12px;opacity:0.3;margin-left:4px;vertical-align:middle"></i>';
+  return _sortDir === 'asc' 
+    ? '<i data-lucide="arrow-up" style="width:12px;height:12px;color:var(--accent);margin-left:4px;vertical-align:middle"></i>' 
+    : '<i data-lucide="arrow-down" style="width:12px;height:12px;color:var(--accent);margin-left:4px;vertical-align:middle"></i>';
+}
+
+let _all=[],_active=null,_hasMappings=false,_reverseCampaigns={},_reverseAdsets={},_appSettings={},_googleMappings={},_metaPrefixMappings={};
+// Şube dönem cache'i (şubeye tıklandığında dolar)
+let _donemCache = {};
 
 async function loadDashboard(){
   try{
-    const[dashRes,mapRes,setRes]=await Promise.all([fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/dashboard'),fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/meta-mappings'),fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/settings')]);
+    const[dashRes,mapRes,setRes,gRes]=await Promise.all([
+      fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/dashboard'),
+      fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/meta-mappings'),
+      fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/settings'),
+      fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/google-locations').catch(()=>({ok:false}))
+    ]);
     const{subeler}=await dashRes.json();const mapData=await mapRes.json();
     _appSettings = await setRes.json();
+    if(gRes && gRes.ok) {
+      const gData = await gRes.json();
+      _googleMappings = gData.mappings || {};
+    } else {
+      _googleMappings = {};
+    }
     _all=subeler;_hasMappings=mapData.hasMappings;
     _reverseCampaigns=mapData.reverseCampaigns||{};
     _reverseAdsets=mapData.reverseAdsets||{};
+    _metaPrefixMappings=mapData.mappings||{};
+    _donemCache = {}; // cache'i sıfırla
     // Show toolbar
     if(subeler.length){
       document.getElementById('toolbarBadge').style.display='flex';
-      document.getElementById('metaFetchBtn').style.display=_hasMappings?'':'none';
+      document.getElementById('metaFetchBtn').style.display=_appSettings.metaApiToken?'':'none';
       document.getElementById('campaignMapBtn').style.display=_appSettings.metaApiToken?'':'none';
       document.getElementById('adsetMapBtn').style.display=_appSettings.metaApiToken?'':'none';
+      
+      const hasMeta = !!_appSettings.metaApiToken;
+      const hasGoogle = document.getElementById('googleFetchBtn').style.display !== 'none';
+      document.getElementById('fetchAllBtn').style.display = (hasMeta || hasGoogle) ? '' : 'none';
+      document.getElementById('bulkPdfBtn').style.display = '';
     } else {
       document.getElementById('toolbarBadge').style.display='none';
     }
     renderSidebar(subeler);
-    if(_active)selectBranch(_active);else if(subeler.length)selectBranch(subeler[0].kod);
+    // Otomatik seçim yapma, kullanıcı tıklasın
   }catch(err){console.error(err);toast('Yükleme hatası','error')}
 }
 
@@ -870,10 +919,31 @@ function renderSidebar(subeler){
   if(!subeler.length){list.innerHTML='<div style="padding:24px 16px;text-align:center;color:var(--muted);font-size:12px">Henüz şube yok</div>';return}
   let h='';
   for(const s of subeler){
-    const tS=s.donemler.reduce((a,d)=>a+(d.meta?.harcama||0),0);
+    const tS=s.toplamHarcama||0;
+
+    const isMetaMapped = (_reverseCampaigns[s.kod] && _reverseCampaigns[s.kod].length > 0) || 
+                         (_reverseAdsets[s.kod] && _reverseAdsets[s.kod].length > 0) || 
+                         Object.values(_metaPrefixMappings).some(v => (typeof v === 'object' ? v.sube : v) === s.kod);
+                         
+    const isGoogleMapped = Object.values(_googleMappings).includes(s.kod);
+
+    let iconsHtml = '';
+    if (isMetaMapped || isGoogleMapped) {
+      iconsHtml = '<div style="display:flex;gap:4px;align-items:center;margin-left:auto;opacity:0.8">';
+      if (isMetaMapped) {
+        iconsHtml += '<svg width="12" height="12" viewBox="0 0 24 24" fill="#3b82f6" title="Meta ile eşleşti"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg>';
+      }
+      if (isGoogleMapped) {
+        iconsHtml += '<i data-lucide="map-pin" style="width:12px;height:12px;color:#fb923c" title="Google ile eşleşti"></i>';
+      }
+      iconsHtml += '</div>';
+    }
 
     h+=`<div class="sb-item ${_active===s.kod?'active':''}" id="side-${s.kod}" data-kod="${s.kod}" onclick="selectBranch('${s.kod}')">
-      <div class="sb-item-name">${s.ad}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <div class="sb-item-name" style="margin-bottom:0">${s.ad}</div>
+        ${iconsHtml}
+      </div>
       <div class="sb-item-row"><b>${fmtC(tS)}</b> · ${s.donemSayisi} dönem</div>
     </div>`;
   }
@@ -885,11 +955,26 @@ function filterBranches(){
   renderSidebar(q?_all.filter(s=>s.ad.toLowerCase().includes(q)||s.kod.includes(q)):_all);
 }
 
-function selectBranch(kod){
+async function selectBranch(kod){
   _active=kod;const s=_all.find(b=>b.kod===kod);if(!s)return;
   document.querySelectorAll('.sb-item').forEach(el=>el.classList.toggle('active',el.dataset.kod===kod));
   document.getElementById('welcomeView').style.display='none';
   const dv=document.getElementById('detailView');dv.style.display='block';
+
+  // Dönemleri henüz yüklenmediyse çek
+  if(!_donemCache[kod]){
+    dv.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--muted);gap:8px"><div class="spinner" style="color:var(--accent)"></div> Yükleniyor...</div>';
+    try{
+      const r=await fetch(`https://api-fyfp72cohq-uc.a.run.app/api/reports/sube/${kod}/donemler`);
+      const d=await r.json();
+      _donemCache[kod]=d.donemler||[];
+    }catch(err){
+      dv.innerHTML='<div style="padding:40px;text-align:center;color:var(--rose)">Dönemler yüklenemedi</div>';
+      return;
+    }
+  }
+  s.donemler=_donemCache[kod];
+  s.donemSayisi=s.donemler.length;
 
   const initial=(s.ad.replace(/Sütlüce Kadayıf\s*/i,'')||s.kod).charAt(0).toUpperCase();
   const tS=s.donemler.reduce((a,d)=>a+(d.meta?.harcama||0),0);
@@ -906,7 +991,7 @@ function selectBranch(kod){
       <button class="tool-btn" data-action="edit" data-kod="${s.kod}" onclick="openEditBranchModal(this.dataset.kod)"> 
         <i data-lucide="edit-2" style="width:14px;height:14px"></i> Düzenle
       </button>
-      <button class="tool-btn" onclick="openAddDataModal('${s.kod}')">
+      <button class="tool-btn tool-btn-primary" onclick="openAddDataModal('${s.kod}')">
         <i data-lucide="plus" style="width:14px;height:14px"></i> Veri Ekle
       </button>
     </div>
@@ -917,14 +1002,62 @@ function selectBranch(kod){
     <div class="d-stat"><div class="d-stat-val">${fmt(tV)}</div><div class="d-stat-label">Görünürlük</div></div>
     <div class="d-stat"><div class="d-stat-val">${fmt(tSonuc)}</div><div class="d-stat-label">Sonuç</div></div>
   </div>
-  <div class="d-sec">Dönemler</div>
-  <div class="d-table-wrap"><table class="d-table"><thead><tr><th>Dönem</th><th>Veri</th><th class="r">Harcama</th><th class="r">Erişim</th><th class="r">Sonuç</th><th class="r">Görünürlük</th><th class="r">Telefon</th><th class="r">Yol Tarifi</th><th></th></tr></thead><tbody>`;
+  <div class="d-sec">Dönemler</div>`;
 
-  for(const d of s.donemler){
+  if (s.donemler.length === 0) {
+    h += `<div style="padding:60px 20px;text-align:center;color:var(--muted);background:var(--surface);border-radius:12px;border:1px dashed var(--border);margin-top:12px">
+      <i data-lucide="bar-chart-2" style="width:36px;height:36px;margin-bottom:12px;opacity:0.4;display:inline-block"></i>
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">Henüz Veri Yok</div>
+      <div style="font-size:12px">Bu şube için seçilen tarih aralığında hiçbir rapor verisi bulunmuyor.</div>
+    </div>`;
+  } else {
+    h += `<div class="d-table-wrap"><table class="d-table"><thead><tr>
+      <th onclick="toggleSort('donem')" style="cursor:pointer;user-select:none">Dönem ${getSortIcon('donem')}</th>
+      <th>Veri</th>
+      <th class="r" onclick="toggleSort('harcama')" style="cursor:pointer;user-select:none">Harcama ${getSortIcon('harcama')}</th>
+      <th class="r" onclick="toggleSort('erisim')" style="cursor:pointer;user-select:none">Erişim ${getSortIcon('erisim')}</th>
+      <th class="r" onclick="toggleSort('sonuc')" style="cursor:pointer;user-select:none">Sonuç ${getSortIcon('sonuc')}</th>
+      <th class="r" onclick="toggleSort('gorunurluk')" style="cursor:pointer;user-select:none">Görünürlük ${getSortIcon('gorunurluk')}</th>
+      <th class="r" onclick="toggleSort('telefon')" style="cursor:pointer;user-select:none">Telefon ${getSortIcon('telefon')}</th>
+      <th class="r" onclick="toggleSort('yol_tarifi')" style="cursor:pointer;user-select:none">Yol Tarifi ${getSortIcon('yol_tarifi')}</th>
+      <th></th>
+    </tr></thead><tbody>`;
+
+  const sortedDonemler = [...s.donemler].sort((a, b) => {
+    let valA, valB;
+    if (_sortCol === 'donem') {
+      valA = a.baslangic;
+      valB = b.baslangic;
+    } else if (_sortCol === 'harcama') {
+      valA = a.meta ? (a.meta.harcama || 0) : 0;
+      valB = b.meta ? (b.meta.harcama || 0) : 0;
+    } else if (_sortCol === 'erisim') {
+      valA = a.toplamErisim || (a.meta ? (a.meta.erisim || 0) : 0);
+      valB = b.toplamErisim || (b.meta ? (b.meta.erisim || 0) : 0);
+    } else if (_sortCol === 'sonuc') {
+      valA = a.meta ? (a.meta.sonuc || 0) : 0;
+      valB = b.meta ? (b.meta.sonuc || 0) : 0;
+    } else if (_sortCol === 'gorunurluk') {
+      valA = a.google ? (a.google.gorunurluk || 0) : 0;
+      valB = b.google ? (b.google.gorunurluk || 0) : 0;
+    } else if (_sortCol === 'telefon') {
+      valA = a.google ? (a.google.telefon || 0) : 0;
+      valB = b.google ? (b.google.telefon || 0) : 0;
+    } else if (_sortCol === 'yol_tarifi') {
+      valA = a.google ? (a.google.yolTarifi || 0) : 0;
+      valB = b.google ? (b.google.yolTarifi || 0) : 0;
+    }
+    
+    if (valA < valB) return _sortDir === 'asc' ? -1 : 1;
+    if (valA > valB) return _sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  for(const d of sortedDonemler){
     const hM=!!d.meta,hG=!!d.google;
     const tag=hM&&hG?'<span class="d-tag both">Meta + Google</span>':hM?'<span class="d-tag meta">Meta</span>':'<span class="d-tag google">Google</span>';
     h+=`<tr>
-      <td><span class="date-badge">${d.baslangic} → ${d.bitis}</span></td>
+      <td><span class="date-badge">${formatDateTR(d.baslangic)} → ${formatDateTR(d.bitis)}</span></td>
       <td>${tag}</td>
       <td class="r" style="font-weight:700;color:var(--accent)">${hM?fmtC(d.meta.harcama):'—'}</td>
       <td class="r" style="font-weight:700">${hM?fmt(d.toplamErisim||d.meta.erisim):'—'}</td>
@@ -933,16 +1066,15 @@ function selectBranch(kod){
       <td class="r">${hG?fmt(d.google.telefon):'—'}</td>
       <td class="r">${hG?fmt(d.google.yolTarifi):'—'}</td>
       <td><div class="d-actions">
-        <button class="d-btn d-btn-view" style="color:#a5b4fc;background:rgba(99,102,241,0.1);border-color:rgba(99,102,241,0.2)" onclick="openDataEdit('${s.kod}','${d.baslangic}','${d.bitis}')"><i data-lucide="sliders-horizontal" style="width:10px;height:10px"></i> Düzenle</button>
-        <button class="d-btn d-btn-view" onclick="previewReport('${s.kod}','${s.ad.replace(/'/g,"\\'")}','${d.baslangic}','${d.bitis}')"><i data-lucide="eye" style="width:10px;height:10px"></i> Önizle</button>
-        ${d.rapor
-          ?`<a href="${d.rapor.url}" download="${d.rapor.dosya}" class="d-btn d-btn-pdf"><i data-lucide="file-down" style="width:10px;height:10px"></i> İndir</a>`
-          :`<button class="d-btn d-btn-pdf" onclick="genReport('${s.kod}','${s.ad.replace(/'/g,"\\'")}','${d.baslangic}','${d.bitis}',this)"><i data-lucide="file-bar-chart" style="width:10px;height:10px"></i> PDF</button>`}
-        <button class="d-btn" style="color:#f87171;background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.2)" onclick="deleteDonem('${s.kod}','${d.baslangic}','${d.bitis}')"><i data-lucide="trash-2" style="width:10px;height:10px"></i></button>
+        <button class="d-btn d-btn-edit" title="Düzenle" onclick="openDataEdit('${s.kod}','${d.baslangic}','${d.bitis}')"><i data-lucide="sliders-horizontal" style="width:12px;height:12px"></i></button>
+        <button class="d-btn d-btn-view" title="Önizle" onclick="previewReport('${s.kod}','${s.ad.replace(/'/g,"\\'")}','${d.baslangic}','${d.bitis}')"><i data-lucide="eye" style="width:12px;height:12px"></i></button>
+        <button class="d-btn d-btn-pdf" title="PDF İndir" onclick="genReport('${s.kod}','${s.ad.replace(/'/g,"\\'")}','${d.baslangic}','${d.bitis}',this)"><i data-lucide="file-down" style="width:12px;height:12px"></i></button>
+        <button class="d-btn d-btn-del" title="Sil" onclick="deleteDonem('${s.kod}','${d.baslangic}','${d.bitis}')"><i data-lucide="trash-2" style="width:12px;height:12px"></i></button>
       </div></td>
     </tr>`;
+    }
+    h+='</tbody></table></div>';
   }
-  h+='</tbody></table></div>';
   dv.innerHTML=h;lucide.createIcons();document.getElementById('contentArea').scrollTop=0;
 }
 
@@ -958,17 +1090,42 @@ function closePreview(){document.getElementById('previewOverlay').classList.remo
 
 async function downloadFromPreview(){
   const btn=document.getElementById('prevDlBtn');btn.disabled=true;btn.innerHTML='<div class="spinner"></div>';
-  try{const r=await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/rapor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subeKod:_pk,donemBaslangic:_pb,donemBitis:_pe})});const d=await r.json();
-  if(r.ok){Object.assign(document.createElement('a'),{href:d.pdfUrl,download:d.fileName}).click();toast('PDF indirildi!','success')}else toast(d.error,'error')}catch{toast('Bağlantı hatası','error')}
+  try{
+    const r=await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/generate-pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subeKod:_pk,donemBaslangic:_pb,donemBitis:_pe})});
+    if(r.ok){
+      const blob = await r.blob();
+      const filename = r.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'Rapor.pdf';
+      const url = window.URL.createObjectURL(blob);
+      Object.assign(document.createElement('a'),{href:url,download:decodeURIComponent(filename)}).click();
+      window.URL.revokeObjectURL(url);
+      toast('PDF indirildi!','success');
+    } else {
+      const d=await r.json();
+      toast(d.error||'Hata','error');
+    }
+  }catch{toast('Bağlantı hatası','error')}
   btn.disabled=false;btn.innerHTML='<i data-lucide="download" style="width:11px;height:11px"></i> PDF İndir';lucide.createIcons({nodes:[btn]});
 }
 
 async function genReport(kod,ad,b,e,btn){
   btn.disabled=true;btn.innerHTML='<div class="spinner"></div>';
-  try{const r=await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/rapor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subeKod:kod,donemBaslangic:b,donemBitis:e})});const d=await r.json();
-  if(r.ok){Object.assign(document.createElement('a'),{href:d.pdfUrl,download:d.fileName}).click();toast(`${ad} raporu oluşturuldu!`,'success');loadDashboard()}
-  else{toast(d.error,'error');btn.disabled=false;btn.innerHTML='<i data-lucide="file-bar-chart" style="width:10px;height:10px"></i> PDF';lucide.createIcons({nodes:[btn]})}}
-  catch{toast('Hata','error');btn.disabled=false;btn.innerHTML='<i data-lucide="file-bar-chart" style="width:10px;height:10px"></i> PDF';lucide.createIcons({nodes:[btn]})}
+  try{
+    const r=await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/generate-pdf',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subeKod:kod,donemBaslangic:b,donemBitis:e})});
+    if(r.ok){
+      const blob = await r.blob();
+      const filename = r.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'Rapor.pdf';
+      const url = window.URL.createObjectURL(blob);
+      Object.assign(document.createElement('a'),{href:url,download:decodeURIComponent(filename)}).click();
+      window.URL.revokeObjectURL(url);
+      toast(`${ad} raporu oluşturuldu!`,'success');
+      btn.disabled=false;btn.innerHTML='PDF';
+    } else {
+      const d=await r.json();
+      toast(d.error||'Hata','error');
+      btn.disabled=false;btn.innerHTML='PDF';
+    }
+  }
+  catch{toast('Hata','error');btn.disabled=false;btn.innerHTML='PDF';}
 }
 
 // ── Toplu Meta API Çekme ──
@@ -995,7 +1152,28 @@ async function globalMetaFetch(){
       } else {toast(d.error||'Hata','error');status.textContent=''}
     }
   }catch{toast('Bağlantı hatası','error');status.textContent=''}
-  finally{btn.disabled=false;btn.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg> Meta Toplu Çek'}
+  finally{btn.disabled=false;btn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg> Meta'; lucide.createIcons({nodes:[btn]});}
+}
+
+async function globalFetchAll() {
+  const metaBtn = document.getElementById('metaFetchBtn');
+  const googleBtn = document.getElementById('googleFetchBtn');
+  const allBtn = document.getElementById('fetchAllBtn');
+  
+  const promises = [];
+  if (metaBtn && metaBtn.style.display !== 'none') promises.push(globalMetaFetch());
+  if (googleBtn && googleBtn.style.display !== 'none') promises.push(globalGoogleFetch());
+  
+  if (promises.length === 0) return toast('Bağlı hesap bulunamadı.', 'info');
+  
+  allBtn.disabled = true;
+  allBtn.innerHTML = '<div class="spinner"></div> Çekiliyor...';
+  
+  await Promise.allSettled(promises);
+  
+  allBtn.disabled = false;
+  allBtn.innerHTML = '<i data-lucide="download-cloud" style="width:14px;height:14px"></i> Tümünü Çek';
+  lucide.createIcons({nodes:[allBtn]});
 }
 
 /* Kampanya Eşleştirme */
@@ -1100,10 +1278,17 @@ async function openAdsetModal() {
   await loadAdsets();
 }
 
-async function loadAdsets() {
+async function loadAdsets(forceRefresh = false) {
   const list = document.getElementById('adsetList');
-  list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)"><i data-lucide="loader-2" class="spin" style="width:20px;height:20px"></i></div>';
+  list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)"><i data-lucide="loader-2" class="spin" style="width:20px;height:20px"></i> Yükleniyor...</div>';
   lucide.createIcons({nodes:[list]});
+  
+  const refreshBtn = document.getElementById('refreshAdsetsBtn');
+  if (refreshBtn) {
+    refreshBtn.disabled = true;
+    refreshBtn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:14px;height:14px"></i> Yenile';
+    lucide.createIcons({nodes:[refreshBtn]});
+  }
 
   const token = _appSettings.metaApiToken;
   if (!token) { list.innerHTML = '<p style="color:#f87171;text-align:center;padding:20px">Meta token bulunamadı. Ayarlardan ayarlayın.</p>'; return; }
@@ -1115,7 +1300,7 @@ async function loadAdsets() {
     const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/meta-adsets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accessToken: token, since, until })
+      body: JSON.stringify({ accessToken: token, since, until, forceRefresh })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
@@ -1151,6 +1336,13 @@ async function loadAdsets() {
     document.getElementById('adsetCount').textContent = `${adsets.length} reklam seti (gösteriliyor)`;
   } catch (err) {
     list.innerHTML = `<p style="color:#f87171;text-align:center;padding:20px">${err.message}</p>`;
+  } finally {
+    const refreshBtn = document.getElementById('refreshAdsetsBtn');
+    if (refreshBtn) {
+      refreshBtn.disabled = false;
+      refreshBtn.innerHTML = '<i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Yenile';
+      lucide.createIcons({nodes:[refreshBtn]});
+    }
   }
 }
 
@@ -1280,38 +1472,65 @@ async function saveSettingsModal() {
 }
 
 
-// ── Toplu PDF İndir (SSE + Progress) ──
+// ── Toplu PDF İndir (Memory ZIP) ──
 async function bulkDownloadPdf(){
   const since=document.getElementById('globalSince').value;
   const until=document.getElementById('globalUntil').value;
   if(!since||!until)return toast('Önce tarih seçin.','error');
 
   const overlay=document.getElementById('progressOverlay');
-  const bar=document.getElementById('progBar');
   const sube=document.getElementById('progSube');
   const count=document.getElementById('progCount');
   const time=document.getElementById('progTime');
-  overlay.classList.add('active');bar.style.width='0%';
+  overlay.classList.add('active');
+  sube.textContent = '📦 Toplu ZIP hazırlanıyor...';
+  count.textContent = 'Tüm şubeler (Havada Üretiliyor)';
+  time.textContent = 'Bu işlem şube sayısına göre birkaç saniye sürebilir...';
 
-  const es=new EventSource(`/api/bulk-pdf-stream?since=${since}&until=${until}`);
-  es.onmessage=e=>{
-    const d=JSON.parse(e.data);
-    switch(d.type){
-      case'scanning':sube.textContent=d.sube?`Taranıyor: ${d.sube}`:'Veriler taranıyor...';if(d.current!=null)count.textContent=`${d.current}/${d.total} tarandı`;time.textContent='Şubeler tespit ediliyor...';break;
-      case'start':count.textContent=`0/${d.total}`;break;
-      case'progress':{const pct=Math.round(d.current/d.total*100);bar.style.width=pct+'%';sube.textContent=d.sube;count.textContent=`${d.current}/${d.total}`;const em=Math.floor(d.eta/60),es2=d.eta%60;time.textContent=`${d.elapsed}s | ~${em>0?em+'dk ':''}${es2}s kaldı`;break}
-      case'zipping':sube.textContent='📦 ZIP oluşturuluyor...';bar.style.width='100%';break;
-      case'done':es.close();overlay.classList.remove('active');{const a=document.createElement('a');a.href=d.downloadUrl;a.download='';document.body.appendChild(a);a.click();a.remove()}toast(`✓ ${d.count} PDF, ZIP olarak indirildi (${d.elapsed}s)`,'success');break;
-      case'error':es.close();overlay.classList.remove('active');toast(d.message,'error');break;
+  try {
+    const subeKodlari = _all.map(s => s.kod);
+    const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/generate-pdf-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subeKodlari, donemBaslangic: since, donemBitis: until })
+    });
+    
+    if (res.ok) {
+      const blob = await res.blob();
+      const filename = res.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'Raporlar.zip';
+      const url = window.URL.createObjectURL(blob);
+      Object.assign(document.createElement('a'),{href:url,download:decodeURIComponent(filename)}).click();
+      window.URL.revokeObjectURL(url);
+      toast('Tüm PDF\'ler ZIP olarak indirildi!','success');
+    } else {
+      const d = await res.json();
+      toast(d.error || 'ZIP oluşturulamadı.','error');
     }
-  };
-  es.onerror=()=>{es.close();overlay.classList.remove('active');toast('Bağlantı hatası','error')};
+  } catch (err) {
+    toast('Bağlantı hatası','error');
+  } finally {
+    overlay.classList.remove('active');
+  }
 }
 
   /* Add Data Logic */
   function openAddDataModal(kod) {
     document.getElementById('adSubeKod').value = kod;
     document.getElementById('addDataForm').reset();
+    
+    const now = new Date();
+    const curMonth = now.getMonth();
+    const curYear = now.getFullYear();
+    const lastDay = new Date(curYear, curMonth + 1, 0).getDate();
+    
+    const pad = n => String(n).padStart(2, '0');
+    
+    const sinceStr = `${curYear}-${pad(curMonth + 1)}-01`;
+    const untilStr = `${curYear}-${pad(curMonth + 1)}-${pad(lastDay)}`;
+    
+    if (window.adFetchSinceFp) window.adFetchSinceFp.setDate(sinceStr);
+    if (window.adFetchUntilFp) window.adFetchUntilFp.setDate(untilStr);
+    
     document.getElementById('addDataOverlay').classList.add('active');
   }
   function closeAddData() { document.getElementById('addDataOverlay').classList.remove('active'); }
@@ -1399,6 +1618,25 @@ async function bulkDownloadPdf(){
     }
   }
 
+  async function fetchAllForBranch() {
+    const since = document.getElementById('adFetchSince').value;
+    const until = document.getElementById('adFetchUntil').value;
+    if (!since || !until) return toast('Tarih aralığı seçin.', 'info');
+
+    const allBtn = document.getElementById('adFetchAllBtn');
+    allBtn.disabled = true;
+    allBtn.innerHTML = '<i data-lucide="loader-2" class="spin" style="width:13px;height:13px"></i> Çekiliyor...';
+    lucide.createIcons({nodes:[allBtn]});
+
+    try {
+      await Promise.allSettled([fetchMetaForBranch(), fetchGoogleForBranch()]);
+    } finally {
+      allBtn.disabled = false;
+      allBtn.innerHTML = '<i data-lucide="download-cloud" style="width:13px;height:13px"></i> Tümünü Çek';
+      lucide.createIcons({nodes:[allBtn]});
+    }
+  }
+
   async function submitAddData() {
     const metaCsv = document.getElementById('adMetaCsv').files[0];
     const googleCsv = document.getElementById('adGoogleCsv').files[0];
@@ -1432,15 +1670,38 @@ async function bulkDownloadPdf(){
   }
 
   /* Data Edit Logic */
+  function fmtThousand(e) {
+    let raw = e.target.value;
+    let isNegative = raw.startsWith('-');
+    let val = raw.replace(/[^0-9,]/g, ''); 
+    if(val === '' && !isNegative) { e.target.value = ''; return; }
+    if(val === '' && isNegative) { e.target.value = '-'; return; }
+    let parts = val.split(',');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    if(parts.length > 2) parts = [parts[0], parts.slice(1).join('')];
+    e.target.value = (isNegative ? '-' : '') + parts.join(',');
+  }
+
+  function toggleDevredilenWarn(el, warnId) {
+    const warnDiv = document.getElementById(warnId);
+    if(warnDiv) {
+      warnDiv.style.display = el.value.startsWith('-') ? 'block' : 'none';
+    }
+  }
+
   async function openDataEdit(kod, baslangic, bitis) {
     document.getElementById('deKod').value = kod;
     document.getElementById('deBaslangic').value = baslangic;
     document.getElementById('deBitis').value = bitis;
-    document.getElementById('deDonemLabel').textContent = baslangic + ' → ' + bitis;
+    document.getElementById('deDonemLabel').textContent = formatDateTR(baslangic) + ' → ' + formatDateTR(bitis);
     document.getElementById('dataEditOverlay').classList.add('active');
-    lucide.createIcons();
+    
+    const loader = document.getElementById('deLoading');
+    loader.style.opacity = '1';
+    loader.style.pointerEvents = 'all';
 
     ['deHarcama','deErisim','deGosterim','deSonuc','deTiklama','deTiklamaTumu','dePaylasim','deYorum','deMesaj','deGoogleArama','deGoogleHarita','deGoogleYol','deGoogleTelefon','deGoogleWeb','deGoogleMenu','dePlanlananButce','deDevredilenMiktar'].forEach(id => document.getElementById(id).value = '');
+    lucide.createIcons();
 
     try {
       const res = await fetch(`https://api-fyfp72cohq-uc.a.run.app/api/reports/sube/${kod}/donem/veriler?baslangic=${baslangic}&bitis=${bitis}`);
@@ -1449,31 +1710,39 @@ async function bulkDownloadPdf(){
 
       const c = data.computed;
       const o = data.overrides || {};
-      document.getElementById('deHarcama').value = o.toplamHarcama ?? c.toplamHarcama ?? '';
-      document.getElementById('deErisim').value = o.toplamErisim ?? c.toplamErisim ?? '';
-      document.getElementById('deGosterim').value = o.toplamGosterim ?? c.toplamGosterim ?? '';
-      document.getElementById('deSonuc').value = o.toplamSonuc ?? c.toplamSonuc ?? '';
-      document.getElementById('deTiklama').value = o.toplamTiklama ?? c.toplamTiklama ?? '';
-      document.getElementById('deTiklamaTumu').value = o.toplamTiklamaTumu ?? c.toplamTiklamaTumu ?? '';
-      document.getElementById('dePaylasim').value = o.toplamPaylasim ?? c.toplamPaylasim ?? '';
-      document.getElementById('deYorum').value = o.toplamYorum ?? c.toplamYorum ?? '';
-      document.getElementById('deMesaj').value = o.toplamMesaj ?? c.toplamMesaj ?? '';
-      document.getElementById('deGoogleArama').value = o.googleArama ?? c.googleArama ?? '';
-      document.getElementById('deGoogleHarita').value = o.googleHarita ?? c.googleHarita ?? '';
-      document.getElementById('deGoogleYol').value = o.googleYolTarifi ?? c.googleYolTarifi ?? '';
-      document.getElementById('deGoogleTelefon').value = o.googleTelefon ?? c.googleTelefon ?? '';
-      document.getElementById('deGoogleWeb').value = o.googleWebTiklama ?? c.googleWebTiklama ?? '';
-      document.getElementById('deGoogleMenu').value = o.googleMenuTiklama ?? c.googleMenuTiklama ?? '';
-      document.getElementById('dePlanlananButce').value = o.planlananButce ?? c.planlananButce ?? '';
-      document.getElementById('deDevredilenMiktar').value = o.devredilenMiktar ?? c.devredilenMiktar ?? '';
+      const setV = (id, val) => document.getElementById(id).value = (val == null || val === '') ? '' : val.toString().replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+      setV('deHarcama', o.toplamHarcama ?? c.toplamHarcama);
+      setV('deErisim', o.toplamErisim ?? c.toplamErisim);
+      setV('deGosterim', o.toplamGosterim ?? c.toplamGosterim);
+      setV('deSonuc', o.toplamSonuc ?? c.toplamSonuc);
+      setV('deTiklama', o.toplamTiklama ?? c.toplamTiklama);
+      setV('deTiklamaTumu', o.toplamTiklamaTumu ?? c.toplamTiklamaTumu);
+      setV('dePaylasim', o.toplamPaylasim ?? c.toplamPaylasim);
+      setV('deYorum', o.toplamYorum ?? c.toplamYorum);
+      setV('deMesaj', o.toplamMesaj ?? c.toplamMesaj);
+      setV('deGoogleArama', o.googleArama ?? c.googleArama);
+      setV('deGoogleHarita', o.googleHarita ?? c.googleHarita);
+      setV('deGoogleYol', o.googleYolTarifi ?? c.googleYolTarifi);
+      setV('deGoogleTelefon', o.googleTelefon ?? c.googleTelefon);
+      setV('deGoogleWeb', o.googleWebTiklama ?? c.googleWebTiklama);
+      setV('deGoogleMenu', o.googleMenuTiklama ?? c.googleMenuTiklama);
+      setV('dePlanlananButce', o.planlananButce ?? c.planlananButce);
+      setV('deDevredilenMiktar', o.devredilenMiktar ?? c.devredilenMiktar);
+      
+      toggleDevredilenWarn(document.getElementById('deDevredilenMiktar'), 'deDevredilenWarn');
+      
       lucide.createIcons();
     } catch (err) { toast('Veri yüklenemedi', 'error'); closeDataEdit(); }
+    finally {
+      loader.style.opacity = '0';
+      loader.style.pointerEvents = 'none';
+    }
   }
 
   function closeDataEdit() { document.getElementById('dataEditOverlay').classList.remove('active'); }
 
   async function deleteDonem(kod, baslangic, bitis) {
-    if (!confirm(`${baslangic} → ${bitis} dönemine ait tüm verileri silmek istediğinize emin misiniz?`)) return;
+    if (!confirm(`${formatDateTR(baslangic)} → ${formatDateTR(bitis)} dönemine ait tüm verileri silmek istediğinize emin misiniz?`)) return;
     try {
       const res = await fetch(`https://api-fyfp72cohq-uc.a.run.app/api/reports/sube/${kod}/donem?baslangic=${baslangic}&bitis=${bitis}`, { method: 'DELETE' });
       const data = await res.json();
@@ -1490,24 +1759,25 @@ async function bulkDownloadPdf(){
     const baslangic = document.getElementById('deBaslangic').value;
     const bitis = document.getElementById('deBitis').value;
 
+    const getV = (id) => { const v = document.getElementById(id).value.replace(/\./g, '').replace(/,/g, '.'); return v ? parseFloat(v) : 0; };
     const overrides = {
-      toplamHarcama: parseFloat(document.getElementById('deHarcama').value) || 0,
-      toplamErisim: parseInt(document.getElementById('deErisim').value) || 0,
-      toplamGosterim: parseInt(document.getElementById('deGosterim').value) || 0,
-      toplamSonuc: parseInt(document.getElementById('deSonuc').value) || 0,
-      toplamTiklama: parseInt(document.getElementById('deTiklama').value) || 0,
-      toplamTiklamaTumu: parseInt(document.getElementById('deTiklamaTumu').value) || 0,
-      toplamPaylasim: parseInt(document.getElementById('dePaylasim').value) || 0,
-      toplamYorum: parseInt(document.getElementById('deYorum').value) || 0,
-      toplamMesaj: parseInt(document.getElementById('deMesaj').value) || 0,
-      googleArama: parseInt(document.getElementById('deGoogleArama').value) || 0,
-      googleHarita: parseInt(document.getElementById('deGoogleHarita').value) || 0,
-      googleYolTarifi: parseInt(document.getElementById('deGoogleYol').value) || 0,
-      googleTelefon: parseInt(document.getElementById('deGoogleTelefon').value) || 0,
-      googleWebTiklama: parseInt(document.getElementById('deGoogleWeb').value) || 0,
-      googleMenuTiklama: parseInt(document.getElementById('deGoogleMenu').value) || 0,
-      planlananButce: parseFloat(document.getElementById('dePlanlananButce').value) || 0,
-      devredilenMiktar: parseFloat(document.getElementById('deDevredilenMiktar').value) || 0,
+      toplamHarcama: getV('deHarcama'),
+      toplamErisim: getV('deErisim'),
+      toplamGosterim: getV('deGosterim'),
+      toplamSonuc: getV('deSonuc'),
+      toplamTiklama: getV('deTiklama'),
+      toplamTiklamaTumu: getV('deTiklamaTumu'),
+      toplamPaylasim: getV('dePaylasim'),
+      toplamYorum: getV('deYorum'),
+      toplamMesaj: getV('deMesaj'),
+      googleArama: getV('deGoogleArama'),
+      googleHarita: getV('deGoogleHarita'),
+      googleYolTarifi: getV('deGoogleYol'),
+      googleTelefon: getV('deGoogleTelefon'),
+      googleWebTiklama: getV('deGoogleWeb'),
+      googleMenuTiklama: getV('deGoogleMenu'),
+      planlananButce: getV('dePlanlananButce'),
+      devredilenMiktar: getV('deDevredilenMiktar'),
     };
 
     const btn = document.getElementById('dataEditSaveBtn');
@@ -1563,13 +1833,13 @@ async function bulkDownloadPdf(){
   /* Edit Branch Logic */
   function openEditBranchModal(kod) {
     const sube = _all.find(s => s.kod === kod);
+    document.getElementById('ebModalTitle').innerHTML = `<i data-lucide="settings" style="width:16px;height:16px;color:#60a5fa"></i> ${sube ? sube.ad : 'Şube'} Entegrasyon Ayarları`;
     document.getElementById('ebKod').value = kod;
     document.getElementById('ebKodDisplay').value = kod;
     document.getElementById('ebAd').value = sube ? sube.ad : '';
     document.getElementById('ebAdres').value = sube ? (sube.adres || '') : '';
     document.getElementById('editBranchOverlay').classList.add('active');
     lucide.createIcons();
-    setTimeout(() => document.getElementById('ebAd').focus(), 100);
     loadMetaPrefixes(kod);
     loadGoogleLocations(kod);
   }
@@ -1710,9 +1980,14 @@ async function bulkDownloadPdf(){
     } catch(e) { toast('Bağlantı hatası', 'error'); }
   }
 
+  let _googleLocationsList = [];
+
   async function loadGoogleLocations(subeKod) {
-    const sel = document.getElementById('ebGoogleLocation');
-    sel.innerHTML = '<option value="">Yükleniyor...</option>';
+    const listDiv = document.getElementById('ebGoogleList');
+    document.getElementById('ebGoogleSearch').value = '';
+    listDiv.innerHTML = '<div style="padding:14px;color:var(--muted);text-align:center;font-size:12px"><i data-lucide="loader-2" class="spin" style="width:16px;height:16px;margin:auto"></i></div>';
+    lucide.createIcons();
+    
     try {
       const res = await fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/google-locations');
       const data = await res.json();
@@ -1724,15 +1999,48 @@ async function bulkDownloadPdf(){
         if (sKod === subeKod) { currentLoc = locName; break; }
       }
 
-      let html = '<option value="">— Bağlı değil —</option>';
-      for (const loc of data.locations) {
-        const selected = loc.name === currentLoc ? 'selected' : '';
-        html += `<option value="${loc.name}" ${selected}>${loc.title}</option>`;
-      }
-      sel.innerHTML = html;
+      document.getElementById('ebGoogleLocation').value = currentLoc;
+      _googleLocationsList = data.locations || [];
+      renderGoogleLocations(currentLoc);
     } catch (err) {
-      sel.innerHTML = `<option value="">— Google bağlı değil —</option>`;
+      listDiv.innerHTML = `<div style="padding:14px;color:#f87171;text-align:center;font-size:12px">— Google bağlı değil —</div>`;
     }
+  }
+
+  window.selectGoogleLoc = function(locName) {
+    document.getElementById('ebGoogleLocation').value = locName;
+    renderGoogleLocations(locName);
+  }
+
+  window.filterGoogleLocations = function() {
+    renderGoogleLocations(document.getElementById('ebGoogleLocation').value);
+  }
+
+  function renderGoogleLocations(selectedLoc) {
+    const q = (document.getElementById('ebGoogleSearch').value || '').toLowerCase().trim();
+    const listDiv = document.getElementById('ebGoogleList');
+    
+    let html = `
+      <div onclick="selectGoogleLoc('')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:${selectedLoc === '' ? 'rgba(251,146,60,.06)' : 'transparent'};transition:background 0.2s">
+        <div style="width:16px;height:16px;flex-shrink:0;border-radius:50%;border:1px solid ${selectedLoc === '' ? '#fb923c' : 'var(--border)'};background:${selectedLoc === '' ? '#fb923c' : 'transparent'};display:flex;align-items:center;justify-content:center">
+          ${selectedLoc === '' ? '<div style="width:6px;height:6px;border-radius:50%;background:#fff"></div>' : ''}
+        </div>
+        <span style="font-size:12px;color:var(--text);font-weight:${selectedLoc === '' ? '600' : '400'}">— Bağlı değil —</span>
+      </div>`;
+
+    for (const loc of _googleLocationsList) {
+      if (q && !loc.title.toLowerCase().includes(q)) continue;
+      
+      const isSelected = loc.name === selectedLoc;
+      html += `
+        <div onclick="selectGoogleLoc('${loc.name}')" style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:${isSelected ? 'rgba(251,146,60,.06)' : 'transparent'};transition:background 0.2s">
+          <div style="width:16px;height:16px;flex-shrink:0;border-radius:50%;border:1px solid ${isSelected ? '#fb923c' : 'var(--border)'};background:${isSelected ? '#fb923c' : 'transparent'};display:flex;align-items:center;justify-content:center">
+            ${isSelected ? '<div style="width:6px;height:6px;border-radius:50%;background:#fff"></div>' : ''}
+          </div>
+          <span style="font-size:12px;color:var(--text);font-weight:${isSelected ? '600' : '400'}">${loc.title}</span>
+        </div>`;
+    }
+    listDiv.innerHTML = html;
   }
 
   async function checkGoogleStatus() {
@@ -1744,6 +2052,8 @@ async function bulkDownloadPdf(){
       if (data.connected) {
         if (fetchBtn) fetchBtn.style.display = '';
         if (connBtn) connBtn.style.display = 'none';
+        const allBtn = document.getElementById('fetchAllBtn');
+        if (allBtn) allBtn.style.display = '';
       } else {
         if (fetchBtn) fetchBtn.style.display = 'none';
         if (connBtn) connBtn.style.display = '';

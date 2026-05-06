@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, basename } from 'path';
 import { parse } from 'csv-parse/sync';
-import { upsertSube, upsertMetaVeri, upsertGoogleVeri, getSubeByKod, getAllSubeler } from '../db.js';
+import { upsertSube, upsertMetaToplanlar, upsertGoogleToplanlar, getSubeByKod, getAllSubeler } from '../db.js';
 
 // ── Türkçe sütun eşleme ──
 
@@ -93,6 +93,45 @@ function mapRow(row, columnMap) {
   return mapped;
 }
 
+/**
+ * Meta CSV satırlarını dönem bazında gruplayıp toplamları hesaplar.
+ * Her dönem için tek doküman yazılır.
+ */
+function aggregateMetaRows(mappedRows) {
+  // Dönem bazında grupla
+  const groups = {};
+  for (const row of mappedRows) {
+    if (!row.donem_baslangic || !row.donem_bitis) continue;
+    const key = `${row.donem_baslangic}_${row.donem_bitis}`;
+    if (!groups[key]) {
+      groups[key] = {
+        donem_baslangic: row.donem_baslangic,
+        donem_bitis: row.donem_bitis,
+        harcama: 0,
+        erisim: 0,
+        gosterim: 0,
+        sonuc: 0,
+        tiklama: 0,
+        tiklama_tumu: 0,
+        mesaj: 0,
+        yorum: 0,
+        paylasim: 0,
+      };
+    }
+    const g = groups[key];
+    g.harcama += parseNum(row.harcama);
+    g.erisim += parseInt2(row.erisim);
+    g.gosterim += parseInt2(row.gosterim);
+    g.sonuc += parseInt2(row.sonuc);
+    g.tiklama += parseInt2(row.baglanti_tiklamalari);
+    g.tiklama_tumu += parseInt2(row.tiklamalar_tumu);
+    g.mesaj += parseInt2(row.mesajlasmalar);
+    g.yorum += parseInt2(row.yorumlar);
+    g.paylasim += parseInt2(row.paylasimlar);
+  }
+  return Object.values(groups);
+}
+
 // ── Meta Import ──
 
 export async function importMetaCsv(buffer, subeKod) {
@@ -105,48 +144,24 @@ export async function importMetaCsv(buffer, subeKod) {
   });
 
   if (records.length === 0) {
-    console.log('⚠️  Boş CSV dosyası:', filePath);
+    console.log('⚠️  Boş CSV dosyası');
     return 0;
   }
 
   // Şube oluştur/güncelle
   const sube = await upsertSube(subeKod, `Sütlüce Kadayıf ${subeKod.charAt(0).toUpperCase() + subeKod.slice(1)}`);
 
+  // Satırları map'le
+  const mappedRows = records.map(row => mapRow(row, META_COLUMN_MAP));
+  
+  // Toplamları hesapla ve dönem bazında grupla
+  const donemToplamlari = aggregateMetaRows(mappedRows);
+
+  // Her dönem için tek doküman yaz
   let count = 0;
-  for (const row of records) {
-    const mapped = mapRow(row, META_COLUMN_MAP);
-    
-    if (!mapped.donem_baslangic || !mapped.donem_bitis) continue;
-
-    const veri = {
-      donem_baslangic: mapped.donem_baslangic,
-      donem_bitis: mapped.donem_bitis,
-      reklam_seti: mapped.reklam_seti || 'Bilinmiyor',
-      durum: mapped.durum || '',
-      harcama: parseNum(mapped.harcama),
-      erisim: parseInt2(mapped.erisim),
-      gosterim: parseInt2(mapped.gosterim),
-      sonuc: parseInt2(mapped.sonuc),
-      sonuc_basina_ucret: parseNum(mapped.sonuc_basina_ucret),
-      siklik: parseNum(mapped.siklik),
-      hook_rate: parseNum(mapped.hook_rate),
-      hold_rate: parseNum(mapped.hold_rate),
-      ctr: parseNum(mapped.ctr),
-      ctr_link: parseNum(mapped.ctr_link),
-      cpc: parseNum(mapped.cpc),
-      cpc_link: parseNum(mapped.cpc_link),
-      cpm: parseNum(mapped.cpm),
-      baglanti_tiklamalari: parseInt2(mapped.baglanti_tiklamalari),
-      tiklamalar_tumu: parseInt2(mapped.tiklamalar_tumu),
-      mesajlasmalar: parseInt2(mapped.mesajlasmalar),
-      mesaj_basina_ucret: parseNum(mapped.mesaj_basina_ucret),
-      telefon_aramalari: parseInt2(mapped.telefon_aramalari),
-      yorumlar: parseInt2(mapped.yorumlar),
-      paylasimlar: parseInt2(mapped.paylasimlar),
-    };
-
-    await upsertMetaVeri(sube.id, veri);
-    count++;
+  for (const toplam of donemToplamlari) {
+    await upsertMetaToplanlar(sube.kod, toplam.donem_baslangic, toplam.donem_bitis, toplam);
+    count += mappedRows.filter(r => r.donem_baslangic === toplam.donem_baslangic && r.donem_bitis === toplam.donem_bitis).length;
   }
 
   return count;
@@ -174,7 +189,7 @@ export async function importGoogleCsv(buffer, subeKod, originalFilename = null) 
   });
 
   if (records.length === 0) {
-    console.log('⚠️  Boş CSV dosyası:', filePath);
+    console.log('⚠️  Boş CSV dosyası');
     return 0;
   }
 
@@ -193,25 +208,16 @@ export async function importGoogleCsv(buffer, subeKod, originalFilename = null) 
     const ad = mapped.isletme_adi || `Sütlüce Kadayıf ${subeKod.charAt(0).toUpperCase() + subeKod.slice(1)}`;
     const sube = await upsertSube(subeKod, ad, mapped.adres || null);
 
-    const veri = {
-      donem_baslangic: dates.baslangic,
-      donem_bitis: dates.bitis,
-      magaza_kodu: mapped.magaza_kodu || '',
-      arama_mobil: parseInt2(mapped.arama_mobil),
-      arama_masaustu: parseInt2(mapped.arama_masaustu),
-      harita_mobil: parseInt2(mapped.harita_mobil),
-      harita_masaustu: parseInt2(mapped.harita_masaustu),
-      telefon: parseInt2(mapped.telefon),
-      mesajlar: parseInt2(mapped.mesajlar),
-      rezervasyonlar: parseInt2(mapped.rezervasyonlar),
-      yol_tarifi: parseInt2(mapped.yol_tarifi),
-      web_tiklama: parseInt2(mapped.web_tiklama),
-      yemek_siparisleri: parseInt2(mapped.yemek_siparisleri),
-      menu_tiklama: parseInt2(mapped.menu_tiklama),
-      otel_rezervasyonu: parseInt2(mapped.otel_rezervasyonu),
+    const toplamlar = {
+      google_arama: parseInt2(mapped.arama_mobil) + parseInt2(mapped.arama_masaustu),
+      google_harita: parseInt2(mapped.harita_mobil) + parseInt2(mapped.harita_masaustu),
+      google_telefon: parseInt2(mapped.telefon),
+      google_yol_tarifi: parseInt2(mapped.yol_tarifi),
+      google_web_tiklama: parseInt2(mapped.web_tiklama),
+      google_menu_tiklama: parseInt2(mapped.menu_tiklama),
     };
 
-    await upsertGoogleVeri(sube.id, veri);
+    await upsertGoogleToplanlar(sube.kod, dates.baslangic, dates.bitis, toplamlar);
     count++;
   }
 
@@ -306,25 +312,16 @@ export async function importGoogleCsvBulk(buffer, originalFilename) {
 
     const sube = await upsertSube(subeKod, isletmeAdi, mapped.adres || null);
 
-    const veri = {
-      donem_baslangic: dates.baslangic,
-      donem_bitis: dates.bitis,
-      magaza_kodu: mapped.magaza_kodu || '',
-      arama_mobil: parseInt2(mapped.arama_mobil),
-      arama_masaustu: parseInt2(mapped.arama_masaustu),
-      harita_mobil: parseInt2(mapped.harita_mobil),
-      harita_masaustu: parseInt2(mapped.harita_masaustu),
-      telefon: parseInt2(mapped.telefon),
-      mesajlar: parseInt2(mapped.mesajlar),
-      rezervasyonlar: parseInt2(mapped.rezervasyonlar),
-      yol_tarifi: parseInt2(mapped.yol_tarifi),
-      web_tiklama: parseInt2(mapped.web_tiklama),
-      yemek_siparisleri: parseInt2(mapped.yemek_siparisleri),
-      menu_tiklama: parseInt2(mapped.menu_tiklama),
-      otel_rezervasyonu: parseInt2(mapped.otel_rezervasyonu),
+    const toplamlar = {
+      google_arama: parseInt2(mapped.arama_mobil) + parseInt2(mapped.arama_masaustu),
+      google_harita: parseInt2(mapped.harita_mobil) + parseInt2(mapped.harita_masaustu),
+      google_telefon: parseInt2(mapped.telefon),
+      google_yol_tarifi: parseInt2(mapped.yol_tarifi),
+      google_web_tiklama: parseInt2(mapped.web_tiklama),
+      google_menu_tiklama: parseInt2(mapped.menu_tiklama),
     };
 
-    await upsertGoogleVeri(sube.id, veri);
+    await upsertGoogleToplanlar(sube.kod, dates.baslangic, dates.bitis, toplamlar);
     results.push({ kod: subeKod, ad: isletmeAdi });
   }
 
@@ -371,41 +368,14 @@ export async function importMetaCsvAutoMatch(buffer) {
     return { count: 0, subeKod, subeAd: prefix, error: `Eşleşen şube bulunamadı: "${prefix}" (${subeKod})` };
   }
 
-  // Tüm kayıtları bu şubeye ata
+  // Tüm satırları map'le ve topla
+  const mappedRows = records.map(row => mapRow(row, META_COLUMN_MAP));
+  const donemToplamlari = aggregateMetaRows(mappedRows);
+
   let count = 0;
-  for (const row of records) {
-    const mapped = mapRow(row, META_COLUMN_MAP);
-    if (!mapped.donem_baslangic || !mapped.donem_bitis) continue;
-
-    const veri = {
-      donem_baslangic: mapped.donem_baslangic,
-      donem_bitis: mapped.donem_bitis,
-      reklam_seti: mapped.reklam_seti || 'Bilinmiyor',
-      durum: mapped.durum || '',
-      harcama: parseNum(mapped.harcama),
-      erisim: parseInt2(mapped.erisim),
-      gosterim: parseInt2(mapped.gosterim),
-      sonuc: parseInt2(mapped.sonuc),
-      sonuc_basina_ucret: parseNum(mapped.sonuc_basina_ucret),
-      siklik: parseNum(mapped.siklik),
-      hook_rate: parseNum(mapped.hook_rate),
-      hold_rate: parseNum(mapped.hold_rate),
-      ctr: parseNum(mapped.ctr),
-      ctr_link: parseNum(mapped.ctr_link),
-      cpc: parseNum(mapped.cpc),
-      cpc_link: parseNum(mapped.cpc_link),
-      cpm: parseNum(mapped.cpm),
-      baglanti_tiklamalari: parseInt2(mapped.baglanti_tiklamalari),
-      tiklamalar_tumu: parseInt2(mapped.tiklamalar_tumu),
-      mesajlasmalar: parseInt2(mapped.mesajlasmalar),
-      mesaj_basina_ucret: parseNum(mapped.mesaj_basina_ucret),
-      telefon_aramalari: parseInt2(mapped.telefon_aramalari),
-      yorumlar: parseInt2(mapped.yorumlar),
-      paylasimlar: parseInt2(mapped.paylasimlar),
-    };
-
-    await upsertMetaVeri(sube.id, veri);
-    count++;
+  for (const toplam of donemToplamlari) {
+    await upsertMetaToplanlar(sube.kod, toplam.donem_baslangic, toplam.donem_bitis, toplam);
+    count += mappedRows.filter(r => r.donem_baslangic === toplam.donem_baslangic && r.donem_bitis === toplam.donem_bitis).length;
   }
 
   return { count, subeKod: sube.kod, subeAd: sube.ad };
