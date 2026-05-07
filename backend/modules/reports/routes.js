@@ -336,7 +336,7 @@ router.get('/dashboard', async (req, res) => {
     const dashData = subeler.map(sube => ({
       ...sube,
       donemSayisi: sube.donem_sayisi || 0,
-      // Aggregate alanlar subeler dokümanından
+      donemler: [], // eski frontend uyumluluğu
       toplamHarcama: sube.toplam_harcama || 0,
       toplamErisim: sube.toplam_erisim || 0,
       toplamGosterim: sube.toplam_gosterim || 0,
