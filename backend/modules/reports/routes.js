@@ -329,20 +329,38 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
   }
 });
 
-// Dashboard API — Sadece şube listesi (aggregate alanlar subeler dokümanından, dönem yok)
+// Dashboard API — Şube listesi + dönem verileri
 router.get('/dashboard', async (req, res) => {
   try {
     const subeler = await getAllSubeler();
-    const dashData = subeler.map(sube => ({
-      ...sube,
-      donemSayisi: sube.donem_sayisi || 0,
-      donemler: [], // eski frontend uyumluluğu
-      toplamHarcama: sube.toplam_harcama || 0,
-      toplamErisim: sube.toplam_erisim || 0,
-      toplamGosterim: sube.toplam_gosterim || 0,
-      toplamSonuc: sube.toplam_sonuc || 0,
-      toplamTiklama: sube.toplam_tiklama || 0,
-    }));
+    const dashData = [];
+    
+    for (const sube of subeler) {
+      const donemlerResult = await getDonemler(sube.kod);
+      const periodList = donemlerResult.meta.map(veri => ({
+        baslangic: veri.donem_baslangic,
+        bitis: veri.donem_bitis,
+        meta: veri.harcama !== undefined ? {
+          harcama: veri.harcama || 0,
+          erisim: veri.erisim || 0,
+          sonuc: veri.sonuc || 0,
+          tiklama: veri.tiklama || 0,
+        } : null,
+        google: veri.google_arama !== undefined ? {
+          gorunurluk: (veri.google_arama || 0) + (veri.google_harita || 0),
+          telefon: veri.google_telefon || 0,
+          yolTarifi: veri.google_yol_tarifi || 0,
+          webTiklama: veri.google_web_tiklama || 0,
+        } : null,
+        rapor: null,
+        planlananButce: veri.planlanan_butce || null,
+        devredilenMiktar: veri.devredilen_miktar || null,
+        toplamErisim: veri.erisim || null,
+      }));
+
+      dashData.push({ ...sube, donemSayisi: periodList.length, donemler: periodList, raporlar: [] });
+    }
+    
     res.json({ subeler: dashData });
   } catch (err) {
     res.status(500).json({ error: err.message });
