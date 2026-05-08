@@ -54,18 +54,30 @@ router.get(
         });
 
         if (req.user.role === 'admin') {
-            // Admin: tüm şubelerin özel ürünlerini paralel getir
-            const subeSnap = await db.collection('subeler').get();
-            const promises = subeSnap.docs.map(subeDoc => subeDoc.ref.collection('urunler').get());
-            const snaps = await Promise.all(promises);
-            
-            snaps.forEach((urunSnap, i) => {
-                const subeId = subeSnap.docs[i].id;
-                urunSnap.forEach((d) => {
-                    const data = d.data();
-                    if (!data.deletedAt) urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: subeId, ...data });
+            const requestedSube = req.query.sube || 'all';
+
+            if (requestedSube === 'all') {
+                // Admin: tüm şubelerin özel ürünlerini paralel getir
+                const subeSnap = await db.collection('subeler').get();
+                const promises = subeSnap.docs.map(subeDoc => subeDoc.ref.collection('urunler').get());
+                const snaps = await Promise.all(promises);
+                
+                snaps.forEach((urunSnap, i) => {
+                    const subeId = subeSnap.docs[i].id;
+                    urunSnap.forEach((d) => {
+                        const data = d.data();
+                        if (!data.deletedAt) urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: subeId, ...data });
+                    });
                 });
-            });
+            } else if (requestedSube !== 'ortak') {
+                // Sadece seçili şubenin özel ürünlerini getir
+                const subeUrunSnap = await db.collection('subeler').doc(requestedSube).collection('urunler').get();
+                subeUrunSnap.forEach((d) => {
+                    const data = d.data();
+                    if (!data.deletedAt) urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: requestedSube, ...data });
+                });
+            }
+            // requestedSube === 'ortak' ise hiçbir ekstra ürün ekleme (zaten ortak_urunler eklendi)
         } else if (req.user.subeSlug) {
             // Şube sahibi: sadece kendi şubesinin özel ürünleri
             const subeUrunSnap = await db.collection('subeler').doc(req.user.subeSlug).collection('urunler').get();

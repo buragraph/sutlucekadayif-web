@@ -19,7 +19,7 @@ export default function ProductsPage() {
     const toast = useToast();
     const confirm = useConfirm();
     const [selectedKategori, setSelectedKategori] = useState('all');
-    const [selectedSube, setSelectedSube] = useState('all');
+    const [selectedSube, setSelectedSube] = useState('ortak');
     const [searchTerm, setSearchTerm] = useState('');
     const [sortCol, setSortCol] = useState(null);
     const [sortDir, setSortDir] = useState('asc');
@@ -82,12 +82,16 @@ export default function ProductsPage() {
     }
 
     useEffect(() => { loadKategoriler(); }, []);
-    useEffect(() => { if (role === 'admin' || subeSlug) loadUrunler(); }, [subeSlug, role]);
+    useEffect(() => { if (role === 'admin' || subeSlug) loadUrunler(); }, [subeSlug, role, selectedSube]);
     useEffect(() => { if (role === 'admin') loadSubeler(); }, [role]);
 
     async function loadUrunler(silent = false) {
         if (!silent) setLoadingUrunler(true);
-        try { const { data } = await api.get('/products'); setUrunler(data.urunler); }
+        try { 
+            const params = role === 'admin' ? { sube: selectedSube } : {};
+            const { data } = await api.get('/products', { params }); 
+            setUrunler(data.urunler); 
+        }
         catch (err) { console.error('Ürünler yüklenemedi:', err); }
         if (!silent) setLoadingUrunler(false);
     }
@@ -196,7 +200,7 @@ export default function ProductsPage() {
         const matchKategori = selectedKategori === 'all' || u.kategori === selectedKategori;
         const matchSearch = !searchTerm || u.ad.toLowerCase().includes(searchTerm.toLowerCase());
         let matchSube = true;
-        if (selectedSube !== 'all') {
+        if (role === 'admin' && selectedSube !== 'all') {
             if (selectedSube === 'ortak') {
                 matchSube = u.tur !== 'sube_ozel';
             } else {
