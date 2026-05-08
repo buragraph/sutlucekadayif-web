@@ -172,7 +172,9 @@ export default function ProductsPage() {
         const ok = await confirm(`"${urun.ad}" ürünü silmek istediğinize emin misiniz?`);
         if (!ok) return;
         try {
-            await api.delete(`/products/${urun.id}`);
+            // Include subeSlug in DELETE request for branch-specific products
+            const queryParam = urun.tur === 'sube_ozel' && urun.sube_slug ? `?subeSlug=${urun.sube_slug}` : '';
+            await api.delete(`/products/${urun.id}${queryParam}`);
             // Optimistic: listeden kaldır
             setUrunler(prev => prev.filter(u => u.id !== urun.id));
             toast.success('Ürün çöp kutusuna taşındı');
@@ -631,7 +633,8 @@ export default function ProductsPage() {
                                                     </div>
                                                     <button className="btn btn--secondary" style={{ padding: '4px 10px', fontSize: 11 }} onClick={async () => {
                                                         try {
-                                                            await api.put(`/products/${u.id}/restore`);
+                                                            const queryParam = u.tur === 'sube_ozel' && u.sube_slug ? `?subeSlug=${u.sube_slug}` : '';
+                                                            await api.put(`/products/${u.id}/restore${queryParam}`);
                                                             setTrashUrunler(prev => prev.filter(t => t.id !== u.id));
                                                             // Optimistic: geri yüklenen ürünü listeye ekle
                                                             const { deletedAt, ...restoredUrun } = u;
@@ -645,7 +648,8 @@ export default function ProductsPage() {
                                                         const ok = await confirm('Bu ürünü kalıcı olarak silmek istediğinize emin misiniz?');
                                                         if (!ok) return;
                                                         try {
-                                                            await api.delete(`/products/${u.id}/permanent`);
+                                                            const queryParam = u.tur === 'sube_ozel' && u.sube_slug ? `?subeSlug=${u.sube_slug}` : '';
+                                                            await api.delete(`/products/${u.id}/permanent${queryParam}`);
                                                             setTrashUrunler(prev => prev.filter(t => t.id !== u.id));
                                                             toast.success('Ürün kalıcı olarak silindi');
                                                         } catch { toast.error('Silme başarısız'); }
