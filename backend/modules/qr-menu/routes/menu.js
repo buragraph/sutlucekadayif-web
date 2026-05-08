@@ -31,11 +31,11 @@ router.get(
         const { subeSlug } = req.params;
 
         // Paralel sorgular — hız optimizasyonu
-        const [subeDoc, katSnap, ozelSnap, ortakSnap] = await Promise.all([
+        const [subeDoc, katSnap, ortakSnap, ozelSnap] = await Promise.all([
             db.collection('subeler').doc(subeSlug).get(),
             db.collection('kategoriler').orderBy('sira', 'asc').get(),
-            db.collection('urunler').where('tur', '==', 'sube_ozel').where('sube_slug', '==', subeSlug).get(),
-            db.collection('urunler').where('tur', '==', 'ortak').get(),
+            db.collection('urunler').get(),                                    // Ortak ürünler (ana collection)
+            db.collection('subeler').doc(subeSlug).collection('urunler').get(), // Şubeye özel (subcollection)
         ]);
 
         if (!subeDoc.exists) {
@@ -48,15 +48,6 @@ router.get(
 
         const tumUrunler = [];
 
-        ozelSnap.forEach((d) => {
-            const data = d.data();
-            if (data.deletedAt) return;
-            const mevcutDegil = data.mevcut_degil || [];
-            if (!mevcutDegil.includes(subeSlug)) {
-                tumUrunler.push({ id: d.id, ...data });
-            }
-        });
-
         // Ortak ürünleri filtrele: mevcut_degil'de bu şube varsa gösterme
         ortakSnap.forEach((d) => {
             const data = d.data();
@@ -65,6 +56,13 @@ router.get(
             if (!mevcutDegil.includes(subeSlug)) {
                 tumUrunler.push({ id: d.id, ...data });
             }
+        });
+
+        // Şubeye özel ürünler
+        ozelSnap.forEach((d) => {
+            const data = d.data();
+            if (data.deletedAt) return;
+            tumUrunler.push({ id: d.id, ...data });
         });
 
         // Kategoriye göre grupla
