@@ -24,11 +24,11 @@ export function AuthProvider({ children }) {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
                 setUser(firebaseUser);
-                // Kullanıcı bilgisini backend'den al
+                // Custom claims'ten bilgileri al (Backend /auth/me isteği iptal edildi)
                 try {
-                    const { data } = await api.get('/auth/me');
-                    setSubeSlug(data.subeSlug);
-                    setRole(data.role);
+                    const idTokenResult = await firebaseUser.getIdTokenResult();
+                    setSubeSlug(idTokenResult.claims.subeSlug || null);
+                    setRole(idTokenResult.claims.role || 'sube_sahibi');
                 } catch (err) {
                     console.error('Kullanıcı bilgisi alınamadı:', err);
                 }
@@ -44,7 +44,10 @@ export function AuthProvider({ children }) {
     }, []);
 
     async function login(email, password) {
-        return signInWithEmailAndPassword(auth, email, password);
+        const cred = await signInWithEmailAndPassword(auth, email, password);
+        // Claims'lerin (yetkilerin) güncel olması için token'ı zorla yenile
+        await cred.user.getIdToken(true);
+        return cred;
     }
 
     async function logout() {

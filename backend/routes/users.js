@@ -76,6 +76,9 @@ router.post(
         if (subeSlug) subeData.sube_slug = subeSlug;
         await db.collection('kullanici_sube').doc(userRecord.uid).set(subeData);
 
+        // Custom claims ata
+        await auth.setCustomUserClaims(userRecord.uid, { role, subeSlug: subeSlug || null });
+
         res.status(201).json({
             uid: userRecord.uid,
             email: userRecord.email,
@@ -109,11 +112,16 @@ router.put(
         }
 
         // Firestore şube/rol güncelle
-        if (subeSlug || role) {
+        if (subeSlug !== undefined || role !== undefined) {
             const subeUpdate = {};
-            if (subeSlug) subeUpdate.sube_slug = subeSlug;
-            if (role) subeUpdate.role = role;
+            if (subeSlug !== undefined) subeUpdate.sube_slug = subeSlug;
+            if (role !== undefined) subeUpdate.role = role;
             await db.collection('kullanici_sube').doc(uid).set(subeUpdate, { merge: true });
+
+            // Custom claims ata (tümünü ezdiği için veritabanından güncel hali okuyup atıyoruz)
+            const doc = await db.collection('kullanici_sube').doc(uid).get();
+            const data = doc.data() || {};
+            await auth.setCustomUserClaims(uid, { role: data.role || 'sube_sahibi', subeSlug: data.sube_slug || null });
         }
 
         res.json({ success: true });

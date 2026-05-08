@@ -18,14 +18,12 @@ export const verifyToken = async (req, res, next) => {
         const token = authHeader.split('Bearer ')[1];
         const decodedToken = await auth.verifyIdToken(token);
 
-        // Firestore'dan kullanıcı-şube eşleştirmesini çek
-        const subeDoc = await db.collection('kullanici_sube').doc(decodedToken.uid).get();
-
+        // Custom claims üzerinden rol ve şube bilgisini al (veritabanı okuması iptal edildi)
         req.user = {
             uid: decodedToken.uid,
             email: decodedToken.email,
-            subeSlug: subeDoc.exists ? subeDoc.data().sube_slug : null,
-            role: subeDoc.exists ? (subeDoc.data().role || 'sube_sahibi') : 'sube_sahibi',
+            subeSlug: decodedToken.subeSlug || null,
+            role: decodedToken.role || 'sube_sahibi',
         };
 
         next();

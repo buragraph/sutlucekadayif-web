@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 // Route imports
 import menuRouter from './modules/qr-menu/routes/menu.js';
 import productsRouter from './modules/qr-menu/routes/products.js';
-import authRouter from './routes/auth.js';
+// import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 import categoriesRouter from './routes/categories.js';
 import branchesRouter from './routes/branches.js';
@@ -77,7 +77,7 @@ app.use(express.json());
 
 // ─── Routes ───
 // Genel
-app.use('/api/auth', authLimiter, authRouter);
+// app.use('/api/auth', authLimiter, authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/branches', branchesRouter);
