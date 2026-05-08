@@ -3,6 +3,7 @@ import { db } from '../../../config/firebase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import admin from 'firebase-admin';
 import asyncHandler from '../../../utils/asyncHandler.js';
+import { regenerateAffectedMenuJsons, regenerateAllMenuJsons } from '../services/menu-cache.js';
 
 const router = Router();
 
@@ -100,6 +101,9 @@ router.post(
             id: docRef.id,
             ...productData,
         });
+
+        // Arka planda menü JSON'ını yenile (response'u bekletme)
+        regenerateAffectedMenuJsons(productData).catch(console.error);
     })
 );
 
@@ -169,7 +173,11 @@ router.put(
         await docRef.update(updateData);
         // Güncel veriyi dön
         const updated = await docRef.get();
-        res.json({ success: true, urun: { id, ...updated.data() } });
+        const updatedData = updated.data();
+        res.json({ success: true, urun: { id, ...updatedData } });
+
+        // Arka planda menü JSON'ını yenile
+        regenerateAffectedMenuJsons(updatedData).catch(console.error);
     })
 );
 
@@ -193,7 +201,8 @@ router.delete(
         await docRef.update({ deletedAt: new Date().toISOString() });
 
         // Kategori ürün sayısını azalt
-        const kategori = doc.data().kategori;
+        const urunData = doc.data();
+        const kategori = urunData.kategori;
         if (kategori) {
             await db.collection('kategoriler').doc(kategori).update({
                 urunSayisi: admin.firestore.FieldValue.increment(-1)
@@ -201,6 +210,9 @@ router.delete(
         }
 
         res.json({ success: true });
+
+        // Arka planda menü JSON'ını yenile
+        regenerateAffectedMenuJsons(urunData).catch(console.error);
     })
 );
 
@@ -247,6 +259,9 @@ router.put(
         }
 
         res.json({ success: true });
+
+        // Arka planda menü JSON'ını yenile
+        regenerateAffectedMenuJsons(doc.data()).catch(console.error);
     })
 );
 
@@ -298,6 +313,10 @@ router.put(
         }
 
         res.json({ success: true, mevcut });
+
+        // Sadece bu şubenin JSON'ını yenile
+        const { regenerateMenuJson } = await import('../services/menu-cache.js');
+        regenerateMenuJson(subeSlug).catch(console.error);
     })
 );
 

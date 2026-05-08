@@ -3,6 +3,7 @@ import { db } from '../config/firebase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import admin from 'firebase-admin';
+import { regenerateAllMenuJsons } from '../modules/qr-menu/services/menu-cache.js';
 
 const router = Router();
 
@@ -88,6 +89,9 @@ router.post(
             ad: ad.trim(),
             sira: siraDeger,
         });
+
+        // Kategori eklendi — tüm şubelerin JSON'ını yenile
+        regenerateAllMenuJsons().catch(console.error);
     })
 );
 
@@ -120,6 +124,9 @@ router.put(
 
         await docRef.update(updateData);
         res.json({ success: true });
+
+        // Kategori güncellendi — tüm şubelerin JSON'ını yenile
+        regenerateAllMenuJsons().catch(console.error);
     })
 );
 
@@ -167,6 +174,9 @@ router.delete(
 
         await docRef.delete();
         res.json({ success: true, tasinanUrun: urunSnap.size });
+
+        // Kategori silindi — tüm şubelerin JSON'ını yenile
+        regenerateAllMenuJsons().catch(console.error);
     })
 );
 

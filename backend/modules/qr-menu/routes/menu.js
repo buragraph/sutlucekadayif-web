@@ -83,4 +83,17 @@ router.get(
     })
 );
 
+/**
+ * POST /api/menu/regenerate-cache
+ * Tüm şubelerin menü JSON'larını yeniden oluştur
+ */
+router.post(
+    '/regenerate-cache',
+    asyncHandler(async (req, res) => {
+        const { regenerateAllMenuJsons } = await import('../services/menu-cache.js');
+        await regenerateAllMenuJsons();
+        res.json({ success: true, message: 'Tüm menü JSON cache\'leri yenilendi' });
+    })
+);
+
 export default router;

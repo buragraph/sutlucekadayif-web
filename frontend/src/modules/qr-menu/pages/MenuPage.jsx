@@ -115,7 +115,22 @@ export default function MenuPage() {
         setLoading(true);
         setError(null);
         try {
-            const { data } = await api.get(`/menu/${subeSlug}`);
+            let data;
+
+            // 1. R2 JSON cache'ten dene (CDN — hızlı)
+            try {
+                const r2Res = await fetch(`https://pub-99104fd4f6324895b46545c23e61887f.r2.dev/menu/${subeSlug}.json`);
+                if (r2Res.ok) {
+                    data = await r2Res.json();
+                }
+            } catch (e) { /* R2'de yoksa API'ye düş */ }
+
+            // 2. R2'de yoksa API'den çek (fallback)
+            if (!data) {
+                const res = await api.get(`/menu/${subeSlug}`);
+                data = res.data;
+            }
+
             setSube(data.sube);
             setKategoriler(data.kategoriler);
             setUrunlerByKategori(data.urunlerByKategori);
