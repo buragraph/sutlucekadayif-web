@@ -11,7 +11,7 @@ export async function regenerateMenuJson(subeSlug) {
         const [subeDoc, katSnap, ortakSnap, ozelSnap] = await Promise.all([
             db.collection('subeler').doc(subeSlug).get(),
             db.collection('kategoriler').orderBy('sira', 'asc').get(),
-            db.collection('urunler').get(),                                    // Ortak ürünler (ana collection)
+            db.collection('ortak_urunler').get(),                                    // Ortak ürünler (ana collection)
             db.collection('subeler').doc(subeSlug).collection('urunler').get(), // Şubeye özel (subcollection)
         ]);
 

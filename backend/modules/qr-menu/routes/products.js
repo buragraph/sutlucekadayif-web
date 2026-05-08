@@ -19,7 +19,7 @@ async function findProduct(id, subeSlug) {
         if (subeDoc.exists) return { docRef: subeRef, doc: subeDoc, source: 'sube_ozel', subeSlug };
     }
     // Ana collection'da ara
-    const mainRef = db.collection('urunler').doc(id);
+    const mainRef = db.collection('ortak_urunler').doc(id);
     const mainDoc = await mainRef.get();
     if (mainDoc.exists) return { docRef: mainRef, doc: mainDoc, source: 'ortak' };
     
@@ -47,7 +47,7 @@ router.get(
         let urunler = [];
 
         // Ortak ürünler (ana collection)
-        const ortakSnap = await db.collection('urunler').get();
+        const ortakSnap = await db.collection('ortak_urunler').get();
         ortakSnap.forEach((d) => {
             const data = d.data();
             if (!data.deletedAt) urunler.push({ id: d.id, tur: 'ortak', ...data });
@@ -129,7 +129,7 @@ router.post(
             // Ortak → ana urunler collection'a yaz
             productData.tur = 'ortak';
             productData.mevcut_degil = [];
-            docRef = await db.collection('urunler').add(productData);
+            docRef = await db.collection('ortak_urunler').add(productData);
         }
 
         // Kategori ürün sayısını artır
@@ -250,7 +250,7 @@ router.get(
         const urunler = [];
 
         // Ana collection'dan silinen ürünler
-        const mainSnap = await db.collection('urunler').get();
+        const mainSnap = await db.collection('ortak_urunler').get();
         mainSnap.forEach((d) => {
             const data = d.data();
             if (data.deletedAt) urunler.push({ id: d.id, tur: 'ortak', ...data });
@@ -344,7 +344,7 @@ router.put(
         }
 
         // Availability toggle sadece ortak ürünlerde çalışır
-        const urunRef = db.collection('urunler').doc(id);
+        const urunRef = db.collection('ortak_urunler').doc(id);
 
         if (mevcut) {
             await urunRef.update({

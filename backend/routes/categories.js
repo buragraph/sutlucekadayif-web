@@ -32,7 +32,7 @@ router.post(
     verifyToken,
     requirePermission('categories.edit'),
     asyncHandler(async (req, res) => {
-        const urunSnap = await db.collection('urunler').get();
+        const urunSnap = await db.collection('ortak_urunler').get();
         const counts = {};
         urunSnap.forEach((d) => {
             const data = d.data();
@@ -149,7 +149,7 @@ router.delete(
         }
 
         // Kategoriye ait ürün var mı kontrol et
-        const urunSnap = await db.collection('urunler').where('kategori', '==', id).get();
+        const urunSnap = await db.collection('ortak_urunler').where('kategori', '==', id).get();
         
         if (!urunSnap.empty && !yeniKategori) {
             return res.status(409).json({
