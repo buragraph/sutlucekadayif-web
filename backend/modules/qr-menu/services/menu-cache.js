@@ -1,5 +1,5 @@
-import { db } from '../../config/firebase.js';
-import { uploadFile } from '../../config/r2.js';
+import { db } from '../../../config/firebase.js';
+import { uploadFile } from '../../../config/r2.js';
 
 /**
  * Belirli bir şubenin menü JSON'ını oluşturup R2'ye yazar
