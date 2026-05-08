@@ -54,6 +54,7 @@ export default function ProductsPage() {
 
     const [kategoriler, setKategoriler] = useState([]);
     const [subeler, setSubeler] = useState([]);
+    const [ortakUrunSayisi, setOrtakUrunSayisi] = useState(0);
 
     const categoryColors = [
         { bg: '#dbeafe', text: '#1e40af' },
@@ -102,7 +103,11 @@ export default function ProductsPage() {
     }
 
     async function loadSubeler() {
-        try { const { data } = await api.get('/menu/subeler'); setSubeler(data.subeler || []); }
+        try { 
+            const { data } = await api.get('/branches'); 
+            setSubeler(data.subeler); 
+            setOrtakUrunSayisi(data.ortakUrunSayisi || 0);
+        }
         catch (err) { console.error('Şubeler yüklenemedi:', err); }
     }
 
@@ -267,8 +272,8 @@ export default function ProductsPage() {
                             {role === 'admin' && subeler.length > 0 && (
                                 <select className="admin-select" value={selectedSube} onChange={(e) => setSelectedSube(e.target.value)}>
                                     <option value="all">Tüm Şubeler</option>
-                                    <option value="ortak">Ortak Ürünler</option>
-                                    {subeler.map((s) => <option key={s.id} value={s.slug}>{s.ad}</option>)}
+                                    <option value="ortak">Ortak Ürünler ({ortakUrunSayisi})</option>
+                                    {subeler.map((s) => <option key={s.id} value={s.slug}>{s.ad} ({s.urunSayisi || 0})</option>)}
                                 </select>
                             )}
                             <span className="admin-count">{sortedUrunler.length} ürün</span>

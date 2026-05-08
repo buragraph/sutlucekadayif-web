@@ -15,9 +15,16 @@ router.get(
     requirePermission('branches.view'),
     asyncHandler(async (req, res) => {
         const snap = await db.collection('subeler').get();
-        const subeler = [];
-        snap.forEach((d) => subeler.push({ slug: d.id, ...d.data() }));
-        res.json({ subeler });
+        const promises = snap.docs.map(async (d) => {
+            const countSnap = await d.ref.collection('urunler').count().get();
+            return { id: d.id, slug: d.id, urunSayisi: countSnap.data().count, ...d.data() };
+        });
+        const subeler = await Promise.all(promises);
+
+        const ortakCountSnap = await db.collection('ortak_urunler').count().get();
+        const ortakUrunSayisi = ortakCountSnap.data().count;
+
+        res.json({ subeler, ortakUrunSayisi });
     })
 );
 

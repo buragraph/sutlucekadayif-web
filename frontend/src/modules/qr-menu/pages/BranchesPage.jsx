@@ -77,6 +77,7 @@ export default function BranchesPage() {
                                 <th>Şube Adı</th>
                                 <th>Adres</th>
                                 <th>Telefon</th>
+                                <th>Ürün Sayısı</th>
                                 <th style={{ width: 90 }}>İşlemler</th>
                             </tr>
                         </thead>
@@ -87,6 +88,7 @@ export default function BranchesPage() {
                                     <td><span className="user-email">{sube.ad}</span></td>
                                     <td><span className="text-muted">{sube.adres || '—'}</span></td>
                                     <td><span className="text-muted">{sube.telefon || '—'}</span></td>
+                                    <td><span className="text-muted" style={{fontWeight: 600}}>{sube.urunSayisi || 0}</span></td>
                                     <td>
                                         <div className="actions-cell">
                                             <button className="icon-btn" onClick={() => openEdit(sube)} title="Düzenle"><Pencil size={15} /></button>
