@@ -158,6 +158,10 @@
     /* Modal */
     .modal-overlay{display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.4);backdrop-filter:blur(10px);align-items:center;justify-content:center}
     .modal-overlay.active{display:flex;animation:fadeIn .2s}
+
+    /* Skeleton */
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+    .skeleton { animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite; background: var(--border); border-radius: 4px; }
     .modal-box{width:520px;max-width:96vw;max-height:92vh;background:var(--surface);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 40px 80px rgba(0,0,0,.1);border:1px solid var(--border)}
     .modal-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
     .modal-head h3{font-size:13px;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:6px}
@@ -881,6 +885,20 @@ async function loadDashboard(){
       const cachedData = JSON.parse(cached);
       applyDashboardData(cachedData);
     }catch(e){}
+  } else {
+    // Veriler gelene kadar şube listesinde iskelet (skeleton) göster
+    const list=document.getElementById('branchList');
+    if (list) {
+      list.innerHTML = Array(12).fill(0).map(() => `
+        <div class="sb-item" style="pointer-events:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div class="skeleton" style="width:60%;height:14px"></div>
+            <div class="skeleton" style="width:16px;height:16px;border-radius:50%"></div>
+          </div>
+          <div class="skeleton" style="width:40%;height:10px"></div>
+        </div>
+      `).join('');
+    }
   }
 
   try{
