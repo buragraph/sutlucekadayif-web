@@ -54,15 +54,18 @@ router.get(
         });
 
         if (req.user.role === 'admin') {
-            // Admin: tüm şubelerin özel ürünlerini de getir
+            // Admin: tüm şubelerin özel ürünlerini paralel getir
             const subeSnap = await db.collection('subeler').get();
-            for (const subeDoc of subeSnap.docs) {
-                const urunSnap = await subeDoc.ref.collection('urunler').get();
+            const promises = subeSnap.docs.map(subeDoc => subeDoc.ref.collection('urunler').get());
+            const snaps = await Promise.all(promises);
+            
+            snaps.forEach((urunSnap, i) => {
+                const subeId = subeSnap.docs[i].id;
                 urunSnap.forEach((d) => {
                     const data = d.data();
-                    if (!data.deletedAt) urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: subeDoc.id, ...data });
+                    if (!data.deletedAt) urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: subeId, ...data });
                 });
-            }
+            });
         } else if (req.user.subeSlug) {
             // Şube sahibi: sadece kendi şubesinin özel ürünleri
             const subeUrunSnap = await db.collection('subeler').doc(req.user.subeSlug).collection('urunler').get();

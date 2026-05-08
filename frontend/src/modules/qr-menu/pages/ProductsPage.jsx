@@ -24,6 +24,13 @@ export default function ProductsPage() {
     const [sortCol, setSortCol] = useState(null);
     const [sortDir, setSortDir] = useState('asc');
 
+    const ITEMS_PER_PAGE = 30;
+    const [currentPage, setCurrentPage] = useState(1);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, selectedKategori, selectedSube, sortCol, sortDir]);
+
     const [urunler, setUrunler] = useState([]);
     const [loadingUrunler, setLoadingUrunler] = useState(true);
     const [showUrunModal, setShowUrunModal] = useState(false);
@@ -223,6 +230,9 @@ export default function ProductsPage() {
         return 0;
     });
 
+    const paginatedUrunler = sortedUrunler.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+    const totalPages = Math.ceil(sortedUrunler.length / ITEMS_PER_PAGE);
+
     return (
         <div className="page-padding">
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
@@ -280,7 +290,7 @@ export default function ProductsPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {sortedUrunler.map((urun) => {
+                                {paginatedUrunler.map((urun) => {
                                     const mevcutDegil = urun.mevcut_degil || [];
                                     const buSubedeMevcut = !mevcutDegil.includes(subeSlug);
                                     return (() => {
@@ -422,6 +432,18 @@ export default function ProductsPage() {
                             </tbody>
                         </table>
                     </div>
+                    
+                    {totalPages > 1 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderTop: 'none', borderBottomLeftRadius: 12, borderBottomRightRadius: 12 }}>
+                            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)' }}>
+                                Toplam <b>{sortedUrunler.length}</b> kayıt, sayfa <b>{currentPage}</b> / {totalPages}
+                            </div>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <button className="btn btn--secondary" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} style={{ padding: '6px 14px', fontSize: 13 }}>Önceki</button>
+                                <button className="btn btn--secondary" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(p => p + 1)} style={{ padding: '6px 14px', fontSize: 13 }}>Sonraki</button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
