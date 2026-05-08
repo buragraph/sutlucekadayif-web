@@ -1,4 +1,5 @@
 import express, { Router } from 'express';
+import { cacheMiddleware, invalidateCache } from '../../middleware/cache.js';
 import multer from 'multer';
 import { join, dirname, extname, basename } from 'path';
 import { fileURLToPath } from 'url';
@@ -330,7 +331,7 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
 });
 
 // Dashboard API — Hafif şube listesi (aggregate alanlar subeler dokümanından)
-router.get('/dashboard', async (req, res) => {
+router.get('/dashboard', cacheMiddleware(300), async (req, res) => {
   try {
     const subeler = await getAllSubeler();
     const dashData = subeler.map(sube => ({
@@ -348,7 +349,7 @@ router.get('/dashboard', async (req, res) => {
 });
 
 // Şubenin dönemlerini döner (şubeye tıklandığında çağrılır)
-router.get('/sube/:kod/donemler', async (req, res) => {
+router.get('/sube/:kod/donemler', cacheMiddleware(180), async (req, res) => {
   try {
     const { kod } = req.params;
     const donemlerResult = await getDonemler(kod);
@@ -383,6 +384,7 @@ router.post('/sube', async (req, res) => {
     const { kod, ad } = req.body;
     if (!kod) return res.status(400).json({ error: 'Şube kodu zorunludur' });
     await upsertSube(kod, ad);
+    invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -393,6 +395,7 @@ router.put('/sube/:kod', async (req, res) => {
   try {
     const { ad, adres } = req.body;
     await updateSube(req.params.kod, ad, adres);
+    invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -402,6 +405,7 @@ router.put('/sube/:kod', async (req, res) => {
 router.delete('/sube/:kod', async (req, res) => {
   try {
     await deleteSube(req.params.kod);
+    invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -418,6 +422,7 @@ router.delete('/sube/:kod/donem', async (req, res) => {
     if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
 
     await deleteDonem(sube.kod, baslangic, bitis);
+    invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -480,6 +485,7 @@ router.put('/sube/:kod/donem/overrides', async (req, res) => {
     }
     
     await recalcSubeAggregates(sube.kod);
+    invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

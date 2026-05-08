@@ -874,6 +874,15 @@ let _all=[],_active=null,_hasMappings=false,_reverseCampaigns={},_reverseAdsets=
 let _donemCache = {};
 
 async function loadDashboard(){
+  // sessionStorage'dan hızlı yükleme
+  const cached = sessionStorage.getItem('sk_dashboard');
+  if(cached){
+    try{
+      const cachedData = JSON.parse(cached);
+      applyDashboardData(cachedData);
+    }catch(e){}
+  }
+
   try{
     const[dashRes,mapRes,setRes,gRes]=await Promise.all([
       fetch('https://api-fyfp72cohq-uc.a.run.app/api/reports/dashboard'),
@@ -889,32 +898,46 @@ async function loadDashboard(){
     } else {
       _googleMappings = {};
     }
-    _all=subeler;_hasMappings=mapData.hasMappings;
-    _reverseCampaigns=mapData.reverseCampaigns||{};
-    _reverseAdsets=mapData.reverseAdsets||{};
-    _metaPrefixMappings=mapData.mappings||{};
-    _donemCache = {};
-    // Dashboard'dan gelen dönemleri cache'e yaz (çift fetch engelle)
-    for(const s of subeler){
-      if(s.donemler && s.donemler.length > 0) _donemCache[s.kod] = s.donemler;
-    }
-    // Show toolbar
-    if(subeler.length){
-      document.getElementById('toolbarBadge').style.display='flex';
-      document.getElementById('metaFetchBtn').style.display=_appSettings.metaApiToken?'':'none';
-      document.getElementById('campaignMapBtn').style.display=_appSettings.metaApiToken?'':'none';
-      document.getElementById('adsetMapBtn').style.display=_appSettings.metaApiToken?'':'none';
-      
-      const hasMeta = !!_appSettings.metaApiToken;
-      const hasGoogle = document.getElementById('googleFetchBtn').style.display !== 'none';
-      document.getElementById('fetchAllBtn').style.display = (hasMeta || hasGoogle) ? '' : 'none';
-      document.getElementById('bulkPdfBtn').style.display = '';
-    } else {
-      document.getElementById('toolbarBadge').style.display='none';
-    }
-    renderSidebar(subeler);
-    // Otomatik seçim yapma, kullanıcı tıklasın
-  }catch(err){console.error(err);toast('Yükleme hatası','error')}
+
+    const freshData = { subeler, mapData, hasMappings: mapData.hasMappings,
+      reverseCampaigns: mapData.reverseCampaigns||{},
+      reverseAdsets: mapData.reverseAdsets||{},
+      metaPrefixMappings: mapData.mappings||{}
+    };
+
+    // sessionStorage'a kaydet
+    try{ sessionStorage.setItem('sk_dashboard', JSON.stringify(freshData)); }catch(e){}
+
+    applyDashboardData(freshData);
+  }catch(err){console.error(err);if(!cached) toast('Yükleme hatası','error')}
+}
+
+function applyDashboardData(data){
+  const {subeler, hasMappings, reverseCampaigns, reverseAdsets, metaPrefixMappings} = data;
+  _all=subeler;_hasMappings=hasMappings;
+  _reverseCampaigns=reverseCampaigns||{};
+  _reverseAdsets=reverseAdsets||{};
+  _metaPrefixMappings=metaPrefixMappings||{};
+  _donemCache = {};
+  // Dashboard'dan gelen dönemleri cache'e yaz (çift fetch engelle)
+  for(const s of subeler){
+    if(s.donemler && s.donemler.length > 0) _donemCache[s.kod] = s.donemler;
+  }
+  // Show toolbar
+  if(subeler.length){
+    document.getElementById('toolbarBadge').style.display='flex';
+    document.getElementById('metaFetchBtn').style.display=_appSettings?.metaApiToken?'':'none';
+    document.getElementById('campaignMapBtn').style.display=_appSettings?.metaApiToken?'':'none';
+    document.getElementById('adsetMapBtn').style.display=_appSettings?.metaApiToken?'':'none';
+    
+    const hasMeta = !!_appSettings?.metaApiToken;
+    const hasGoogle = document.getElementById('googleFetchBtn').style.display !== 'none';
+    document.getElementById('fetchAllBtn').style.display = (hasMeta || hasGoogle) ? '' : 'none';
+    document.getElementById('bulkPdfBtn').style.display = '';
+  } else {
+    document.getElementById('toolbarBadge').style.display='none';
+  }
+  renderSidebar(subeler);
 }
 
 function renderSidebar(subeler){

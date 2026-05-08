@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../../../config/firebase.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
+import { cacheMiddleware } from '../../../middleware/cache.js';
 
 const router = Router();
 
@@ -25,6 +26,7 @@ router.get(
  */
 router.get(
     '/:subeSlug',
+    cacheMiddleware(60),
     asyncHandler(async (req, res) => {
         const { subeSlug } = req.params;
 
