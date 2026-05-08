@@ -993,6 +993,7 @@ function renderSidebar(subeler){
     </div>`;
   }
   list.innerHTML=h;
+  if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function filterBranches(){
