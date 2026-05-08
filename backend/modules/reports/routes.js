@@ -329,42 +329,18 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
   }
 });
 
-// Dashboard API — Şube listesi + dönem verileri
+// Dashboard API — Hafif şube listesi (aggregate alanlar subeler dokümanından)
 router.get('/dashboard', async (req, res) => {
   try {
     const subeler = await getAllSubeler();
-    const dashData = [];
-    
-    for (const sube of subeler) {
-      const donemlerResult = await getDonemler(sube.kod);
-      const periodList = donemlerResult.meta.map(veri => ({
-        baslangic: veri.donem_baslangic,
-        bitis: veri.donem_bitis,
-        meta: veri.harcama !== undefined ? {
-          harcama: veri.harcama || 0,
-          erisim: veri.erisim || 0,
-          sonuc: veri.sonuc || 0,
-          tiklama: veri.tiklama || 0,
-        } : null,
-        google: veri.google_arama !== undefined ? {
-          gorunurluk: (veri.google_arama || 0) + (veri.google_harita || 0),
-          telefon: veri.google_telefon || 0,
-          yolTarifi: veri.google_yol_tarifi || 0,
-          webTiklama: veri.google_web_tiklama || 0,
-        } : null,
-        rapor: null,
-        planlananButce: veri.planlanan_butce || null,
-        devredilenMiktar: veri.devredilen_miktar || null,
-        toplamErisim: veri.erisim || null,
-      }));
-
-      const toplamHarcama = periodList.reduce((a, d) => a + (d.meta?.harcama || 0), 0);
-      const toplamErisim = periodList.reduce((a, d) => a + (d.meta?.erisim || 0), 0);
-      const toplamSonuc = periodList.reduce((a, d) => a + (d.meta?.sonuc || 0), 0);
-
-      dashData.push({ ...sube, donemSayisi: periodList.length, donemler: periodList, raporlar: [], toplamHarcama, toplamErisim, toplamSonuc });
-    }
-    
+    const dashData = subeler.map(sube => ({
+      ...sube,
+      donemSayisi: sube.donem_sayisi || 0,
+      donemler: [], // frontend uyumluluğu — dönemler selectBranch'te lazy yüklenir
+      toplamHarcama: sube.toplam_harcama || 0,
+      toplamErisim: sube.toplam_erisim || 0,
+      toplamSonuc: sube.toplam_sonuc || 0,
+    }));
     res.json({ subeler: dashData });
   } catch (err) {
     res.status(500).json({ error: err.message });
