@@ -63,8 +63,8 @@ app.use(cors({
         // Origin yoksa (server-to-server) veya listedeyse izin ver
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
-        // Cloudflare Pages preview deploy'ları (.pages.dev)
-        } else if (origin.endsWith('.pages.dev')) {
+        // Cloudflare Pages/Workers deploy'ları
+        } else if (origin.endsWith('.pages.dev') || origin.endsWith('.workers.dev')) {
             callback(null, true);
         } else {
             callback(new Error('CORS policy violation'));
