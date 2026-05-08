@@ -358,7 +358,11 @@ router.get('/dashboard', async (req, res) => {
         toplamErisim: veri.erisim || null,
       }));
 
-      dashData.push({ ...sube, donemSayisi: periodList.length, donemler: periodList, raporlar: [] });
+      const toplamHarcama = periodList.reduce((a, d) => a + (d.meta?.harcama || 0), 0);
+      const toplamErisim = periodList.reduce((a, d) => a + (d.meta?.erisim || 0), 0);
+      const toplamSonuc = periodList.reduce((a, d) => a + (d.meta?.sonuc || 0), 0);
+
+      dashData.push({ ...sube, donemSayisi: periodList.length, donemler: periodList, raporlar: [], toplamHarcama, toplamErisim, toplamSonuc });
     }
     
     res.json({ subeler: dashData });

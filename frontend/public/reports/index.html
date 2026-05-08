@@ -893,7 +893,11 @@ async function loadDashboard(){
     _reverseCampaigns=mapData.reverseCampaigns||{};
     _reverseAdsets=mapData.reverseAdsets||{};
     _metaPrefixMappings=mapData.mappings||{};
-    _donemCache = {}; // cache'i sıfırla
+    _donemCache = {};
+    // Dashboard'dan gelen dönemleri cache'e yaz (çift fetch engelle)
+    for(const s of subeler){
+      if(s.donemler && s.donemler.length > 0) _donemCache[s.kod] = s.donemler;
+    }
     // Show toolbar
     if(subeler.length){
       document.getElementById('toolbarBadge').style.display='flex';
