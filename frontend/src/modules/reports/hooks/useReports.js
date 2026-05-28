@@ -53,6 +53,7 @@ export const useReportsStore = create((set, get) => ({
     branches: [],
     activeBranch: null,
     donemCache: {},
+    budgetStatus: null,
     settings: {},
     googleMappings: {},
     metaPrefixMappings: {},
@@ -419,6 +420,14 @@ export const reportsApi = {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Hata');
+        return data;
+    },
+
+    async fetchBudgetStatus(since, until) {
+        const res = await fetch(`${API}/butce-durum?since=${since}&until=${until}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Hata');
+        useReportsStore.setState({ budgetStatus: data });
         return data;
     },
 };

@@ -4,7 +4,7 @@ import { BranchSidebar } from '../components/BranchSidebar';
 import { BranchDetail } from '../components/BranchDetail';
 import { ReportsModals } from '../components/ReportsModals';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, DownloadCloud, UploadCloud, Settings, FileDown, MapPin, Loader2 } from 'lucide-react';
+import { CalendarIcon, DownloadCloud, UploadCloud, Settings, FileDown, MapPin, Loader2, Wallet } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
@@ -22,10 +22,19 @@ export default function ReportsPage() {
 
     const [isFetchingMeta, setIsFetchingMeta] = useState(false);
     const [isFetchingGoogle, setIsFetchingGoogle] = useState(false);
+    const [isFetchingBudget, setIsFetchingBudget] = useState(false);
+    const budgetStatus = useReportsStore((s) => s.budgetStatus);
 
     useEffect(() => {
         loadDashboard();
     }, [loadDashboard]);
+
+    // Tarih aralığı değiştiğinde bütçe durumunu otomatik çek
+    useEffect(() => {
+        if (dateRange.since && dateRange.until) {
+            reportsApi.fetchBudgetStatus(dateRange.since, dateRange.until).catch(() => {});
+        }
+    }, [dateRange.since, dateRange.until]);
 
     const handleMetaFetch = async () => {
         if (!settings.metaApiToken) return toast.error('Meta token eksik. Ayarlardan ekleyin.');

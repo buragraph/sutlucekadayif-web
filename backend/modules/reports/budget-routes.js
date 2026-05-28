@@ -4,7 +4,7 @@ import { db } from '../../config/firebase.js';
 import admin from 'firebase-admin';
 import { verifyToken, requirePermission } from '../../middleware/auth.js';
 import { uploadFile, deleteFile, urlToKey } from '../../config/r2.js';
-import { upsertButce, getAllSubeler, recalcSubeAggregates } from './db.js';
+import { upsertButce, getAllSubeler, recalcSubeAggregates, getDonemVeri } from './db.js';
 import { invalidateReportCache } from './services/report-data.js';
 import { invalidateCache } from '../../middleware/cache.js';
 
@@ -321,6 +321,84 @@ router.post(
       res.json({ success: true });
     } catch (err) {
       console.error('[Budget] Tekil onaylama hatası:', err);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+
+// GET /butce-durum — Tüm şubelerin bütçe durumunu döner
+router.get(
+  '/butce-durum',
+  verifyToken,
+  async (req, res) => {
+    try {
+      const { since, until } = req.query;
+      if (!since || !until) {
+        return res.status(400).json({ error: 'since ve until parametreleri zorunludur.' });
+      }
+
+      const subeler = await getAllSubeler();
+      const sonuc = [];
+      let toplamPlanlanan = 0;
+      let toplamHarcama = 0;
+      let toplamKalan = 0;
+      let asimSayisi = 0;
+      let uyariSayisi = 0;
+
+      for (const sube of subeler) {
+        const donem = await getDonemVeri(sube.kod, since, until);
+
+        const planlananButce = donem?.planlanan_butce || 0;
+        const devredilen = donem?.devredilen_miktar || 0;
+        const toplamButce = planlananButce + devredilen;
+        const harcama = donem?.harcama || 0;
+        const kalan = toplamButce - harcama;
+
+        // Kullanım oranı ve durum hesapla
+        let kullanimOrani = 0;
+        let durum = null;
+        if (planlananButce > 0) {
+          kullanimOrani = toplamButce > 0 ? Math.round((harcama / toplamButce) * 1000) / 10 : 0;
+          if (kullanimOrani >= 100) {
+            durum = 'asim';
+            asimSayisi++;
+          } else if (kullanimOrani >= 80) {
+            durum = 'uyari';
+            uyariSayisi++;
+          } else {
+            durum = 'normal';
+          }
+          toplamPlanlanan += toplamButce;
+          toplamHarcama += harcama;
+          toplamKalan += kalan;
+        }
+
+        sonuc.push({
+          kod: sube.kod,
+          ad: sube.ad,
+          planlananButce,
+          devredilen,
+          toplamButce,
+          harcama,
+          kalan,
+          kullanimOrani,
+          durum,
+        });
+      }
+
+      res.json({
+        subeler: sonuc,
+        ozet: {
+          toplamPlanlanan,
+          toplamHarcama,
+          toplamKalan,
+          asimSayisi,
+          uyariSayisi,
+        },
+      });
+    } catch (err) {
+      console.error('[Budget] Bütçe durum hatası:', err);
       res.status(500).json({ error: err.message });
     }
   }

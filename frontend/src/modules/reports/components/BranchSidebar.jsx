@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useReportsStore, fmtC } from '../hooks/useReports';
-import { Search, MapPin } from 'lucide-react';
+import { Search, MapPin, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 export function BranchSidebar() {
@@ -13,6 +13,7 @@ export function BranchSidebar() {
     const reverseAdsets = useReportsStore((s) => s.reverseAdsets);
     const metaPrefixMappings = useReportsStore((s) => s.metaPrefixMappings);
     const googleMappings = useReportsStore((s) => s.googleMappings);
+    const budgetStatus = useReportsStore((s) => s.budgetStatus);
 
     const filtered = branches.filter((b) => 
         b.ad.toLowerCase().includes(search.toLowerCase()) || 
@@ -95,6 +96,25 @@ export function BranchSidebar() {
                                 <span>{s.kod}</span>
                                 <span>{fmtC(tS)}</span>
                             </div>
+                            {(() => {
+                                const bs = budgetStatus?.subeler?.find(b => b.kod === s.kod);
+                                if (!bs || !bs.toplamButce) return null;
+                                const pct = Math.min(bs.kullanimOrani, 120);
+                                const barColor = bs.durum === 'asim' ? 'bg-red-500' : bs.durum === 'uyari' ? 'bg-amber-500' : 'bg-emerald-500';
+                                return (
+                                    <div className="px-1 mt-0.5">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                                                <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                                            </div>
+                                            <span className={`text-[10px] font-medium shrink-0 ${bs.durum === 'asim' ? 'text-red-500' : bs.durum === 'uyari' ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                                                {bs.durum === 'asim' && <AlertTriangle className="w-2.5 h-2.5 inline mr-0.5 -mt-px" />}
+                                                %{Math.round(bs.kullanimOrani)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     );
                 })}

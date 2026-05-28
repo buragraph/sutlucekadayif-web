@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useReportsStore, fmt, fmtC, formatDateTR } from '../hooks/useReports';
-import { Plus, ArrowUpDown, ArrowUp, ArrowDown, LayoutDashboard, BarChart2, SlidersHorizontal, Eye, FileDown, Trash2, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, ArrowUpDown, ArrowUp, ArrowDown, LayoutDashboard, BarChart2, SlidersHorizontal, Eye, FileDown, Trash2, Settings, ChevronLeft, ChevronRight, AlertTriangle, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const ITEMS_PER_PAGE = 5;
@@ -13,6 +13,7 @@ export function BranchDetail() {
     const sortDir = useReportsStore((s) => s.sortDir);
     const setSort = useReportsStore((s) => s.setSort);
     const openModal = useReportsStore((s) => s.openModal);
+    const budgetStatus = useReportsStore((s) => s.budgetStatus);
 
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -113,6 +114,56 @@ export function BranchDetail() {
                         </div>
                     ))}
                 </div>
+
+                {/* Bütçe Durumu Kartı */}
+                {(() => {
+                    const bs = budgetStatus?.subeler?.find(b => b.kod === activeBranchCode);
+                    if (!bs || !bs.toplamButce) return null;
+                    const pct = Math.min(bs.kullanimOrani, 100);
+                    const borderColor = bs.durum === 'asim' ? 'border-red-500/50' : bs.durum === 'uyari' ? 'border-amber-500/50' : 'border-border';
+                    const barColor = bs.durum === 'asim' ? 'bg-red-500' : bs.durum === 'uyari' ? 'bg-amber-500' : 'bg-emerald-500';
+                    return (
+                        <div className={`p-4 rounded-lg border ${borderColor} bg-card mb-6`}>
+                            <div className="flex items-center gap-2 mb-3">
+                                <Wallet className={`w-4 h-4 ${bs.durum === 'asim' ? 'text-red-500' : bs.durum === 'uyari' ? 'text-amber-500' : 'text-emerald-500'}`} />
+                                <span className="text-sm font-semibold text-foreground">Bütçe Durumu</span>
+                                {bs.durum === 'asim' && (
+                                    <span className="ml-auto text-xs font-medium text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                        <AlertTriangle className="w-3 h-3" /> Bütçe Aşıldı
+                                    </span>
+                                )}
+                                {bs.durum === 'uyari' && (
+                                    <span className="ml-auto text-xs font-medium text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                                        Bütçe Sınırına Yakın
+                                    </span>
+                                )}
+                            </div>
+                            <div className="grid grid-cols-3 gap-4 mb-3">
+                                <div>
+                                    <div className="text-xs text-muted-foreground">Planlanan</div>
+                                    <div className="text-lg font-semibold text-foreground">{fmtC(bs.toplamButce)}</div>
+                                    {bs.devredilen > 0 && <div className="text-[10px] text-muted-foreground">({fmtC(bs.planlananButce)} + {fmtC(bs.devredilen)} devir)</div>}
+                                </div>
+                                <div>
+                                    <div className="text-xs text-muted-foreground">Harcanan</div>
+                                    <div className={`text-lg font-semibold ${bs.durum === 'asim' ? 'text-red-500' : 'text-foreground'}`}>{fmtC(bs.harcama)}</div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-muted-foreground">Kalan</div>
+                                    <div className={`text-lg font-semibold ${bs.kalan < 0 ? 'text-red-500' : 'text-emerald-600'}`}>{fmtC(bs.kalan)}</div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className={`text-xs font-semibold ${bs.durum === 'asim' ? 'text-red-500' : bs.durum === 'uyari' ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                                    %{Math.round(bs.kullanimOrani)}
+                                </span>
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 {/* Table */}
                 <div className="flex items-center justify-between mb-3">

@@ -256,7 +256,7 @@ export async function fetchAdsets(accessToken, since, until, forceRefresh = fals
   if (rawAdsets.length === 0) {
     console.log("📡 Meta Adsets API'den çekiliyor...");
     let allData = [];
-    let url = `${BASE_URL}/${AD_ACCOUNT_ID}/adsets?fields=id,name,campaign_id,campaign{name},insights.time_range({"since":"${since}","until":"${until}"}){reach,impressions,spend}&limit=500&access_token=${accessToken}`;
+    let url = `${BASE_URL}/${AD_ACCOUNT_ID}/adsets?fields=id,name,campaign_id,campaign{name},daily_budget,lifetime_budget,budget_remaining,effective_status,insights.time_range({"since":"${since}","until":"${until}"}){reach,impressions,spend}&limit=500&access_token=${accessToken}`;
     while (url) {
       const res = await fetch(url);
       const json = await res.json();
@@ -266,7 +266,7 @@ export async function fetchAdsets(accessToken, since, until, forceRefresh = fals
     }
     rawAdsets = allData.map(a => {
       const insight = a.insights?.data?.[0] || null;
-      return { id: a.id, name: a.name, campaignName: a.campaign ? a.campaign.name : 'Bilinmeyen Kampanya', reach: insight ? parseInt(insight.reach || 0) : 0, impressions: insight ? parseInt(insight.impressions || 0) : 0, spend: insight ? parseFloat(insight.spend || 0) : 0 };
+      return { id: a.id, name: a.name, campaignName: a.campaign ? a.campaign.name : 'Bilinmeyen Kampanya', reach: insight ? parseInt(insight.reach || 0) : 0, impressions: insight ? parseInt(insight.impressions || 0) : 0, spend: insight ? parseFloat(insight.spend || 0) : 0, daily_budget: a.daily_budget ? parseInt(a.daily_budget) / 100 : 0, lifetime_budget: a.lifetime_budget ? parseInt(a.lifetime_budget) / 100 : 0, budget_remaining: a.budget_remaining ? parseInt(a.budget_remaining) / 100 : 0, effective_status: a.effective_status || 'UNKNOWN' };
     });
     await saveAdsetsCache({ key: cacheKey, updatedAt: new Date().toISOString(), adsets: rawAdsets });
   }
