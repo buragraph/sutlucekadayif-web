@@ -327,15 +327,24 @@ router.post(
 );
 
 
-// GET /butce-durum — Tüm şubelerin bütçe durumunu döner
+// GET /butce-durum — Tüm şubelerin bütçe durumunu döner (10dk cache)
+const butceDurumCache = new Map();
+const BUTCE_DURUM_TTL = 10 * 60 * 1000; // 10 dakika
+
 router.get(
   '/butce-durum',
-  verifyToken,
   async (req, res) => {
     try {
       const { since, until } = req.query;
       if (!since || !until) {
         return res.status(400).json({ error: 'since ve until parametreleri zorunludur.' });
+      }
+
+      // Cache kontrol
+      const cacheKey = `${since}_${until}`;
+      const cached = butceDurumCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < BUTCE_DURUM_TTL) {
+        return res.json(cached.data);
       }
 
       const subeler = await getAllSubeler();
@@ -387,7 +396,7 @@ router.get(
         });
       }
 
-      res.json({
+      const responseData = {
         subeler: sonuc,
         ozet: {
           toplamPlanlanan,
@@ -396,7 +405,12 @@ router.get(
           asimSayisi,
           uyariSayisi,
         },
-      });
+      };
+
+      // Cache'e yaz
+      butceDurumCache.set(cacheKey, { ts: Date.now(), data: responseData });
+
+      res.json(responseData);
     } catch (err) {
       console.error('[Budget] Bütçe durum hatası:', err);
       res.status(500).json({ error: err.message });
