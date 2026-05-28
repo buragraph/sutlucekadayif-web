@@ -610,7 +610,7 @@ router.post('/confirm-meta', async (req, res) => {
       return res.json({ success: true });
     }
     const result = await confirmMetaImport(accessToken, since, until, eslesmeler);
-    await saveMappings({});
+    await saveMappings(eslesmeler);
     invalidateCache('/reports');
     res.json(result);
   } catch (err) {

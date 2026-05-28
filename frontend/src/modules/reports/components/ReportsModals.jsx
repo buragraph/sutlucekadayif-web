@@ -65,7 +65,7 @@ export function SettingsModal() {
             <DialogContent className="sm:max-w-[560px]">
                 <DialogHeader><DialogTitle className="flex items-center gap-2 text-muted-foreground"><Settings className="w-4 h-4" /> Ayarlar</DialogTitle></DialogHeader>
                 <div className="flex flex-col gap-4 py-2">
-                    <FormGroup label="Meta API Access Token" description="Meta verilerini çekmek için gerekli Graph API token'ı. (Sadece bu tarayıcıda saklanır).">
+                    <FormGroup label="Meta API Access Token" description="Meta verilerini çekmek için gerekli Graph API token'ı. (Veritabanında güvenli bir şekilde saklanır).">
                         <Input type="password" value={form.metaApiToken} onChange={e => setForm({...form, metaApiToken: e.target.value})} className="font-mono text-xs" placeholder="EAAI..." />
                     </FormGroup>
                     <div className="pt-2">
