@@ -27,10 +27,14 @@ router.get('/:courseId', verifyToken, asyncHandler(async (req, res) => {
  */
 router.post('/:courseId', verifyToken, requirePermission('academy.manage'), asyncHandler(async (req, res) => {
     const { courseId } = req.params;
-    const { title, description, lessonType, videoUrl, pdfUrl } = req.body;
+    const { title, description, lessonType, videoUrl, pdfUrl, passingScore, questions } = req.body;
 
     if (!title?.trim()) return res.status(400).json({ error: 'Ders başlığı gerekli' });
-    if (!['video', 'pdf'].includes(lessonType)) return res.status(400).json({ error: 'Geçerli ders tipi: video veya pdf' });
+    if (!['video', 'pdf', 'quiz'].includes(lessonType)) return res.status(400).json({ error: 'Geçerli ders tipi: video, pdf veya quiz' });
+    if (lessonType === 'quiz') {
+        if (typeof passingScore !== 'number' || passingScore < 0 || passingScore > 100) return res.status(400).json({ error: 'Geçerli bir geçme notu (0-100) gerekli' });
+        if (!Array.isArray(questions) || questions.length === 0) return res.status(400).json({ error: 'Sınav için en az bir soru gerekli' });
+    }
 
     // Sıralama için mevcut ders sayısı
     const existing = await db.collection('academy_courses').doc(courseId)
@@ -43,6 +47,8 @@ router.post('/:courseId', verifyToken, requirePermission('academy.manage'), asyn
         lessonType,
         videoUrl: lessonType === 'video' ? (videoUrl || '') : '',
         pdfUrl: lessonType === 'pdf' ? (pdfUrl || '') : '',
+        passingScore: lessonType === 'quiz' ? passingScore : null,
+        questions: lessonType === 'quiz' ? questions : null,
         orderIndex,
         createdAt: new Date().toISOString(),
     };
@@ -59,7 +65,7 @@ router.post('/:courseId', verifyToken, requirePermission('academy.manage'), asyn
  */
 router.put('/:courseId/:lessonId', verifyToken, requirePermission('academy.manage'), asyncHandler(async (req, res) => {
     const { courseId, lessonId } = req.params;
-    const { title, description, lessonType, videoUrl, pdfUrl, orderIndex } = req.body;
+    const { title, description, lessonType, videoUrl, pdfUrl, passingScore, questions, orderIndex } = req.body;
 
     const docRef = db.collection('academy_courses').doc(courseId)
         .collection('lessons').doc(lessonId);
@@ -69,10 +75,39 @@ router.put('/:courseId/:lessonId', verifyToken, requirePermission('academy.manag
     const updateData = {};
     if (title !== undefined) updateData.title = title.trim();
     if (description !== undefined) updateData.description = description.trim();
-    if (lessonType !== undefined) updateData.lessonType = lessonType;
-    if (videoUrl !== undefined) updateData.videoUrl = videoUrl;
-    if (pdfUrl !== undefined) updateData.pdfUrl = pdfUrl;
+    if (lessonType !== undefined) {
+        updateData.lessonType = lessonType;
+        if (lessonType === 'quiz') {
+            if (passingScore !== undefined) updateData.passingScore = passingScore;
+            if (questions !== undefined) updateData.questions = questions;
+            updateData.videoUrl = '';
+            updateData.pdfUrl = '';
+        } else if (lessonType === 'video') {
+            updateData.passingScore = null;
+            updateData.questions = null;
+            updateData.pdfUrl = '';
+        } else if (lessonType === 'pdf') {
+            updateData.passingScore = null;
+            updateData.questions = null;
+            updateData.videoUrl = '';
+        }
+    }
+    if (videoUrl !== undefined && lessonType !== 'quiz' && lessonType !== 'pdf') updateData.videoUrl = videoUrl;
+    if (pdfUrl !== undefined && lessonType !== 'quiz' && lessonType !== 'video') updateData.pdfUrl = pdfUrl;
     if (orderIndex !== undefined) updateData.orderIndex = orderIndex;
+
+    // Eğer quiz güncelleniyorsa validasyonlar (eğer title vs gelmediyse diye eski tipini kontrol et)
+    const finalLessonType = lessonType !== undefined ? lessonType : doc.data().lessonType;
+    if (finalLessonType === 'quiz') {
+        const finalPassing = passingScore !== undefined ? passingScore : doc.data().passingScore;
+        const finalQuestions = questions !== undefined ? questions : doc.data().questions;
+        
+        if (typeof finalPassing !== 'number' || finalPassing < 0 || finalPassing > 100) return res.status(400).json({ error: 'Geçerli bir geçme notu (0-100) gerekli' });
+        if (!Array.isArray(finalQuestions) || finalQuestions.length === 0) return res.status(400).json({ error: 'Sınav için en az bir soru gerekli' });
+        
+        if (passingScore !== undefined) updateData.passingScore = passingScore;
+        if (questions !== undefined) updateData.questions = questions;
+    }
 
     await docRef.update(updateData);
     res.json({ lesson: { id: lessonId, ...doc.data(), ...updateData } });

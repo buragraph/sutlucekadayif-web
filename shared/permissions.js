@@ -37,12 +37,12 @@ const PERMISSIONS = {
     'categories.delete': ['admin'],
 
     // ── Kullanıcı Yönetimi ──
-    'users.view': ['admin'],
-    'users.create': ['admin'],
-    'users.assignRole': ['admin'],
+    'users.view': ['admin', 'sube_sahibi'],
+    'users.create': ['admin', 'sube_sahibi'],
+    'users.assignRole': ['admin', 'sube_sahibi'],
 
     // ── Akademi ──
-    'academy.view': ['admin', 'sube_sahibi'],
+    'academy.view': ['admin', 'sube_sahibi', 'calisan'],
     'academy.manage': ['admin'],
 };
 

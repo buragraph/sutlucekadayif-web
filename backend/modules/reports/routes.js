@@ -10,7 +10,8 @@ import archiver from 'archiver';
 import { importMetaCsv, importGoogleCsv, importSubeVerileri, importGoogleCsvBulk, importMetaCsvAutoMatch } from './services/import.js';
 import { importFromMetaApi, previewMetaInsights, confirmMetaImport, saveMappings, loadMappings, fetchAccountLevelReach, fetchCampaigns, saveCampaignMappings, loadCampaignMappings, campaignBasedImport, fetchAdsets, saveAdsetMappings, loadAdsetMappings } from './services/meta-api.js';
 import { getGoogleAuthUrl, handleGoogleCallback, isGoogleConnected, listAccounts, fetchLocationMetrics, fetchAllLocationMetrics, saveGoogleMappings, loadGoogleMappings } from './services/google-business.js';
-import { buildReportData } from './services/report-data.js';
+import { buildReportData, invalidateReportCache } from './services/report-data.js';
+import budgetRouter from './budget-routes.js';
 import { generateReportHtml } from './services/report-template.js';
 import { generatePdf } from './services/generate-pdf.js';
 import { getAllSubeler, getSubeByKod, getDonemler, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleToplanlar, closeDb, getDb, clearAllData, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings, recalcSubeAggregates } from './db.js';
@@ -31,7 +32,7 @@ else {
 const router = Router();
 
 // Rapor UI tarafından çağrılan API ayarları
-router.get('/settings', async (req, res) => {
+router.get('/settings', cacheMiddleware(600), async (req, res) => {
   try {
     const settings = await getSettings();
     const safe = { ...settings };
@@ -52,6 +53,7 @@ router.post('/save-settings', async (req, res) => {
   try {
     const newSettings = req.body;
     await saveSettings(newSettings);
+    invalidateCache('/reports');
     res.json({ success: true, message: 'Ayarlar kaydedildi.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -218,12 +220,16 @@ router.post('/generate-pdf-bulk', async (req, res) => {
     const pdfResults = [];
     const hatalar = [];
 
+    // Tüm şubeleri tek seferde oku (N ayrı getSubeByKod yerine 1 query)
+    const allSubeler = await getAllSubeler();
+    const subeMap = Object.fromEntries(allSubeler.map(s => [s.kod, s]));
+
     for (const subeKod of subeKodlari) {
       try {
-        const sube = await getSubeByKod(subeKod);
+        const sube = subeMap[subeKod];
         if (!sube) { hatalar.push({ subeKod, hata: 'Şube bulunamadı' }); continue; }
 
-        const reportData = await buildReportData(subeKod, donemBaslangic, donemBitis);
+        const reportData = await buildReportData(subeKod, donemBaslangic, donemBitis, sube);
         if (!reportData.veriVar) { hatalar.push({ subeKod, hata: 'Veri bulunamadı' }); continue; }
 
         const html = generateReportHtml(reportData);
@@ -348,7 +354,72 @@ router.get('/dashboard', cacheMiddleware(300), async (req, res) => {
   }
 });
 
-// Şubenin dönemlerini döner (şubeye tıklandığında çağrılır)
+// Dashboard Bundle API — Tek istek ile tüm dashboard verisini döndürür (4 ayrı istek yerine)
+router.get('/dashboard-bundle', cacheMiddleware(300), async (req, res) => {
+  try {
+    const [subeler, mappingsRaw, campaignMappingsRaw, adsetMappingsRaw, settingsRaw, googleMappingsRaw] = await Promise.all([
+      getAllSubeler(),
+      import('./services/meta-api.js').then(m => m.loadMappings()).catch(() => ({})),
+      getCampaignMappings().catch(() => ({})),
+      getAdsetMappings().catch(() => ({})),
+      getSettings().catch(() => ({})),
+      import('./services/google-business.js').then(m => m.loadGoogleMappings()).catch(() => ({})),
+    ]);
+
+    const dashData = subeler.map(sube => ({
+      ...sube,
+      donemSayisi: sube.donem_sayisi || 0,
+      donemler: [],
+      toplamHarcama: sube.toplam_harcama || 0,
+      toplamErisim: sube.toplam_erisim || 0,
+      toplamSonuc: sube.toplam_sonuc || 0,
+    }));
+
+    // Meta mappings reverse hesapla
+    const mappings = mappingsRaw || {};
+    const campaignMappings = campaignMappingsRaw || {};
+    const adsetMappings = adsetMappingsRaw || {};
+
+    const reverseCampaigns = {};
+    for (const [id, val] of Object.entries(campaignMappings)) {
+      const sKod = typeof val === 'object' ? val.sube : val;
+      if (sKod === '__atla__' || !sKod) continue;
+      if (!reverseCampaigns[sKod]) reverseCampaigns[sKod] = [];
+      reverseCampaigns[sKod].push({ id, name: typeof val === 'object' ? val.name : id });
+    }
+
+    const reverseAdsets = {};
+    for (const [id, val] of Object.entries(adsetMappings)) {
+      const sKod = typeof val === 'object' ? val.sube : val;
+      if (sKod === '__atla__' || !sKod) continue;
+      if (!reverseAdsets[sKod]) reverseAdsets[sKod] = [];
+      reverseAdsets[sKod].push({ id, name: typeof val === 'object' ? val.name : id });
+    }
+
+    // Settings maskeleme
+    const settings = { ...settingsRaw };
+    if (settings.metaApiToken) {
+      settings.metaApiTokenMasked = settings.metaApiToken.substring(0, 6) + '...' + settings.metaApiToken.slice(-4);
+    }
+    if (settings.googleClientSecret) {
+      settings.googleClientSecretMasked = settings.googleClientSecret.substring(0, 4) + '...' + settings.googleClientSecret.slice(-4);
+    }
+
+    res.json({
+      subeler: dashData,
+      mappings,
+      reverseCampaigns,
+      reverseAdsets,
+      hasMappings: Object.keys(campaignMappings).length > 0 || Object.keys(mappings).length > 0,
+      settings,
+      googleMappings: googleMappingsRaw || {},
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Şubenin dönemlerini döner (şubeye tıklandığında çağrılır — sadece tarih + veri var/yok)
 router.get('/sube/:kod/donemler', cacheMiddleware(180), async (req, res) => {
   try {
     const { kod } = req.params;
@@ -356,22 +427,8 @@ router.get('/sube/:kod/donemler', cacheMiddleware(180), async (req, res) => {
     const donemler = donemlerResult.meta.map(veri => ({
       baslangic: veri.donem_baslangic,
       bitis: veri.donem_bitis,
-      meta: veri.harcama !== undefined ? {
-        harcama: veri.harcama || 0,
-        erisim: veri.erisim || 0,
-        sonuc: veri.sonuc || 0,
-        tiklama: veri.tiklama || 0,
-      } : null,
-      google: veri.google_arama !== undefined ? {
-        gorunurluk: (veri.google_arama || 0) + (veri.google_harita || 0),
-        telefon: veri.google_telefon || 0,
-        yolTarifi: veri.google_yol_tarifi || 0,
-        webTiklama: veri.google_web_tiklama || 0,
-      } : null,
-      rapor: null,
-      planlananButce: veri.planlanan_butce || null,
-      devredilenMiktar: veri.devredilen_miktar || null,
-      toplamErisim: veri.erisim || null,
+      meta: veri.harcama !== undefined ? { harcama: 1 } : null,
+      google: veri.google_arama !== undefined ? { gorunurluk: 1 } : null,
     }));
     res.json({ donemler });
   } catch (err) {
@@ -381,9 +438,9 @@ router.get('/sube/:kod/donemler', cacheMiddleware(180), async (req, res) => {
 
 router.post('/sube', async (req, res) => {
   try {
-    const { kod, ad } = req.body;
+    const { kod, ad, link } = req.body;
     if (!kod) return res.status(400).json({ error: 'Şube kodu zorunludur' });
-    await upsertSube(kod, ad);
+    await upsertSube(kod, ad, null, link);
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
@@ -393,8 +450,8 @@ router.post('/sube', async (req, res) => {
 
 router.put('/sube/:kod', async (req, res) => {
   try {
-    const { ad, adres } = req.body;
-    await updateSube(req.params.kod, ad, adres);
+    const { ad, adres, link } = req.body;
+    await updateSube(req.params.kod, ad, adres, link);
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
@@ -485,6 +542,7 @@ router.put('/sube/:kod/donem/overrides', async (req, res) => {
     }
     
     await recalcSubeAggregates(sube.kod);
+    invalidateReportCache(sube.kod);
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
@@ -504,6 +562,8 @@ router.post('/campaign-fetch', async (req, res) => {
   try {
     const defaultSube = targetSubeKod || subeKod || null;
     const result = await campaignBasedImport(accessToken, since, until, defaultSube);
+    invalidateReportCache();
+    invalidateCache('/reports');
     res.json(result);
   } catch (err) {
     if (err.message.includes("Eşleşme bulunamadı") || err.message.includes("eşleştirme")) {
@@ -546,17 +606,19 @@ router.post('/confirm-meta', async (req, res) => {
   try {
     if (saveMappingsOnly) {
       await saveMappings(eslesmeler);
+      invalidateCache('/reports');
       return res.json({ success: true });
     }
     const result = await confirmMetaImport(accessToken, since, until, eslesmeler);
     await saveMappings({});
+    invalidateCache('/reports');
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/meta-mappings', async (req, res) => {
+router.get('/meta-mappings', cacheMiddleware(600), async (req, res) => {
   try {
     const mappings = await loadMappings() || {};
     const campaignMappings = await getCampaignMappings() || {};
@@ -585,6 +647,7 @@ router.get('/meta-mappings', async (req, res) => {
 });
 router.post('/meta-mappings', async (req, res) => {
   await saveMappings(req.body.mappings || {});
+  invalidateCache('/reports');
   res.json({ success: true });
 });
 
@@ -599,6 +662,7 @@ router.post('/meta-campaigns', async (req, res) => {
 
 router.post('/save-campaign-mappings', async (req, res) => {
   await saveCampaignMappings(req.body.mappings || {});
+  invalidateCache('/reports');
   res.json({ success: true, message: 'Kampanya eşleştirmeleri kaydedildi.' });
 });
 
@@ -613,6 +677,7 @@ router.post('/meta-adsets', async (req, res) => {
 
 router.post('/save-adset-mappings', async (req, res) => {
   await saveAdsetMappings(req.body.mappings || {});
+  invalidateCache('/reports');
   res.json({ success: true, message: 'Reklam seti eşleştirmeleri kaydedildi.' });
 });
 
@@ -621,7 +686,7 @@ router.post('/save-adset-mappings', async (req, res) => {
 // ── GOOGLE API ENDPOINTS ──
 // ══════════════════════════════════════════════════
 
-router.get('/google-locations', async (req, res) => {
+router.get('/google-locations', cacheMiddleware(600), async (req, res) => {
   try {
     const locations = await listAccounts();
     const subeler = await getAllSubeler();
@@ -643,6 +708,7 @@ router.get('/google-mappings', async (req, res) => {
 
 router.post('/google-mappings', async (req, res) => {
   await saveGoogleMappings(req.body.mappings || {});
+  invalidateCache('/reports');
   res.json({ success: true, message: 'Google lokasyon eşleştirmeleri kaydedildi.' });
 });
 
@@ -698,11 +764,16 @@ router.post('/google-fetch', async (req, res) => {
     }
     
     // Aggregates yeni db katmanında otomatik güncellenir
+    invalidateReportCache();
+    invalidateCache('/reports');
     res.json({ success: true, message: `${savedCount} şube için Google verileri güncellendi!` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+
+// Bütçe Toplama
+router.use('/', budgetRouter);
 
 export default router;

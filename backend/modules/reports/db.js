@@ -5,17 +5,11 @@ import { FieldValue } from 'firebase-admin/firestore';
 // ── Şube CRUD (subeler collection) ──
 // ═══════════════════════════════════════════════════
 
-export async function upsertSube(kod, ad, adres = null) {
+export async function upsertSube(kod, ad, adres = null, link = null) {
   const docRef = db.collection('subeler').doc(kod);
-  const doc = await docRef.get();
-  if (!doc.exists) {
-    await docRef.set({ ad, adres: adres || '' });
-  } else {
-    // Sadece ad/adres güncelle, varsa diğer dataları (telefon vb) ezme
-    await docRef.update({ ad, adres: adres || '' });
-  }
-  const updated = await docRef.get();
-  return { id: kod, kod, ...updated.data() };
+  const data = { ad, adres: adres || '', link: link || '' };
+  await docRef.set(data, { merge: true });
+  return { id: kod, kod, ...data };
 }
 
 export async function getSubeByKod(kod) {
@@ -31,13 +25,13 @@ export async function getAllSubeler() {
   return arr;
 }
 
-export async function updateSube(kod, ad, adres) {
+export async function updateSube(kod, ad, adres, link) {
   const docRef = db.collection('subeler').doc(kod);
   const data = { ad };
   if (adres !== undefined) data.adres = adres;
+  if (link !== undefined) data.link = link;
   await docRef.update(data);
-  const updated = await docRef.get();
-  return { id: kod, kod, ...updated.data() };
+  return { id: kod, kod, ...data };
 }
 
 export async function deleteSube(kod) {

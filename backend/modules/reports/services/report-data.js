@@ -1,12 +1,41 @@
 import { getDonemVeri, getOncekiDonem, getSubeByKod } from '../db.js';
+import NodeCache from 'node-cache';
+
+// Rapor verisi cache'i — aynı dönem için tekrar istendiğinde Firestore'a gitmez
+const reportCache = new NodeCache({ stdTTL: 3600, checkperiod: 120 });
+
+/**
+ * Rapor cache'ini temizler. Veri değişikliklerinden sonra çağrılmalıdır.
+ * @param {string} [subeKod] - Belirli şubeyi temizle, verilmezse tümünü temizle
+ */
+export function invalidateReportCache(subeKod = null) {
+  if (subeKod) {
+    const keys = reportCache.keys().filter(k => k.startsWith(`report_${subeKod}_`));
+    keys.forEach(k => reportCache.del(k));
+  } else {
+    reportCache.flushAll();
+  }
+}
 
 function pctChange(current, previous) {
   if (!previous || previous === 0) return null;
   return ((current - previous) / previous) * 100;
 }
 
-export async function buildReportData(subeKod, donemBaslangic, donemBitis) {
-  const sube = await getSubeByKod(subeKod);
+/**
+ * Rapor verisini oluşturur.
+ * @param {string} subeKod - Şube kodu
+ * @param {string} donemBaslangic - Dönem başlangıç tarihi
+ * @param {string} donemBitis - Dönem bitiş tarihi
+ * @param {object} [subeData] - Opsiyonel: önceden yüklenmiş şube verisi (batch işlemlerinde gereksiz read önler)
+ */
+export async function buildReportData(subeKod, donemBaslangic, donemBitis, subeData = null) {
+  // Cache kontrolü
+  const cacheKey = `report_${subeKod}_${donemBaslangic}_${donemBitis}`;
+  const cached = reportCache.get(cacheKey);
+  if (cached) return cached;
+
+  const sube = subeData || await getSubeByKod(subeKod);
   if (!sube) {
     throw new Error(`Şube bulunamadı: ${subeKod}`);
   }
@@ -82,7 +111,7 @@ export async function buildReportData(subeKod, donemBaslangic, donemBitis) {
   const planlananButce = overrides.planlananButce ?? donem.planlanan_butce ?? null;
   const devredilenMiktar = overrides.devredilenMiktar ?? donem.devredilen_miktar ?? null;
 
-  return {
+  const result = {
     sube: {
       kod: sube.kod,
       ad: sube.ad,
@@ -100,6 +129,10 @@ export async function buildReportData(subeKod, donemBaslangic, donemBitis) {
     devredilenMiktar,
     veriVar: true,
   };
+
+  // Sonucu cache'e yaz (1 saat TTL)
+  reportCache.set(cacheKey, result);
+  return result;
 }
 
 function formatDonemLabel(baslangic, bitis) {

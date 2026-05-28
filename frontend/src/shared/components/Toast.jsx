@@ -1,35 +1,23 @@
-import { useState, useEffect, createContext, useContext, useCallback } from 'react';
-import { X, CheckCircle, AlertTriangle, Info, XCircle } from 'lucide-react';
+import { useState, createContext, useContext, useCallback } from 'react';
+import { toast as sonnerToast } from 'sonner';
+import { AlertTriangle } from 'lucide-react';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { buttonVariants } from '@/components/ui/button';
 
-const ToastContext = createContext(null);
 const ConfirmContext = createContext(null);
 
-// ─── Toast Provider ───
+// ─── Toast Provider (now uses Sonner for toasts, AlertDialog for confirm) ───
 export function ToastProvider({ children }) {
-    const [toasts, setToasts] = useState([]);
     const [confirmState, setConfirmState] = useState(null);
-
-    const addToast = useCallback((message, type = 'info', duration = 3500) => {
-        const id = Date.now() + Math.random();
-        setToasts((prev) => [...prev, { id, message, type }]);
-        setTimeout(() => {
-            setToasts((prev) => prev.filter((t) => t.id !== id));
-        }, duration);
-    }, []);
-
-    const toast = useCallback({
-        success: (msg) => addToast(msg, 'success'),
-        error: (msg) => addToast(msg, 'error', 5000),
-        warning: (msg) => addToast(msg, 'warning', 4000),
-        info: (msg) => addToast(msg, 'info'),
-    }, [addToast]);
-
-    // Make toast callable: toast.success(...) etc.
-    const toastFn = useCallback((msg, type) => addToast(msg, type), [addToast]);
-    toastFn.success = toast.success;
-    toastFn.error = toast.error;
-    toastFn.warning = toast.warning;
-    toastFn.info = toast.info;
 
     const confirm = useCallback((message) => {
         return new Promise((resolve) => {
@@ -44,59 +32,55 @@ export function ToastProvider({ children }) {
         }
     };
 
-    const removeToast = (id) => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-    };
-
-    const icons = {
-        success: <CheckCircle size={18} />,
-        error: <XCircle size={18} />,
-        warning: <AlertTriangle size={18} />,
-        info: <Info size={18} />,
-    };
-
     return (
-        <ToastContext.Provider value={toastFn}>
-            <ConfirmContext.Provider value={confirm}>
-                {children}
+        <ConfirmContext.Provider value={confirm}>
+            {children}
 
-                {/* Toast container */}
-                <div className="toast-container">
-                    {toasts.map((t) => (
-                        <div key={t.id} className={`toast toast--${t.type}`}>
-                            <span className="toast__icon">{icons[t.type]}</span>
-                            <span className="toast__message">{t.message}</span>
-                            <button className="toast__close" onClick={() => removeToast(t.id)}>
-                                <X size={14} />
-                            </button>
-                        </div>
-                    ))}
-                </div>
-
-                {/* Confirm dialog */}
-                {confirmState && (
-                    <div className="confirm-overlay" onClick={() => handleConfirm(false)}>
-                        <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
-                            <div className="confirm-dialog__icon">
-                                <AlertTriangle size={28} />
-                            </div>
-                            <p className="confirm-dialog__message">{confirmState.message}</p>
-                            <div className="confirm-dialog__actions">
-                                <button className="btn btn--secondary" onClick={() => handleConfirm(false)}>İptal</button>
-                                <button className="btn btn--danger" onClick={() => handleConfirm(true)}>Evet, Devam Et</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </ConfirmContext.Provider>
-        </ToastContext.Provider>
+            {/* Confirm dialog — shadcn AlertDialog */}
+            <AlertDialog open={!!confirmState} onOpenChange={(open) => !open && handleConfirm(false)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <AlertTriangle className="size-5 text-destructive" />
+                            Emin misiniz?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {confirmState?.message}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => handleConfirm(false)}>
+                            İptal
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => handleConfirm(true)}
+                            className={buttonVariants({ variant: 'destructive' })}
+                        >
+                            Evet, Devam Et
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </ConfirmContext.Provider>
     );
 }
 
+/**
+ * Drop-in replacement: returns the same API as before.
+ * toast.success(msg), toast.error(msg), toast.warning(msg), toast.info(msg)
+ */
 export function useToast() {
-    const ctx = useContext(ToastContext);
-    if (!ctx) throw new Error('useToast must be used within ToastProvider');
-    return ctx;
+    const toastFn = (msg, type) => {
+        if (type === 'success') sonnerToast.success(msg);
+        else if (type === 'error') sonnerToast.error(msg);
+        else if (type === 'warning') sonnerToast.warning(msg);
+        else sonnerToast.info(msg);
+    };
+    toastFn.success = (msg) => sonnerToast.success(msg);
+    toastFn.error = (msg) => sonnerToast.error(msg);
+    toastFn.warning = (msg) => sonnerToast.warning(msg);
+    toastFn.info = (msg) => sonnerToast.info(msg);
+    return toastFn;
 }
 
 export function useConfirm() {

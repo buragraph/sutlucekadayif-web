@@ -5,6 +5,38 @@ import asyncHandler from '../../../utils/asyncHandler.js';
 
 const router = Router();
 
+// Helper: İlgili kullanıcının tamamlanan derslerini okuyup parent doc'a (academy_progress) yazar
+async function syncUserProgressStats(userId) {
+    const lessonsSnap = await db.collection('academy_progress')
+        .doc(userId)
+        .collection('completedLessons')
+        .get();
+
+    const byCourse = {};
+    let lastActivity = null;
+
+    lessonsSnap.docs.forEach(doc => {
+        const { courseId, completedAt } = doc.data();
+        if (!byCourse[courseId]) byCourse[courseId] = { count: 0, lastActivity: null };
+        byCourse[courseId].count++;
+        if (!byCourse[courseId].lastActivity || completedAt > byCourse[courseId].lastActivity) {
+            byCourse[courseId].lastActivity = completedAt;
+        }
+        if (!lastActivity || completedAt > lastActivity) {
+            lastActivity = completedAt;
+        }
+    });
+
+    await db.collection('academy_progress').doc(userId).set({
+        totalCompleted: lessonsSnap.size,
+        lastActivity,
+        byCourse,
+        statsMigrated: true
+    }, { merge: true });
+
+    return { totalCompleted: lessonsSnap.size, lastActivity, byCourse, statsMigrated: true };
+}
+
 // ─── Static routes FIRST (before :courseId param) ───
 
 /**
@@ -14,19 +46,21 @@ const router = Router();
 router.get('/all/summary', verifyToken, asyncHandler(async (req, res) => {
     const userId = req.user.uid;
 
-    const snapshot = await db.collection('academy_progress')
-        .doc(userId)
-        .collection('completedLessons')
-        .get();
+    const docSnap = await db.collection('academy_progress').doc(userId).get();
+    let data = docSnap.exists ? docSnap.data() : {};
 
-    const byCourse = {};
-    snapshot.docs.forEach(doc => {
-        const { courseId } = doc.data();
-        if (!byCourse[courseId]) byCourse[courseId] = 0;
-        byCourse[courseId]++;
-    });
+    if (!data.statsMigrated) {
+        data = await syncUserProgressStats(userId);
+    }
 
-    res.json({ byCourse });
+    const byCourseCount = {};
+    if (data.byCourse) {
+        for (const [cId, info] of Object.entries(data.byCourse)) {
+            byCourseCount[cId] = info.count;
+        }
+    }
+
+    res.json({ byCourse: byCourseCount });
 }));
 
 /**
@@ -44,39 +78,39 @@ router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
     subeSnap.forEach(doc => { subeMap[doc.id] = doc.data(); });
 
     const progressRef = db.collection('academy_progress');
-    const usersSnapshot = await progressRef.listDocuments();
+    const userDocRefs = await progressRef.listDocuments();
+
+    // Firebase Auth'dan kullanıcıları batch (100'erli) olarak al (Hız Optimizasyonu)
+    const userIds = userDocRefs.map(ref => ref.id);
+    const authUsersMap = {};
+    for (let i = 0; i < userIds.length; i += 100) {
+        const chunk = userIds.slice(i, i + 100);
+        try {
+            const authResult = await auth.getUsers(chunk.map(uid => ({ uid })));
+            authResult.users.forEach(u => {
+                authUsersMap[u.uid] = {
+                    displayName: u.displayName || null,
+                    email: u.email || null,
+                };
+            });
+        } catch (e) {
+            console.error('Auth fetch error', e);
+        }
+    }
 
     const stats = [];
-    for (const userDoc of usersSnapshot) {
-        const userId = userDoc.id;
-        const lessonsSnap = await userDoc.collection('completedLessons').get();
+    for (const userDocRef of userDocRefs) {
+        const userId = userDocRef.id;
+        const userDocSnap = await userDocRef.get();
+        let data = userDocSnap.exists ? userDocSnap.data() : {};
 
-        // Kullanıcı bilgilerini Firebase Auth'dan al
-        let userInfo = { displayName: null, email: null };
-        try {
-            const authUser = await auth.getUser(userId);
-            userInfo = {
-                displayName: authUser.displayName || null,
-                email: authUser.email || null,
-            };
-        } catch (e) {
-            // Kullanıcı silinmiş olabilir
+        // Lazy Migration: Eğer istatistikler henüz ana belgeye yazılmadıysa, hesapla ve yaz
+        if (!data.statsMigrated) {
+            data = await syncUserProgressStats(userId);
         }
 
-        // Şube bilgisi
+        const userInfo = authUsersMap[userId] || { displayName: null, email: null };
         const subeData = subeMap[userId] || {};
-
-        const byCourse = {};
-        let lastActivity = null;
-        lessonsSnap.docs.forEach(doc => {
-            const { courseId, completedAt } = doc.data();
-            if (!byCourse[courseId]) byCourse[courseId] = { count: 0, lastActivity: null };
-            byCourse[courseId].count++;
-            if (!byCourse[courseId].lastActivity || completedAt > byCourse[courseId].lastActivity) {
-                byCourse[courseId].lastActivity = completedAt;
-            }
-            if (!lastActivity || completedAt > lastActivity) lastActivity = completedAt;
-        });
 
         stats.push({
             userId,
@@ -84,9 +118,9 @@ router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
             email: userInfo.email,
             subeSlug: subeData.sube_slug || null,
             role: subeData.role || null,
-            totalCompleted: lessonsSnap.size,
-            lastActivity,
-            byCourse,
+            totalCompleted: data.totalCompleted || 0,
+            lastActivity: data.lastActivity || null,
+            byCourse: data.byCourse || {},
         });
     }
 
@@ -94,6 +128,74 @@ router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
     stats.sort((a, b) => (b.lastActivity || '').localeCompare(a.lastActivity || ''));
 
     res.json({ stats });
+}));
+
+/**
+ * POST /api/academy/progress/quiz/:courseId/:lessonId/submit
+ * Kullanıcının sınav cevaplarını değerlendirir ve geçerse kaydeder
+ */
+router.post('/quiz/:courseId/:lessonId/submit', verifyToken, asyncHandler(async (req, res) => {
+    const { courseId, lessonId } = req.params;
+    const { answers } = req.body; // { 'q1': 'A', 'q2': 'C' }
+    const userId = req.user.uid;
+
+    if (!answers || typeof answers !== 'object') {
+        return res.status(400).json({ error: 'Cevaplar geçerli bir formatta gönderilmelidir.' });
+    }
+
+    // Dersi getir
+    const lessonSnap = await db.collection('academy_courses').doc(courseId).collection('lessons').doc(lessonId).get();
+    if (!lessonSnap.exists) return res.status(404).json({ error: 'Sınav bulunamadı' });
+    const lessonData = lessonSnap.data();
+
+    if (lessonData.lessonType !== 'quiz') {
+        return res.status(400).json({ error: 'Bu içerik bir sınav değil.' });
+    }
+
+    const { passingScore = 70, questions = [] } = lessonData;
+    
+    if (questions.length === 0) {
+        return res.status(400).json({ error: 'Bu sınavda hiç soru yok.' });
+    }
+
+    // Not hesaplama
+    let correctCount = 0;
+    questions.forEach(q => {
+        if (answers[q.id] === q.correctOptionId) {
+            correctCount++;
+        }
+    });
+
+    const score = Math.round((correctCount / questions.length) * 100);
+    const passed = score >= passingScore;
+
+    if (passed) {
+        // Geçtiyse, progress'e kaydet
+        const completedLessonsRef = db.collection('academy_progress').doc(userId).collection('completedLessons').doc(lessonId);
+        const alreadyCompletedSnap = await completedLessonsRef.get();
+
+        if (!alreadyCompletedSnap.exists) {
+            await completedLessonsRef.set({
+                courseId,
+                score,
+                completedAt: new Date().toISOString()
+            });
+
+            // Sync user stats
+            await syncUserProgressStats(userId);
+        } else {
+            // İsterseniz daha yüksek skor alındığında güncelleyebilirsiniz (şimdilik sadece ilk geçişte kaydediyoruz veya skor yüksekse güncelleyelim)
+            const oldScore = alreadyCompletedSnap.data().score || 0;
+            if (score > oldScore) {
+                await completedLessonsRef.update({
+                    score,
+                    completedAt: new Date().toISOString()
+                });
+            }
+        }
+    }
+
+    res.json({ passed, score, correctCount, totalQuestions: questions.length, passingScore });
 }));
 
 // ─── Parameterized routes ───
@@ -128,6 +230,7 @@ router.post('/:courseId/:lessonId', verifyToken, asyncHandler(async (req, res) =
     const { courseId, lessonId } = req.params;
     const userId = req.user.uid;
 
+    // Subcollection'a yaz
     await db.collection('academy_progress')
         .doc(userId)
         .collection('completedLessons')
@@ -136,6 +239,9 @@ router.post('/:courseId/:lessonId', verifyToken, asyncHandler(async (req, res) =
             courseId,
             completedAt: new Date().toISOString(),
         });
+
+    // Ana belge istatistiklerini senkronize et
+    await syncUserProgressStats(userId);
 
     res.json({ success: true });
 }));
@@ -148,11 +254,15 @@ router.delete('/:courseId/:lessonId', verifyToken, asyncHandler(async (req, res)
     const { courseId, lessonId } = req.params;
     const userId = req.user.uid;
 
+    // Subcollection'dan sil
     await db.collection('academy_progress')
         .doc(userId)
         .collection('completedLessons')
         .doc(lessonId)
         .delete();
+
+    // Ana belge istatistiklerini senkronize et
+    await syncUserProgressStats(userId);
 
     res.json({ success: true });
 }));

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './shared/components/Toast';
+import { Toaster } from '@/components/ui/sonner';
 import ProtectedRoute from './shared/components/ProtectedRoute';
 import Layout from './shared/components/Layout';
 import MenuPage from './modules/qr-menu/pages/MenuPage';
@@ -15,6 +16,9 @@ import AcademyDashboard from './modules/academy/pages/AcademyDashboard';
 import AcademyAdmin from './modules/academy/pages/AcademyAdmin';
 import CourseDetail from './modules/academy/pages/CourseDetail';
 import ReportsPage from './modules/reports/pages/ReportsPage';
+import BudgetCampaignsPage from './modules/reports/pages/BudgetCampaignsPage';
+import BudgetSubmitPage from './modules/reports/pages/BudgetSubmitPage';
+import BranchReklamPage from './modules/reports/pages/BranchReklamPage';
 
 export default function App() {
   return (
@@ -35,6 +39,7 @@ export default function App() {
           >
             <Route path="/admin" element={<Dashboard />} />
             <Route path="/admin/raporlar" element={<ReportsPage />} />
+            <Route path="/admin/reklam" element={<BranchReklamPage />} />
             <Route path="/admin/qr-menu" element={<ProductsPage />} />
             <Route path="/admin/kullanicilar" element={<UsersPage />} />
             <Route path="/admin/subeler" element={<BranchesPage />} />
@@ -43,6 +48,8 @@ export default function App() {
             <Route path="/admin/akademi" element={<AcademyDashboard />} />
             <Route path="/admin/akademi/kurs/:courseId" element={<CourseDetail />} />
             <Route path="/admin/akademi/yonetim" element={<AcademyAdmin />} />
+            <Route path="/admin/butce-kampanyalari" element={<BudgetCampaignsPage />} />
+            <Route path="/admin/butce-bildirim" element={<BudgetSubmitPage />} />
           </Route>
 
           {/* Müşteri Menü Sayfası - QR ile açılır */}
@@ -67,6 +74,7 @@ export default function App() {
           />
         </Routes>
       </BrowserRouter>
+      <Toaster richColors position="top-right" />
       </ToastProvider>
     </AuthProvider>
   );

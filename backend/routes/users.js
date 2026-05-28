@@ -23,8 +23,8 @@ router.get(
         });
 
         // Firebase Auth'dan kullanıcıları al
-        const listResult = await auth.listUsers(100);
-        const users = listResult.users.map((user) => {
+        const listResult = await auth.listUsers(1000);
+        let users = listResult.users.map((user) => {
             const subeData = subeMap[user.uid] || {};
             return {
                 uid: user.uid,
@@ -37,6 +37,11 @@ router.get(
                 role: subeData.role || null,
             };
         });
+
+        // Eğer kullanıcı şube sahibiyse, sadece kendi şubesindeki çalışanları görebilir
+        if (req.user.role === 'sube_sahibi') {
+            users = users.filter(u => u.subeSlug === req.user.subeSlug && u.role === 'calisan');
+        }
 
         res.json({ users });
     })
@@ -52,7 +57,7 @@ router.post(
     verifyToken,
     requirePermission('users.create'),
     asyncHandler(async (req, res) => {
-        const { email, password, displayName, subeSlug, role } = req.body;
+        let { email, password, displayName, subeSlug, role } = req.body;
 
         if (!email || !password) {
             return res.status(400).json({ error: 'E-posta ve şifre zorunludur' });
@@ -61,7 +66,13 @@ router.post(
             return res.status(400).json({ error: 'Rol zorunludur' });
         }
         if (role !== 'admin' && !subeSlug) {
-            return res.status(400).json({ error: 'Şube sahibi için şube zorunludur' });
+            return res.status(400).json({ error: 'Şube yetkilisi veya çalışan için şube zorunludur' });
+        }
+
+        // Şube sahibi güvenliği: Sadece kendi şubesine çalışan ekleyebilir
+        if (req.user.role === 'sube_sahibi') {
+            role = 'calisan';
+            subeSlug = req.user.subeSlug;
         }
 
         // Firebase Auth'da kullanıcı oluştur
@@ -100,7 +111,19 @@ router.put(
     requirePermission('users.assignRole'),
     asyncHandler(async (req, res) => {
         const { uid } = req.params;
-        const { email, displayName, subeSlug, role } = req.body;
+        let { email, displayName, subeSlug, role } = req.body;
+
+        // Şube sahibi güvenliği: Sadece kendi şubesindeki çalışanları düzenleyebilir
+        if (req.user.role === 'sube_sahibi') {
+            const doc = await db.collection('kullanici_sube').doc(uid).get();
+            const data = doc.data() || {};
+            if (data.sube_slug !== req.user.subeSlug || data.role !== 'calisan') {
+                return res.status(403).json({ error: 'Bu kullanıcıyı düzenleme yetkiniz yok' });
+            }
+            // Sube ve rol değiştirmesine izin verme
+            subeSlug = undefined;
+            role = undefined;
+        }
 
         // Firebase Auth güncelle
         const updateData = {};
@@ -142,6 +165,15 @@ router.delete(
         // Kendini silemesin
         if (uid === req.user.uid) {
             return res.status(400).json({ error: 'Kendi hesabınızı silemezsiniz' });
+        }
+
+        // Şube sahibi güvenliği: Sadece kendi şubesindeki çalışanları silebilir
+        if (req.user.role === 'sube_sahibi') {
+            const doc = await db.collection('kullanici_sube').doc(uid).get();
+            const data = doc.data() || {};
+            if (data.sube_slug !== req.user.subeSlug || data.role !== 'calisan') {
+                return res.status(403).json({ error: 'Bu kullanıcıyı silme yetkiniz yok' });
+            }
         }
 
         // Firebase Auth'dan sil

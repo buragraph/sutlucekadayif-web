@@ -18,6 +18,7 @@ export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [subeSlug, setSubeSlug] = useState(null);
     const [role, setRole] = useState(null);
+    const [simulatedRole, setSimulatedRole] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -56,20 +57,26 @@ export function AuthProvider({ children }) {
         return signOut(auth);
     }
 
+    // Effective role: simulatedRole overrides actual role (admin only)
+    const effectiveRole = (role === 'admin' && simulatedRole) ? simulatedRole : role;
+
     /**
      * Yetki kontrolü — shared/permissions.js ile senkron
      * @param {string} permission — Yetki key'i (ör: 'products.toggleAvailability')
      * @returns {boolean}
      */
     function can(permission) {
-        if (!role) return false;
-        return hasPermission(role, permission);
+        if (!effectiveRole) return false;
+        return hasPermission(effectiveRole, permission);
     }
 
     const value = {
         user,
         subeSlug,
-        role,
+        role: effectiveRole,
+        realRole: role,
+        simulatedRole,
+        setSimulatedRole,
         loading,
         login,
         logout,

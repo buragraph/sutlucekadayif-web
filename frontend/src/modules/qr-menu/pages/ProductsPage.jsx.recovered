@@ -1,0 +1,74 @@
+import { useState, useEffect } from 'react';
+import { useAuth } from '../../../context/AuthContext';
+import api from '../../../services/api';
+import { Plus, Pencil, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, Eye, EyeOff, Edit, Edit2, Check, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
+import { proxyImageUrl } from '../../../utils/imageProxy';
+import { useToast, useConfirm } from '../../../shared/components/Toast';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Spinner } from '@/components/ui/spinner';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent } from '@/components/ui/card';
+
+const ETIKETLER = [
+    { key: 'en_cok_satan', label: 'En Çok Satan', emoji: '🔥', color: '#ef4444' },
+    { key: 'yeni', label: 'Yeni', emoji: '✨', color: '#8b5cf6' },
+    { key: 'onerilen', label: 'Önerilen', emoji: '⭐', color: '#f59e0b' },
+    { key: 'vegan', label: 'Vegan', emoji: '🌱', color
+                                            <span className="sr-only">Önceki sayfa</span>
+                                            <ChevronLeft className="size-4" />
+                                        </Button>
+                                        <Button variant="outline" className="size-8" size="icon" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(p => p + 1)}>
+                                            <span className="sr-only">Sonraki sayfa</span>
+                                            <ChevronRight className="size-4" />
+                                        </Button>
+                                        <Button variant="outline" className="hidden size-8 lg:flex" size="icon" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(totalPages)}>
+                                            <span className="sr-only">Son sayfa</span>
+                                            <ChevronsRight className="size-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                </div>
+            )}
+
+            <Dialog open={showUrunModal} onOpenChange={(open) => !open && closeUrunModal()}>
+                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>{editingUrun ? 'Ürün Düzenle' : 'Yeni Ürün'}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleUrunSubmit} className="space-y
+                        <div className="space-y-2">
+                            <Label>Ürün Görs
+                                                    <RotateCcw className="size-3" />Geri Al
+                                                </Button>
+                                                <Button variant="destructive" size="sm" className="h-7 text-xs" onClick={async () => {
+                                                    const ok = await confirm('Bu ürünü kalıcı olarak silmek istediğinize emin misiniz?');
+                                                    if (!ok) return;
+                                                    try {
+                                                        const queryParam = u.tur === 'sube_ozel' && u.sube_slug ? `?subeSlug=${u.sube_slug}` : '';
+                                                        await api.delete(`/products/${u.id}/permanent${queryParam}`);
+                                                        setTrashUrunler(prev => prev.filter(t => t.id !== u.id));
+                                                        toast.success('Ürün kalıcı olarak silindi');
+                                                    } catch { toast.error('Silme başarısız'); }
+                                                }}>
+                                                    <Trash2 className="size-3" />Sil
+                                                </Button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}

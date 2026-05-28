@@ -38,7 +38,7 @@ router.post(
     verifyToken,
     requirePermission('branches.create'),
     asyncHandler(async (req, res) => {
-        const { slug, ad, adres, telefon } = req.body;
+        const { slug, ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi } = req.body;
 
         if (!slug || !slug.trim()) {
             return res.status(400).json({ error: 'Şube slug zorunludur (URL kısmı, örn: ankara)' });
@@ -58,6 +58,10 @@ router.post(
             ad: ad.trim(),
             adres: adres?.trim() || '',
             telefon: telefon?.trim() || '',
+            yetkili_adi: yetkili_adi?.trim() || '',
+            fatura_adresi: fatura_adresi?.trim() || '',
+            vkn: vkn?.trim() || '',
+            sirket_tipi: sirket_tipi?.trim() || '',
         });
 
         res.status(201).json({ slug: slugVal, ad: ad.trim() });
@@ -75,7 +79,7 @@ router.put(
     requirePermission('branches.edit'),
     asyncHandler(async (req, res) => {
         const { slug } = req.params;
-        const { ad, adres, telefon } = req.body;
+        const { ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi } = req.body;
 
         const docRef = db.collection('subeler').doc(slug);
         const doc = await docRef.get();
@@ -87,6 +91,10 @@ router.put(
         if (ad !== undefined) updateData.ad = ad.trim();
         if (adres !== undefined) updateData.adres = adres.trim();
         if (telefon !== undefined) updateData.telefon = telefon.trim();
+        if (yetkili_adi !== undefined) updateData.yetkili_adi = yetkili_adi.trim();
+        if (fatura_adresi !== undefined) updateData.fatura_adresi = fatura_adresi.trim();
+        if (vkn !== undefined) updateData.vkn = vkn.trim();
+        if (sirket_tipi !== undefined) updateData.sirket_tipi = sirket_tipi.trim();
 
         await docRef.update(updateData);
         res.json({ success: true });

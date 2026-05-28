@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import api from '../../../services/api';
 import { Plus, Pencil, Trash2, X, ImagePlus, Check, Search, FolderPlus, Folder, ChevronRight, ArrowLeft, FolderInput } from 'lucide-react';
-import SearchInput from '../../../shared/components/SearchInput';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { proxyImageUrl } from '../../../utils/imageProxy';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Spinner } from '@/components/ui/spinner';
+import { Label } from '@/components/ui/label';
 
 export default function PhotoLibraryPage() {
     const toast = useToast();
@@ -237,41 +241,180 @@ export default function PhotoLibraryPage() {
         folderCounts[k.ad] = medyalar.filter((m) => m.klasor === k.ad).length;
     });
 
-    return (
-        <div className="page-padding">
-            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                    <p className="page-header__crumb">Medya</p>
-                    <h1 className="page-header__title">Medya</h1>
+    const FolderButton = ({ name, count, active, isDragOver, onClick, onDragOver: dOver, onDragLeave: dLeave, onDrop: dDrop, children }) => (
+        <button
+            className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors ${active ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground'} ${isDragOver ? 'ring-2 ring-primary ring-offset-1' : ''}`}
+            onClick={onClick}
+            onDragOver={dOver}
+            onDragLeave={dLeave}
+            onDrop={dDrop}
+        >
+            <Folder className="size-4 shrink-0" />
+            <span className="flex-1 truncate">{name}</span>
+            <span className="text-xs text-muted-foreground">{count}</span>
+            {children}
+        </button>
+    );
+
+    const editingMedia = editingId ? medyalar.find(m => m.id === editingId) : null;
+
+    // ---------- DETAIL / EDIT VIEW ----------
+    if (editingMedia) {
+        return (
+            <div className="flex flex-1 flex-col gap-4 max-w-[1200px] mx-auto w-full h-full min-h-0">
+                {/* Header */}
+                <div className="flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-3">
+                        <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={cancelEdit}>
+                            <ArrowLeft className="size-4" />
+                        </Button>
+                        <div>
+                            <p className="text-xs text-muted-foreground">Medya Kütüphanesi</p>
+                            <h1 className="text-lg font-semibold tracking-tight text-foreground leading-tight">Görseli Düzenle</h1>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="ghost" onClick={cancelEdit}>İptal</Button>
+                        <Button onClick={() => handleRename(editingId)}>Kaydet</Button>
+                    </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn btn--secondary" onClick={() => setShowNewFolder(true)}>
-                        <FolderPlus size={16} /> Klasör Ekle
-                    </button>
-                    <label className="btn btn--primary" style={{ cursor: uploading ? 'wait' : 'pointer' }}>
-                        {uploading ? (
-                            <><span className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> Yükleniyor...</>
-                        ) : (
-                            <><Plus size={16} /> Medya Ekle</>
-                        )}
-                        <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={handleUpload}
-                            style={{ display: 'none' }}
-                            disabled={uploading}
-                        />
-                    </label>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto pb-10 min-h-0">
+                    <div className="rounded-xl border border-border bg-card overflow-hidden">
+                        <div className="p-6">
+                            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6">
+                                {/* Image Preview */}
+                                <div className="space-y-2">
+                                    <Label className="text-xs text-muted-foreground font-medium">Önizleme</Label>
+                                    <div className="relative group/img">
+                                        <img
+                                            src={proxyImageUrl(editingMedia.url)}
+                                            alt={editName}
+                                            className="w-full aspect-square rounded-xl object-cover ring-1 ring-border bg-muted/20"
+                                        />
+                                    </div>
+                                    {editingMedia.boyut > 0 && (
+                                        <p className="text-xs text-muted-foreground text-center">
+                                            Boyut: {editingMedia.boyut >= 1024 * 1024
+                                                ? `${(editingMedia.boyut / (1024 * 1024)).toFixed(1)} MB`
+                                                : `${Math.round(editingMedia.boyut / 1024)} KB`}
+                                        </p>
+                                    )}
+                                </div>
+
+                                {/* Form */}
+                                <div className="space-y-5">
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="editMediaName">Görsel Adı</Label>
+                                        <Input
+                                            id="editMediaName"
+                                            value={editName}
+                                            onChange={(e) => setEditName(e.target.value)}
+                                            placeholder="Görsel adı"
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleRename(editingId);
+                                            }}
+                                            autoFocus
+                                        />
+                                        <p className="text-xs text-muted-foreground">Görselin tanımlayıcı adını buraya yazabilirsiniz.</p>
+                                    </div>
+
+                                    <div className="grid gap-2">
+                                        <Label htmlFor="editMediaFolder">Klasör</Label>
+                                        <select
+                                            id="editMediaFolder"
+                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                            value={editKlasor}
+                                            onChange={(e) => setEditKlasor(e.target.value)}
+                                        >
+                                            <option value="">Genel (Klasörsüz)</option>
+                                            {SYSTEM_FOLDERS.map(name => (
+                                                <option key={name} value={name}>{name}</option>
+                                            ))}
+                                            {klasorler.map(k => (
+                                                <option key={k.id} value={k.ad}>{k.ad}</option>
+                                            ))}
+                                        </select>
+                                        <p className="text-xs text-muted-foreground">Görselin hangi klasörde yer alacağını seçin.</p>
+                                    </div>
+
+                                    <div className="border-t pt-4">
+                                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Bilgiler</h4>
+                                        <div className="space-y-2 text-sm">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-muted-foreground">Mevcut Klasör</span>
+                                                <Badge variant="secondary">{editingMedia.klasor || 'Genel'}</Badge>
+                                            </div>
+                                            {editingMedia.boyut > 0 && (
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-muted-foreground">Dosya Boyutu</span>
+                                                    <span className="font-medium">
+                                                        {editingMedia.boyut >= 1024 * 1024
+                                                            ? `${(editingMedia.boyut / (1024 * 1024)).toFixed(1)} MB`
+                                                            : `${Math.round(editingMedia.boyut / 1024)} KB`}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t pt-4">
+                                        <Button
+                                            variant="destructive"
+                                            size="sm"
+                                            className="w-full sm:w-auto"
+                                            onClick={() => {
+                                                handleDelete(editingMedia);
+                                                cancelEdit();
+                                            }}
+                                        >
+                                            <Trash2 className="size-3.5 mr-1.5" /> Görseli Sil
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // ---------- LIST VIEW ----------
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-bold tracking-tight">Medya</h1>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setShowNewFolder(true)}>
+                        <FolderPlus className="size-4" /> Klasör Ekle
+                    </Button>
+                    <Button asChild className={uploading ? 'pointer-events-none opacity-70' : ''}>
+                        <label className="cursor-pointer">
+                            {uploading ? (
+                                <><Spinner className="size-4" /> Yükleniyor...</>
+                            ) : (
+                                <><Plus className="size-4" /> Medya Ekle</>
+                            )}
+                            <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={handleUpload}
+                                className="hidden"
+                                disabled={uploading}
+                            />
+                        </label>
+                    </Button>
                 </div>
             </div>
 
             {/* Klasör Oluştur */}
             {showNewFolder && (
-                <div style={{ display: 'flex', gap: 8, marginBottom: 16, maxWidth: 400 }}>
-                    <input
+                <div className="flex max-w-md gap-2">
+                    <Input
                         type="text"
-                        className="form-input"
                         placeholder="Klasör adı..."
                         value={newFolderName}
                         onChange={(e) => setNewFolderName(e.target.value)}
@@ -281,214 +424,131 @@ export default function PhotoLibraryPage() {
                         }}
                         autoFocus
                     />
-                    <button className="btn btn--primary" onClick={handleCreateFolder} style={{ whiteSpace: 'nowrap' }}>
-                        <Check size={14} /> Oluştur
-                    </button>
-                    <button className="btn btn--secondary" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }}>
-                        <X size={14} />
-                    </button>
+                    <Button onClick={handleCreateFolder} className="shrink-0">
+                        <Check className="size-3.5" /> Oluştur
+                    </Button>
+                    <Button variant="outline" size="icon" onClick={() => { setShowNewFolder(false); setNewFolderName(''); }}>
+                        <X className="size-3.5" />
+                    </Button>
                 </div>
             )}
 
-            <div style={{ display: 'flex', gap: 20 }}>
+            <div className="flex gap-5">
                 {/* Sol: Klasör Listesi */}
-                <div className="folder-sidebar">
-                    <button
-                        className={`folder-item ${activeKlasor === null ? 'folder-item--active' : ''}`}
-                        onClick={() => setActiveKlasor(null)}
-                    >
-                        <Folder size={16} />
-                        <span>Tümü</span>
-                        <span className="folder-item__count">{medyalar.length}</span>
-                    </button>
-                    <button
-                        className={`folder-item ${activeKlasor === '' ? 'folder-item--active' : ''} ${dragOverFolder === '' ? 'folder-item--drag-over' : ''}`}
-                        onClick={() => setActiveKlasor('')}
-                        onDragOver={(e) => onFolderDragOver(e, '')}
-                        onDragLeave={onFolderDragLeave}
-                        onDrop={(e) => onFolderDrop(e, '')}
-                    >
-                        <Folder size={16} />
-                        <span>Genel</span>
-                        <span className="folder-item__count">{genelCount}</span>
-                    </button>
+                <div className="w-48 shrink-0 space-y-0.5">
+                    <FolderButton name="Tümü" count={medyalar.length} active={activeKlasor === null} onClick={() => setActiveKlasor(null)} />
+                    <FolderButton name="Genel" count={genelCount} active={activeKlasor === ''} isDragOver={dragOverFolder === ''} onClick={() => setActiveKlasor('')}
+                        onDragOver={(e) => onFolderDragOver(e, '')} onDragLeave={onFolderDragLeave} onDrop={(e) => onFolderDrop(e, '')} />
 
-                    {/* Sistem Klasörleri */}
-                    <div style={{ margin: '6px 0', borderTop: '1px solid var(--color-border)' }} />
+                    <div className="my-1.5 border-t" />
                     {SYSTEM_FOLDERS.map((name) => (
-                        <button
-                            key={name}
-                            className={`folder-item ${activeKlasor === name ? 'folder-item--active' : ''} ${dragOverFolder === name ? 'folder-item--drag-over' : ''}`}
-                            onClick={() => setActiveKlasor(name)}
-                            onDragOver={(e) => onFolderDragOver(e, name)}
-                            onDragLeave={onFolderDragLeave}
-                            onDrop={(e) => onFolderDrop(e, name)}
-                        >
-                            <Folder size={16} />
-                            <span>{name}</span>
-                            <span className="folder-item__count">{systemFolderCounts[name]}</span>
-                        </button>
+                        <FolderButton key={name} name={name} count={systemFolderCounts[name]} active={activeKlasor === name} isDragOver={dragOverFolder === name}
+                            onClick={() => setActiveKlasor(name)} onDragOver={(e) => onFolderDragOver(e, name)} onDragLeave={onFolderDragLeave} onDrop={(e) => onFolderDrop(e, name)} />
                     ))}
 
-                    {/* Özel Klasörler */}
-                    {klasorler.length > 0 && (
-                        <div style={{ margin: '6px 0', borderTop: '1px solid var(--color-border)' }} />
-                    )}
+                    {klasorler.length > 0 && <div className="my-1.5 border-t" />}
                     {klasorler.map((k) => (
-                        <div key={k.id}
-                            className={`folder-item ${activeKlasor === k.ad ? 'folder-item--active' : ''} ${dragOverFolder === k.ad ? 'folder-item--drag-over' : ''}`}
-                            onDragOver={(e) => onFolderDragOver(e, k.ad)}
-                            onDragLeave={onFolderDragLeave}
-                            onDrop={(e) => onFolderDrop(e, k.ad)}
-                        >
+                        <div key={k.id} className="group relative"
+                            onDragOver={(e) => onFolderDragOver(e, k.ad)} onDragLeave={onFolderDragLeave} onDrop={(e) => onFolderDrop(e, k.ad)}>
+                            <FolderButton name={k.ad} count={folderCounts[k.ad] || 0} active={activeKlasor === k.ad} isDragOver={dragOverFolder === k.ad}
+                                onClick={() => setActiveKlasor(k.ad)} />
                             <button
-                                style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: 'inherit', fontSize: 'inherit', textAlign: 'left' }}
-                                onClick={() => setActiveKlasor(k.ad)}
-                            >
-                                <Folder size={16} />
-                                <span style={{ flex: 1 }}>{k.ad}</span>
-                                <span className="folder-item__count">{folderCounts[k.ad] || 0}</span>
-                            </button>
-                            <button
-                                className="folder-item__delete"
+                                className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
                                 onClick={(e) => { e.stopPropagation(); handleDeleteFolder(k); }}
                                 title="Klasörü sil"
                             >
-                                <Trash2 size={12} />
+                                <Trash2 className="size-3" />
                             </button>
                         </div>
                     ))}
                 </div>
 
                 {/* Sağ: Görseller */}
-                <div style={{ flex: 1 }}>
+                <div className="flex-1">
                     {/* Aktif klasör başlık + seçim + arama */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, height: 36, overflow: 'visible' }}>
-                        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text-secondary)', margin: 0, whiteSpace: 'nowrap' }}>
+                    <div className="mb-4 flex items-center gap-3 min-h-[40px]">
+                        <h3 className="whitespace-nowrap text-sm font-semibold text-muted-foreground">
                             {activeKlasor === null ? 'Tüm Görseller' : activeKlasor === '' ? 'Genel' : activeKlasor}
-                            <span style={{ fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 8 }}>({filtered.length})</span>
+                            <span className="ml-2 font-normal">({filtered.length})</span>
                         </h3>
-                        {selectedIds.size > 0 && (
-                            <div className="bulk-bar">
-                                <span className="bulk-bar__badge">{selectedIds.size} seçili</span>
-                                <div className="bulk-bar__divider" />
-                                <select
-                                    className="bulk-bar__select"
-                                    value={bulkMoveTarget ?? ''}
-                                    onChange={(e) => setBulkMoveTarget(e.target.value)}
-                                >
-                                    <option value="" disabled>Klasöre Taşı...</option>
-                                    <option value="">Genel</option>
-                                    {['Ürünler', 'Kategoriler'].map(name => (
-                                        <option key={name} value={name}>{name}</option>
-                                    ))}
-                                    {klasorler.map((k) => (
-                                        <option key={k.id} value={k.ad}>{k.ad}</option>
-                                    ))}
-                                </select>
-                                {bulkMoveTarget !== null && (
-                                    <button className="bulk-bar__btn bulk-bar__btn--save" onClick={handleBulkMove}>
-                                        <Check size={13} /> Kaydet
-                                    </button>
-                                )}
-                                <button className="bulk-bar__btn bulk-bar__btn--delete" onClick={handleBulkDelete}>
-                                    <Trash2 size={13} /> Sil
-                                </button>
-                                <div className="bulk-bar__divider" />
-                                <button className="bulk-bar__btn bulk-bar__btn--close" onClick={clearSelection}>
-                                    <X size={14} />
-                                </button>
-                            </div>
-                        )}
-                        <div style={{ marginLeft: 'auto' }}>
+                        <div className="h-[36px] flex items-center">
+                            {selectedIds.size > 0 && (
+                                <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-1.5">
+                                    <Badge variant="secondary" className="text-xs">{selectedIds.size} seçili</Badge>
+                                    <div className="h-4 w-px bg-border" />
+                                    <select
+                                        className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+                                        value={bulkMoveTarget ?? ''}
+                                        onChange={(e) => setBulkMoveTarget(e.target.value)}
+                                    >
+                                        <option value="" disabled>Klasöre Taşı...</option>
+                                        <option value="">Genel</option>
+                                        {['Ürünler', 'Kategoriler'].map(name => (
+                                            <option key={name} value={name}>{name}</option>
+                                        ))}
+                                        {klasorler.map((k) => (
+                                            <option key={k.id} value={k.ad}>{k.ad}</option>
+                                        ))}
+                                    </select>
+                                    {bulkMoveTarget !== null && (
+                                        <Button size="sm" className="h-6 text-xs" onClick={handleBulkMove}>
+                                            <Check className="size-3" /> Kaydet
+                                        </Button>
+                                    )}
+                                    <Button variant="destructive" size="sm" className="h-6 text-xs" onClick={handleBulkDelete}>
+                                        <Trash2 className="size-3" /> Sil
+                                    </Button>
+                                    <div className="h-4 w-px bg-border" />
+                                    <Button variant="ghost" size="icon" className="size-6" onClick={clearSelection}>
+                                        <X className="size-3.5" />
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                        <div className="ml-auto">
                             {medyalar.length > 0 && (
-                                <SearchInput value={search} onChange={setSearch} placeholder="Ara..." />
+                                <div className="relative">
+                                    <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Ara..." className="h-8 w-48 pl-8 text-xs" />
+                                </div>
                             )}
                         </div>
                     </div>
 
-
                     {loading ? (
-                        <div className="loading-container"><div className="spinner" /><p className="loading-text">Yükleniyor...</p></div>
+                        <div className="flex flex-col items-center justify-center gap-3 py-16"><Spinner className="size-8" /><p className="text-sm text-muted-foreground">Yükleniyor...</p></div>
                     ) : filtered.length === 0 ? (
-                        <div className="empty-state">
-                            <div className="icon">📷</div>
+                        <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
+                            <span className="text-4xl">📷</span>
                             <p>{search ? 'Sonuç bulunamadı' : 'Bu klasörde henüz fotoğraf yok'}</p>
-                            <p style={{ fontSize: 13, color: '#9ca3af', marginTop: 4 }}>Yukarıdaki butona tıklayarak fotoğraf yükleyebilirsiniz</p>
+                            <p className="text-xs">Yukarıdaki butona tıklayarak fotoğraf yükleyebilirsiniz</p>
                         </div>
                     ) : (
-                        <div className="photo-grid">
+                        <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
                             {filtered.map((m) => (
-                                <div key={m.id} className={`photo-card ${selectedIds.has(m.id) ? 'photo-card--selected' : ''}`}
+                                <div key={m.id} className={`group relative cursor-pointer overflow-hidden rounded-lg border transition-all ${selectedIds.has(m.id) ? 'ring-2 ring-primary' : 'hover:shadow-md'}`}
                                     draggable
                                     onDragStart={(e) => onDragStart(e, m)}
                                     onDragEnd={onDragEnd}
                                     onClick={() => handleCardClick(m)}
-                                    style={{ cursor: 'pointer' }}
                                 >
-                                    <div className="photo-card__img-wrap">
-                                        <img src={proxyImageUrl(m.url)} alt={m.ad} className="photo-card__img" draggable={false} />
+                                    <div className="relative aspect-square">
+                                        <img src={proxyImageUrl(m.url)} alt={m.ad} className="size-full object-cover" draggable={false} />
                                         {m.boyut > 0 && (
-                                            <span className="photo-card__size">
+                                            <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white">
                                                 {m.boyut >= 1024 * 1024 ? `${(m.boyut / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(m.boyut / 1024)} KB`}
                                             </span>
                                         )}
-                                        <div className="photo-card__overlay">
-                                            <button className="photo-card__action" onClick={(e) => { e.stopPropagation(); startEdit(m); }} title="Düzenle">
-                                                <Pencil size={14} />
+                                        <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                                            <button className="rounded-full bg-white/90 p-1.5 text-foreground transition-colors hover:bg-white" onClick={(e) => { e.stopPropagation(); startEdit(m); }} title="Düzenle">
+                                                <Pencil className="size-3.5" />
                                             </button>
-                                            <button className="photo-card__action photo-card__action--danger" onClick={(e) => { e.stopPropagation(); handleDelete(m); }} title="Sil">
-                                                <Trash2 size={14} />
+                                            <button className="rounded-full bg-white/90 p-1.5 text-destructive transition-colors hover:bg-white" onClick={(e) => { e.stopPropagation(); handleDelete(m); }} title="Sil">
+                                                <Trash2 className="size-3.5" />
                                             </button>
                                         </div>
                                     </div>
-                                    {editingId === m.id ? (
-                                        <div className="photo-card__edit" onClick={(e) => e.stopPropagation()}>
-                                            <input
-                                                type="text"
-                                                className="form-input"
-                                                value={editName}
-                                                onChange={(e) => setEditName(e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') handleRename(m.id);
-                                                    if (e.key === 'Escape') cancelEdit();
-                                                }}
-                                                autoFocus
-                                                style={{ fontSize: 13, padding: '6px 8px', height: 'auto' }}
-                                                placeholder="Görsel adı"
-                                            />
-                                            <div style={{ marginTop: 6 }}>
-                                                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Klasör</span>
-                                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                                                    {[{ value: '', label: 'Genel' }, ...SYSTEM_FOLDERS.map(name => ({ value: name, label: name })), ...klasorler.map(k => ({ value: k.ad, label: k.ad }))].map(opt => (
-                                                        <button
-                                                            key={opt.value}
-                                                            type="button"
-                                                            onClick={() => setEditKlasor(opt.value)}
-                                                            style={{
-                                                                fontSize: 10, padding: '3px 8px', borderRadius: 12, cursor: 'pointer',
-                                                                border: editKlasor === opt.value ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border)',
-                                                                background: editKlasor === opt.value ? 'var(--color-primary-light, #e0e7ff)' : 'var(--color-card)',
-                                                                color: editKlasor === opt.value ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                                                                fontWeight: editKlasor === opt.value ? 600 : 400,
-                                                                transition: 'all 0.15s',
-                                                            }}
-                                                        >
-                                                            {opt.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <div style={{ display: 'flex', gap: 4, marginTop: 8, justifyContent: 'flex-end' }}>
-                                                <button className="icon-btn" onClick={cancelEdit} style={{ padding: 4 }} title="İptal"><X size={14} /></button>
-                                                <button onClick={() => handleRename(m.id)} style={{ fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 8, border: 'none', background: 'var(--color-primary)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                    <Check size={12} /> Kaydet
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <p className="photo-card__name" title={m.ad}>{m.ad}</p>
-                                    )}
+                                    <p className="truncate px-2 py-1.5 text-xs font-medium" title={m.ad}>{m.ad}</p>
                                 </div>
                             ))}
                         </div>
