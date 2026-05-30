@@ -117,7 +117,28 @@ export function BranchDetail() {
 
                 {/* Bütçe Durumu Kartı */}
                 {(() => {
-                    const bs = budgetStatus?.subeler?.find(b => b.kod === activeBranchCode);
+                    // Önce budgetStatus'tan bak (tarih aralığına göre)
+                    let bs = budgetStatus?.subeler?.find(b => b.kod === activeBranchCode);
+                    
+                    // budgetStatus yoksa veya bütçesi yoksa, donemCache'den en son bütçeli döneme bak
+                    if ((!bs || !bs.toplamButce) && donemler.length > 0) {
+                        // En son bütçe olan dönemi bul (desc sıralı)
+                        const sorted = [...donemler].sort((a, b) => (b.baslangic || '').localeCompare(a.baslangic || ''));
+                        const latestBudget = sorted.find(d => (d.planlanan_butce || 0) > 0);
+                        if (latestBudget) {
+                            const pb = latestBudget.planlanan_butce || 0;
+                            const dev = latestBudget.devredilen_miktar || 0;
+                            const tb = pb + dev;
+                            const harc = latestBudget.harcama || 0;
+                            const kalan = tb - harc;
+                            const oran = tb > 0 ? Math.round((harc / tb) * 1000) / 10 : 0;
+                            let durum = 'normal';
+                            if (oran >= 100) durum = 'asim';
+                            else if (oran >= 80) durum = 'uyari';
+                            bs = { kod: activeBranchCode, planlananButce: pb, devredilen: dev, toplamButce: tb, harcama: harc, kalan, kullanimOrani: oran, durum, donem: `${latestBudget.baslangic} - ${latestBudget.bitis}` };
+                        }
+                    }
+
                     if (!bs || !bs.toplamButce) return null;
                     const pct = Math.min(bs.kullanimOrani, 100);
                     const borderColor = bs.durum === 'asim' ? 'border-red-500/50' : bs.durum === 'uyari' ? 'border-amber-500/50' : 'border-border';
@@ -127,6 +148,7 @@ export function BranchDetail() {
                             <div className="flex items-center gap-2 mb-3">
                                 <Wallet className={`w-4 h-4 ${bs.durum === 'asim' ? 'text-red-500' : bs.durum === 'uyari' ? 'text-amber-500' : 'text-emerald-500'}`} />
                                 <span className="text-sm font-semibold text-foreground">Bütçe Durumu</span>
+                                {bs.donem && <span className="text-[10px] text-muted-foreground ml-1">({bs.donem})</span>}
                                 {bs.durum === 'asim' && (
                                     <span className="ml-auto text-xs font-medium text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
                                         <AlertTriangle className="w-3 h-3" /> Bütçe Aşıldı

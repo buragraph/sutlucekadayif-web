@@ -273,6 +273,7 @@ router.post(
       }
       invalidateReportCache();
       invalidateCache('/reports');
+      butceDurumCache.clear();
 
       res.json({ success: true, onaylanan: onaylananSubeler.length });
     } catch (err) {
@@ -317,6 +318,7 @@ router.post(
       await recalcSubeAggregates(subeKod);
       invalidateReportCache();
       invalidateCache('/reports');
+      butceDurumCache.clear();
 
       res.json({ success: true });
     } catch (err) {

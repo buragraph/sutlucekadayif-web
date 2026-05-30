@@ -429,6 +429,9 @@ router.get('/sube/:kod/donemler', cacheMiddleware(180), async (req, res) => {
       bitis: veri.donem_bitis,
       meta: veri.harcama !== undefined ? { harcama: 1 } : null,
       google: veri.google_arama !== undefined ? { gorunurluk: 1 } : null,
+      planlanan_butce: veri.planlanan_butce || 0,
+      devredilen_miktar: veri.devredilen_miktar || 0,
+      harcama: veri.harcama || 0,
     }));
     res.json({ donemler });
   } catch (err) {
