@@ -185,7 +185,7 @@ export function BulkUploadModal() {
             toast.success(`${data.message} (${data.subeAd || data.subeKod})`);
             closeModal();
             await loadDashboard();
-            if (data.subeKod) selectBranch(data.subeKod);
+            if (data.subeKod) selectBranch(data.subeKod, true);
         } catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
     };
@@ -283,6 +283,7 @@ export function DataEditModal() {
     const data = useReportsStore(s => s.modalData.dataEdit);
     const closeModal = () => useReportsStore.getState().closeModal('dataEdit');
     const loadDashboard = useReportsStore(s => s.loadDashboard);
+    const selectBranch = useReportsStore(s => s.selectBranch);
 
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -351,6 +352,7 @@ export function DataEditModal() {
             toast.success('Rapor verileri güncellendi!');
             closeModal();
             await loadDashboard();
+            selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setSaving(false); }
     };
@@ -441,7 +443,7 @@ export function DeleteDonemModal() {
             toast.success('Dönem verileri silindi.');
             closeModal();
             await loadDashboard();
-            selectBranch(data.kod);
+            selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
     };
@@ -763,7 +765,7 @@ export function AddDataModal() {
             const res = await reportsApi.metaFetchForBranch(settings.metaApiToken, form.since, form.until, data.kod);
             toast.success(res.message || 'Meta verileri çekildi!');
             await loadDashboard();
-            selectBranch(data.kod);
+            selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setMetaLoading(false); }
     };
@@ -775,7 +777,7 @@ export function AddDataModal() {
             const res = await reportsApi.googleFetchForBranch(form.since, form.until, data.kod);
             toast.success(res.message || 'Google verileri çekildi!');
             await loadDashboard();
-            selectBranch(data.kod);
+            selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setGoogleLoading(false); }
     };
@@ -809,7 +811,7 @@ export function AddDataModal() {
             toast.success('Veriler başarıyla yüklendi!');
             closeModal();
             await loadDashboard();
-            selectBranch(data.kod);
+            selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setUploadLoading(false); }
     };

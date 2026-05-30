@@ -132,10 +132,10 @@ export const useReportsStore = create((set, get) => ({
     },
 
     // ── Select Branch ──
-    selectBranch: async (kod) => {
+    selectBranch: async (kod, force = false) => {
         set({ activeBranch: kod });
         const { donemCache } = get();
-        if (!donemCache[kod]) {
+        if (force || !donemCache[kod]) {
             try {
                 const r = await fetch(`${API}/sube/${kod}/donemler`);
                 const d = await r.json();
