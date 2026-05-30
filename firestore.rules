@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Tüm client-side erişimi engelle.
+    // Tüm okuma/yazma işlemleri backend (Admin SDK) üzerinden yapılır.
+    // Admin SDK güvenlik kurallarını bypass eder.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

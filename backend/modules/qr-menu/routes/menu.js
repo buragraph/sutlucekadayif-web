@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db } from '../../../config/firebase.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import { cacheMiddleware } from '../../../middleware/cache.js';
+import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 
 const router = Router();
 
@@ -87,6 +88,8 @@ router.get(
  */
 router.post(
     '/regenerate-cache',
+    verifyToken,
+    requirePermission('categories.edit'),
     asyncHandler(async (req, res) => {
         const { regenerateAllMenuJsons } = await import('../services/menu-cache.js');
         await regenerateAllMenuJsons();

@@ -1,5 +1,6 @@
 import express, { Router } from 'express';
 import { cacheMiddleware, invalidateCache } from '../../middleware/cache.js';
+import { verifyToken, requirePermission } from '../../middleware/auth.js';
 import multer from 'multer';
 import { join, dirname, extname, basename } from 'path';
 import { fileURLToPath } from 'url';
@@ -32,41 +33,45 @@ else {
 const router = Router();
 
 // Rapor UI tarafından çağrılan API ayarları
-router.get('/settings', cacheMiddleware(600), async (req, res) => {
+router.get('/settings', verifyToken, cacheMiddleware(600), async (req, res) => {
   try {
     const settings = await getSettings();
     const safe = { ...settings };
     if (safe.metaApiToken) {
       safe.metaApiTokenMasked = safe.metaApiToken.substring(0, 6) + '...' + safe.metaApiToken.slice(-4);
+      delete safe.metaApiToken;
     }
-    // Google Client Secret Masking
     if (safe.googleClientSecret) {
       safe.googleClientSecretMasked = safe.googleClientSecret.substring(0, 4) + '...' + safe.googleClientSecret.slice(-4);
+      delete safe.googleClientSecret;
     }
     res.json(safe);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.post('/save-settings', async (req, res) => {
+router.post('/save-settings', verifyToken, async (req, res) => {
   try {
     const newSettings = req.body;
     await saveSettings(newSettings);
     invalidateCache('/reports');
     res.json({ success: true, message: 'Ayarlar kaydedildi.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
 // Google OAuth Yönlendirmeleri
-router.get('/auth/google', async (req, res) => {
+router.get('/auth/google', verifyToken, async (req, res) => {
   try {
     const url = await getGoogleAuthUrl();
     res.redirect(url);
   } catch (err) {
-    res.status(500).send(`Google API Hatası: ${err.message}`);
+    console.error('[Reports]', err);
+    res.status(500).send('Google API Hatası oluştu');
   }
 });
 
@@ -75,11 +80,12 @@ router.get('/auth/google/callback', async (req, res) => {
     await handleGoogleCallback(req.query.code);
     res.send('<script>window.close();</script>');
   } catch (err) {
-    res.status(500).send(err.message);
+    console.error('[Reports]', err);
+    res.status(500).send('Sunucu hatası oluştu');
   }
 });
 
-router.get('/google-status', async (req, res) => {
+router.get('/google-status', verifyToken, async (req, res) => {
   try {
     res.json({ connected: await isGoogleConnected() });
   } catch (err) {
@@ -140,7 +146,7 @@ function getRaporDosyaAdi(subeAd, baslangic, bitis) {
 }
 
 // Rapor önizleme (HTML döndürür)
-router.post('/preview', async (req, res) => {
+router.post('/preview', verifyToken, async (req, res) => {
   try {
     const { subeKod, donemBaslangic, donemBitis } = req.body;
     const sube = await getSubeByKod(subeKod);
@@ -162,12 +168,13 @@ router.post('/preview', async (req, res) => {
     const html = generateReportHtml(reportData);
     res.type('html').send(html);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
 // ── PDF Üret ve İndir ──
-router.post('/generate-pdf', async (req, res) => {
+router.post('/generate-pdf', verifyToken, async (req, res) => {
   try {
     const { subeKod, donemBaslangic, donemBitis } = req.body;
     const sube = await getSubeByKod(subeKod);
@@ -200,12 +207,13 @@ router.post('/generate-pdf', async (req, res) => {
     });
     res.send(pdfBuffer);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
 // ── Toplu PDF Üret — ZIP olarak indir ──
-router.post('/generate-pdf-bulk', async (req, res) => {
+router.post('/generate-pdf-bulk', verifyToken, async (req, res) => {
   try {
     const { subeKodlari, donemBaslangic, donemBitis } = req.body;
 
@@ -278,7 +286,8 @@ router.post('/generate-pdf-bulk', async (req, res) => {
     });
     res.send(zipBuffer);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
@@ -291,7 +300,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-router.post('/upload', upload.single('csv'), async (req, res) => {
+router.post('/upload', verifyToken, upload.single('csv'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Dosya seçilmedi.' });
   const platform = req.body.platform;
   const subeKod = req.body.sube;
@@ -332,12 +341,13 @@ router.post('/upload', upload.single('csv'), async (req, res) => {
        autoMatchDetail: autoMatched ? result : null
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
 // Dashboard API — Hafif şube listesi (aggregate alanlar subeler dokümanından)
-router.get('/dashboard', cacheMiddleware(300), async (req, res) => {
+router.get('/dashboard', verifyToken, cacheMiddleware(300), async (req, res) => {
   try {
     const subeler = await getAllSubeler();
     const dashData = subeler.map(sube => ({
@@ -350,12 +360,13 @@ router.get('/dashboard', cacheMiddleware(300), async (req, res) => {
     }));
     res.json({ subeler: dashData });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
 // Dashboard Bundle API — Tek istek ile tüm dashboard verisini döndürür (4 ayrı istek yerine)
-router.get('/dashboard-bundle', cacheMiddleware(300), async (req, res) => {
+router.get('/dashboard-bundle', verifyToken, cacheMiddleware(300), async (req, res) => {
   try {
     const [subeler, mappingsRaw, campaignMappingsRaw, adsetMappingsRaw, settingsRaw, googleMappingsRaw] = await Promise.all([
       getAllSubeler(),
@@ -400,9 +411,11 @@ router.get('/dashboard-bundle', cacheMiddleware(300), async (req, res) => {
     const settings = { ...settingsRaw };
     if (settings.metaApiToken) {
       settings.metaApiTokenMasked = settings.metaApiToken.substring(0, 6) + '...' + settings.metaApiToken.slice(-4);
+      delete settings.metaApiToken;
     }
     if (settings.googleClientSecret) {
       settings.googleClientSecretMasked = settings.googleClientSecret.substring(0, 4) + '...' + settings.googleClientSecret.slice(-4);
+      delete settings.googleClientSecret;
     }
 
     res.json({
@@ -415,12 +428,13 @@ router.get('/dashboard-bundle', cacheMiddleware(300), async (req, res) => {
       googleMappings: googleMappingsRaw || {},
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
 // Şubenin dönemlerini döner (şubeye tıklandığında çağrılır — sadece tarih + veri var/yok)
-router.get('/sube/:kod/donemler', cacheMiddleware(180), async (req, res) => {
+router.get('/sube/:kod/donemler', verifyToken, cacheMiddleware(180), async (req, res) => {
   try {
     const { kod } = req.params;
     const donemlerResult = await getDonemler(kod);
@@ -435,11 +449,12 @@ router.get('/sube/:kod/donemler', cacheMiddleware(180), async (req, res) => {
     }));
     res.json({ donemler });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.post('/sube', async (req, res) => {
+router.post('/sube', verifyToken, async (req, res) => {
   try {
     const { kod, ad, link } = req.body;
     if (!kod) return res.status(400).json({ error: 'Şube kodu zorunludur' });
@@ -447,32 +462,35 @@ router.post('/sube', async (req, res) => {
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.put('/sube/:kod', async (req, res) => {
+router.put('/sube/:kod', verifyToken, async (req, res) => {
   try {
     const { ad, adres, link } = req.body;
     await updateSube(req.params.kod, ad, adres, link);
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.delete('/sube/:kod', async (req, res) => {
+router.delete('/sube/:kod', verifyToken, async (req, res) => {
   try {
     await deleteSube(req.params.kod);
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.delete('/sube/:kod/donem', async (req, res) => {
+router.delete('/sube/:kod/donem', verifyToken, async (req, res) => {
   try {
     const { kod } = req.params;
     const { baslangic, bitis } = req.query;
@@ -485,11 +503,12 @@ router.delete('/sube/:kod/donem', async (req, res) => {
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.get('/sube/:kod/donem/veriler', async (req, res) => {
+router.get('/sube/:kod/donem/veriler', verifyToken, async (req, res) => {
   try {
     const { kod } = req.params;
     const { baslangic, bitis } = req.query;
@@ -523,11 +542,12 @@ router.get('/sube/:kod/donem/veriler', async (req, res) => {
 
     res.json({ computed, overrides });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.put('/sube/:kod/donem/overrides', async (req, res) => {
+router.put('/sube/:kod/donem/overrides', verifyToken, async (req, res) => {
   try {
     const { kod } = req.params;
     const { baslangic, bitis, overrides } = req.body;
@@ -549,7 +569,8 @@ router.put('/sube/:kod/donem/overrides', async (req, res) => {
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
@@ -560,7 +581,7 @@ router.put('/sube/:kod/donem/overrides', async (req, res) => {
 // ── META API ENDPOINTS ──
 // ══════════════════════════════════════════════════
 
-router.post('/campaign-fetch', async (req, res) => {
+router.post('/campaign-fetch', verifyToken, async (req, res) => {
   const { accessToken, since, until, subeKod, targetSubeKod } = req.body;
   try {
     const defaultSube = targetSubeKod || subeKod || null;
@@ -572,12 +593,13 @@ router.post('/campaign-fetch', async (req, res) => {
     if (err.message.includes("Eşleşme bulunamadı") || err.message.includes("eşleştirme")) {
       res.status(400).json({ error: 'Kampanya eşleştirmesi bulunamadı' });
     } else {
-      res.status(500).json({ error: err.message });
+      console.error('[Reports]', err);
+      res.status(500).json({ error: 'Sunucu hatası oluştu' });
     }
   }
 });
 
-router.post('/quick-fetch-meta', async (req, res) => {
+router.post('/quick-fetch-meta', verifyToken, async (req, res) => {
   const { accessToken, since, until, subeKod, targetSubeKod } = req.body;
   try {
     const defaultSube = targetSubeKod || subeKod || null; 
@@ -591,20 +613,22 @@ router.post('/quick-fetch-meta', async (req, res) => {
       } else throw e;
     }
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.post('/preview-meta', async (req, res) => {
+router.post('/preview-meta', verifyToken, async (req, res) => {
   const { accessToken, since, until } = req.body;
   try {
     res.json(await previewMetaInsights(accessToken, since, until));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.post('/confirm-meta', async (req, res) => {
+router.post('/confirm-meta', verifyToken, async (req, res) => {
   const { accessToken, since, until, eslesmeler, saveMappingsOnly } = req.body;
   try {
     if (saveMappingsOnly) {
@@ -617,11 +641,12 @@ router.post('/confirm-meta', async (req, res) => {
     invalidateCache('/reports');
     res.json(result);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.get('/meta-mappings', cacheMiddleware(600), async (req, res) => {
+router.get('/meta-mappings', verifyToken, cacheMiddleware(600), async (req, res) => {
   try {
     const mappings = await loadMappings() || {};
     const campaignMappings = await getCampaignMappings() || {};
@@ -648,37 +673,39 @@ router.get('/meta-mappings', cacheMiddleware(600), async (req, res) => {
     res.json({ mappings: {}, reverseCampaigns: {}, reverseAdsets: {} });
   }
 });
-router.post('/meta-mappings', async (req, res) => {
+router.post('/meta-mappings', verifyToken, async (req, res) => {
   await saveMappings(req.body.mappings || {});
   invalidateCache('/reports');
   res.json({ success: true });
 });
 
-router.post('/meta-campaigns', async (req, res) => {
+router.post('/meta-campaigns', verifyToken, async (req, res) => {
   const { accessToken, since, until } = req.body;
   try {
     res.json(await fetchCampaigns(accessToken, since, until));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.post('/save-campaign-mappings', async (req, res) => {
+router.post('/save-campaign-mappings', verifyToken, async (req, res) => {
   await saveCampaignMappings(req.body.mappings || {});
   invalidateCache('/reports');
   res.json({ success: true, message: 'Kampanya eşleştirmeleri kaydedildi.' });
 });
 
-router.post('/meta-adsets', async (req, res) => {
+router.post('/meta-adsets', verifyToken, async (req, res) => {
   const { accessToken, since, until, forceRefresh } = req.body;
   try {
     res.json(await fetchAdsets(accessToken, since, until, forceRefresh));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.post('/save-adset-mappings', async (req, res) => {
+router.post('/save-adset-mappings', verifyToken, async (req, res) => {
   await saveAdsetMappings(req.body.mappings || {});
   invalidateCache('/reports');
   res.json({ success: true, message: 'Reklam seti eşleştirmeleri kaydedildi.' });
@@ -689,7 +716,7 @@ router.post('/save-adset-mappings', async (req, res) => {
 // ── GOOGLE API ENDPOINTS ──
 // ══════════════════════════════════════════════════
 
-router.get('/google-locations', cacheMiddleware(600), async (req, res) => {
+router.get('/google-locations', verifyToken, cacheMiddleware(600), async (req, res) => {
   try {
     const locations = await listAccounts();
     const subeler = await getAllSubeler();
@@ -701,21 +728,22 @@ router.get('/google-locations', cacheMiddleware(600), async (req, res) => {
     }));
     res.json({ locations: mapped, subeler, mappings });
   } catch (err) {
-    res.status(500).json({ error: err.message || 'Google lokasyonları çekilemedi.' });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 
-router.get('/google-mappings', async (req, res) => {
+router.get('/google-mappings', verifyToken, async (req, res) => {
   res.json(await loadGoogleMappings());
 });
 
-router.post('/google-mappings', async (req, res) => {
+router.post('/google-mappings', verifyToken, async (req, res) => {
   await saveGoogleMappings(req.body.mappings || {});
   invalidateCache('/reports');
   res.json({ success: true, message: 'Google lokasyon eşleştirmeleri kaydedildi.' });
 });
 
-router.post('/google-fetch', async (req, res) => {
+router.post('/google-fetch', verifyToken, async (req, res) => {
   const { since, until, subeKod } = req.body;
   try {
     const mappings = await loadGoogleMappings();
@@ -771,7 +799,8 @@ router.post('/google-fetch', async (req, res) => {
     invalidateCache('/reports');
     res.json({ success: true, message: `${savedCount} şube için Google verileri güncellendi!` });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Reports]', err);
+    res.status(500).json({ error: 'Sunucu hatası oluştu' });
   }
 });
 

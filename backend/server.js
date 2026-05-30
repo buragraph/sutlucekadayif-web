@@ -64,7 +64,7 @@ app.use(cors({
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         // Cloudflare Pages/Workers deploy'ları
-        } else if (origin.endsWith('.pages.dev') || origin.endsWith('.workers.dev')) {
+        } else if (origin.endsWith('.sutlucekadayif.pages.dev') || origin.endsWith('.sutlucekadayif.workers.dev')) {
             callback(null, true);
         } else {
             callback(new Error('CORS policy violation'));
@@ -73,12 +73,12 @@ app.use(cors({
     credentials: true,
     exposedHeaders: ['Content-Disposition']
 }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 // ─── Routes ───
 // Genel
 // app.use('/api/auth', authLimiter, authRouter);
-app.use('/api/users', usersRouter);
+app.use('/api/users', authLimiter, usersRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/branches', branchesRouter);
 app.use('/api/upload', uploadRouter);
@@ -133,7 +133,7 @@ export const api = onRequest(
     {
         memory: "2GiB",
         timeoutSeconds: 120,
-        cors: true,
+        cors: false,
         region: "us-central1"
     },
     app

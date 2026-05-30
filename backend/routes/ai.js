@@ -5,7 +5,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 const router = Router();
 
 const AI_BASE_URL = process.env.AI_BASE_URL || 'http://127.0.0.1:8045/v1';
-const AI_API_KEY = process.env.AI_API_KEY || 'sk-960dd73e5bb54bef83c27794a70f2cf4';
+const AI_API_KEY = process.env.AI_API_KEY;
 const AI_MODEL = process.env.AI_MODEL || 'gemini-2.5-flash';
 
 /**
@@ -18,6 +18,10 @@ router.post(
     verifyToken,
     requirePermission('products.edit'),
     asyncHandler(async (req, res) => {
+        if (!AI_API_KEY) {
+            return res.status(503).json({ error: 'AI servisi yapılandırılmamış' });
+        }
+
         const { ad, kategori, miktar, birim } = req.body;
 
         if (!ad || !ad.trim()) {

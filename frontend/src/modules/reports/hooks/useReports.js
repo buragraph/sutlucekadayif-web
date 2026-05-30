@@ -1,7 +1,21 @@
 import { create } from 'zustand';
+import { auth } from '@/firebase';
 
 // ── API Base ──
 const API = 'https://api-fyfp72cohq-uc.a.run.app/api/reports';
+
+// ── Auth-aware fetch wrapper ──
+async function authFetch(url, options = {}) {
+    const user = auth.currentUser;
+    if (user) {
+        const token = await user.getIdToken();
+        options.headers = {
+            ...options.headers,
+            'Authorization': `Bearer ${token}`,
+        };
+    }
+    return fetch(url, options);
+}
 
 // ── Formatters ──
 export const fmt = (n) => n == null ? '—' : new Intl.NumberFormat('tr-TR').format(Math.round(n));
@@ -106,7 +120,7 @@ export const useReportsStore = create((set, get) => ({
     loadDashboard: async () => {
         set({ loading: true });
         try {
-            const res = await fetch(`${API}/dashboard-bundle`);
+            const res = await authFetch(`${API}/dashboard-bundle`);
             const data = await res.json();
 
             const newDonemCache = {};
@@ -137,7 +151,7 @@ export const useReportsStore = create((set, get) => ({
         const { donemCache } = get();
         if (force || !donemCache[kod]) {
             try {
-                const r = await fetch(`${API}/sube/${kod}/donemler`);
+                const r = await authFetch(`${API}/sube/${kod}/donemler`);
                 const d = await r.json();
                 set((s) => ({
                     donemCache: { ...s.donemCache, [kod]: d.donemler || [] },
@@ -154,7 +168,7 @@ export const useReportsStore = create((set, get) => ({
 // ── Standalone API functions ──
 export const reportsApi = {
     async globalMetaFetch(since, until, token) {
-        const res = await fetch(`${API}/campaign-fetch`, {
+        const res = await authFetch(`${API}/campaign-fetch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ accessToken: token, since, until }),
@@ -163,7 +177,7 @@ export const reportsApi = {
         if (res.ok) return data;
         // Fallback to prefix-based
         if (data.error?.includes('eşleştirme')) {
-            const res2 = await fetch(`${API}/quick-fetch-meta`, {
+            const res2 = await authFetch(`${API}/quick-fetch-meta`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ accessToken: token, since, until }),
@@ -176,7 +190,7 @@ export const reportsApi = {
     },
 
     async globalGoogleFetch(since, until) {
-        const res = await fetch(`${API}/google-fetch`, {
+        const res = await authFetch(`${API}/google-fetch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ since, until }),
@@ -187,7 +201,7 @@ export const reportsApi = {
     },
 
     async generatePdf(subeKod, donemBaslangic, donemBitis) {
-        const res = await fetch(`${API}/generate-pdf`, {
+        const res = await authFetch(`${API}/generate-pdf`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subeKod, donemBaslangic, donemBitis }),
@@ -204,7 +218,7 @@ export const reportsApi = {
     },
 
     async bulkPdf(subeKodlari, donemBaslangic, donemBitis) {
-        const res = await fetch(`${API}/generate-pdf-bulk`, {
+        const res = await authFetch(`${API}/generate-pdf-bulk`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subeKodlari, donemBaslangic, donemBitis }),
@@ -221,7 +235,7 @@ export const reportsApi = {
     },
 
     async previewReport(subeKod, donemBaslangic, donemBitis) {
-        const res = await fetch(`${API}/preview`, {
+        const res = await authFetch(`${API}/preview`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subeKod, donemBaslangic, donemBitis }),
@@ -231,14 +245,14 @@ export const reportsApi = {
     },
 
     async uploadData(formData) {
-        const res = await fetch(`${API}/upload`, { method: 'POST', body: formData });
+        const res = await authFetch(`${API}/upload`, { method: 'POST', body: formData });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Yükleme hatası');
         return data;
     },
 
     async addBranch({ kod, ad, adres, link }) {
-        const res = await fetch(`${API}/sube`, {
+        const res = await authFetch(`${API}/sube`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ kod, ad, adres, link }),
@@ -249,7 +263,7 @@ export const reportsApi = {
     },
 
     async editBranch(kod, { ad, adres, link }) {
-        const res = await fetch(`${API}/sube/${kod}`, {
+        const res = await authFetch(`${API}/sube/${kod}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ad, adres, link }),
@@ -260,28 +274,28 @@ export const reportsApi = {
     },
 
     async deleteBranch(kod) {
-        const res = await fetch(`${API}/sube/${kod}`, { method: 'DELETE' });
+        const res = await authFetch(`${API}/sube/${kod}`, { method: 'DELETE' });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || 'Hata');
         return d;
     },
 
     async deleteDonem(kod, baslangic, bitis) {
-        const res = await fetch(`${API}/sube/${kod}/donem?baslangic=${baslangic}&bitis=${bitis}`, { method: 'DELETE' });
+        const res = await authFetch(`${API}/sube/${kod}/donem?baslangic=${baslangic}&bitis=${bitis}`, { method: 'DELETE' });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || 'Hata');
         return d;
     },
 
     async fetchDonemVerileri(kod, baslangic, bitis) {
-        const res = await fetch(`${API}/sube/${kod}/donem/veriler?baslangic=${baslangic}&bitis=${bitis}`);
+        const res = await authFetch(`${API}/sube/${kod}/donem/veriler?baslangic=${baslangic}&bitis=${bitis}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Hata');
         return data;
     },
 
     async saveOverrides(kod, baslangic, bitis, overrides) {
-        const res = await fetch(`${API}/sube/${kod}/donem/overrides`, {
+        const res = await authFetch(`${API}/sube/${kod}/donem/overrides`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ baslangic, bitis, overrides }),
@@ -292,7 +306,7 @@ export const reportsApi = {
     },
 
     async saveSettings(data) {
-        const res = await fetch(`${API}/save-settings`, {
+        const res = await authFetch(`${API}/save-settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
@@ -302,7 +316,7 @@ export const reportsApi = {
     },
 
     async fetchCampaigns(token, since, until) {
-        const res = await fetch(`${API}/meta-campaigns`, {
+        const res = await authFetch(`${API}/meta-campaigns`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ accessToken: token, since, until }),
@@ -313,7 +327,7 @@ export const reportsApi = {
     },
 
     async saveCampaignMappings(mappings) {
-        const res = await fetch(`${API}/save-campaign-mappings`, {
+        const res = await authFetch(`${API}/save-campaign-mappings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mappings }),
@@ -324,7 +338,7 @@ export const reportsApi = {
     },
 
     async fetchAdsets(token, since, until, forceRefresh = false) {
-        const res = await fetch(`${API}/meta-adsets`, {
+        const res = await authFetch(`${API}/meta-adsets`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ accessToken: token, since, until, forceRefresh }),
@@ -335,7 +349,7 @@ export const reportsApi = {
     },
 
     async saveAdsetMappings(mappings) {
-        const res = await fetch(`${API}/save-adset-mappings`, {
+        const res = await authFetch(`${API}/save-adset-mappings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mappings }),
@@ -346,19 +360,19 @@ export const reportsApi = {
     },
 
     async fetchMetaMappings() {
-        const res = await fetch(`${API}/meta-mappings`);
+        const res = await authFetch(`${API}/meta-mappings`);
         return await res.json();
     },
 
     async fetchGoogleLocations() {
-        const res = await fetch(`${API}/google-locations`);
+        const res = await authFetch(`${API}/google-locations`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Hata');
         return data;
     },
 
     async saveGoogleMappings(mappings) {
-        const res = await fetch(`${API}/google-mappings`, {
+        const res = await authFetch(`${API}/google-mappings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mappings }),
@@ -367,7 +381,7 @@ export const reportsApi = {
     },
 
     async saveMetaMappings(eslesmeler) {
-        const res = await fetch(`${API}/confirm-meta`, {
+        const res = await authFetch(`${API}/confirm-meta`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ saveMappingsOnly: true, eslesmeler }),
@@ -376,7 +390,7 @@ export const reportsApi = {
     },
 
     async previewMeta(token, since, until) {
-        const res = await fetch(`${API}/preview-meta`, {
+        const res = await authFetch(`${API}/preview-meta`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ accessToken: token, since, until }),
@@ -387,12 +401,12 @@ export const reportsApi = {
     },
 
     async checkGoogleStatus() {
-        const res = await fetch(`${API}/google-status`);
+        const res = await authFetch(`${API}/google-status`);
         return await res.json();
     },
 
     async metaFetchForBranch(token, since, until, subeKod) {
-        const res = await fetch(`${API}/campaign-fetch`, {
+        const res = await authFetch(`${API}/campaign-fetch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ accessToken: token, since, until, subeKod }),
@@ -400,7 +414,7 @@ export const reportsApi = {
         const data = await res.json();
         if (res.ok) return data;
         if (data.error?.includes('eşleştirme')) {
-            const res2 = await fetch(`${API}/quick-fetch-meta`, {
+            const res2 = await authFetch(`${API}/quick-fetch-meta`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ accessToken: token, since, until, subeKod }),
@@ -413,7 +427,7 @@ export const reportsApi = {
     },
 
     async googleFetchForBranch(since, until, subeKod) {
-        const res = await fetch(`${API}/google-fetch`, {
+        const res = await authFetch(`${API}/google-fetch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ since, until, subeKod }),
@@ -424,7 +438,7 @@ export const reportsApi = {
     },
 
     async fetchBudgetStatus(since, until) {
-        const res = await fetch(`${API}/butce-durum?since=${since}&until=${until}`);
+        const res = await authFetch(`${API}/butce-durum?since=${since}&until=${until}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Hata');
         useReportsStore.setState({ budgetStatus: data });

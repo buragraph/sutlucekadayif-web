@@ -335,6 +335,7 @@ const BUTCE_DURUM_TTL = 10 * 60 * 1000; // 10 dakika
 
 router.get(
   '/butce-durum',
+  verifyToken,
   async (req, res) => {
     try {
       const { since, until } = req.query;
