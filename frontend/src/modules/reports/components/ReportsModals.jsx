@@ -442,8 +442,16 @@ export function DeleteDonemModal() {
             await reportsApi.deleteDonem(data.kod, data.b, data.e);
             toast.success('Dönem verileri silindi.');
             closeModal();
+            // Silinen dönemi donemCache'den hemen kaldır (anlık UI güncellemesi)
+            const currentCache = useReportsStore.getState().donemCache;
+            const filtered = (currentCache[data.kod] || []).filter(
+                d => !(d.baslangic === data.b && d.bitis === data.e)
+            );
+            useReportsStore.setState({
+                donemCache: { ...currentCache, [data.kod]: filtered }
+            });
             await loadDashboard();
-            selectBranch(data.kod, true);
+            await selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
     };
