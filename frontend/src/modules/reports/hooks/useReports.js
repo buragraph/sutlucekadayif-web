@@ -151,7 +151,8 @@ export const useReportsStore = create((set, get) => ({
         const { donemCache } = get();
         if (force || !donemCache[kod]) {
             try {
-                const r = await authFetch(`${API}/sube/${kod}/donemler`);
+                const url = `${API}/sube/${kod}/donemler${force ? '?nocache=1' : ''}`;
+                const r = await authFetch(url);
                 const d = await r.json();
                 set((s) => ({
                     donemCache: { ...s.donemCache, [kod]: d.donemler || [] },

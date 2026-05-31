@@ -444,7 +444,11 @@ router.get('/dashboard-bundle', verifyToken, cacheMiddleware(300), async (req, r
 });
 
 // Şubenin dönemlerini döner (şubeye tıklandığında çağrılır — sadece tarih + veri var/yok)
-router.get('/sube/:kod/donemler', verifyToken, cacheMiddleware(180), async (req, res) => {
+router.get('/sube/:kod/donemler', verifyToken, (req, res, next) => {
+  // nocache parametresi varsa cache'i atla (silme/ekleme sonrası taze veri)
+  if (req.query.nocache) return next();
+  return cacheMiddleware(180)(req, res, next);
+}, async (req, res) => {
   try {
     const { kod } = req.params;
     const donemlerResult = await getDonemler(kod);
