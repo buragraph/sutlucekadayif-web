@@ -27,6 +27,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5001;
 
+// Cloud Run arkasında çalışırken proxy güvenini ayarla
+app.set('trust proxy', 1);
+
 // ─── Güvenlik ───
 app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -39,6 +42,7 @@ const generalLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Çok fazla istek. Lütfen biraz bekleyin.' },
+    validate: { xForwardedForHeader: false, trustProxy: false },
 });
 
 const authLimiter = rateLimit({
@@ -47,6 +51,7 @@ const authLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Çok fazla giriş denemesi. Lütfen biraz bekleyin.' },
+    validate: { xForwardedForHeader: false, trustProxy: false },
 });
 
 app.use(generalLimiter);
