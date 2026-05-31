@@ -438,20 +438,23 @@ export function DeleteDonemModal() {
 
     const handleDelete = async () => {
         setLoading(true);
+        const kod = data.kod;
+        const b = data.b;
+        const e = data.e;
         try {
-            await reportsApi.deleteDonem(data.kod, data.b, data.e);
+            await reportsApi.deleteDonem(kod, b, e);
             toast.success('Dönem verileri silindi.');
             closeModal();
             // Silinen dönemi donemCache'den hemen kaldır (anlık UI güncellemesi)
             const currentCache = useReportsStore.getState().donemCache;
-            const filtered = (currentCache[data.kod] || []).filter(
-                d => !(d.baslangic === data.b && d.bitis === data.e)
+            const filtered = (currentCache[kod] || []).filter(
+                d => !(d.baslangic === b && d.bitis === e)
             );
             useReportsStore.setState({
-                donemCache: { ...currentCache, [data.kod]: filtered }
+                donemCache: { ...currentCache, [kod]: filtered }
             });
+            // Dashboard'u yenile (aggregate verileri güncellemek için)
             await loadDashboard();
-            await selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
     };
