@@ -191,7 +191,7 @@ export default function CategoriesPage() {
     }
 
     return (
-        <div className="flex flex-1 flex-col gap-4 max-w-[1600px] mx-auto w-full">
+        <div className="flex flex-1 flex-col gap-4 w-full">
             {/* Page Header */}
             <div className="flex items-center justify-between shrink-0">
                 <div>

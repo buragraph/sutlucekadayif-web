@@ -216,7 +216,7 @@ export default function BranchReklamPage() {
     ];
 
     return (
-        <div className="flex flex-col gap-4 md:gap-6 max-w-[1400px] mx-auto w-full pb-8">
+        <div className="flex flex-col gap-4 md:gap-6 w-full pb-8">
             {/* ─── Page Header ─── */}
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Reklam Paneli</h1>

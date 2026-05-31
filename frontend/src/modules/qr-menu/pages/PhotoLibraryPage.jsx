@@ -261,7 +261,7 @@ export default function PhotoLibraryPage() {
     // ---------- DETAIL / EDIT VIEW ----------
     if (editingMedia) {
         return (
-            <div className="flex flex-1 flex-col gap-4 max-w-[1200px] mx-auto w-full h-full min-h-0">
+            <div className="flex flex-1 flex-col gap-4 w-full h-full min-h-0">
                 {/* Header */}
                 <div className="flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">

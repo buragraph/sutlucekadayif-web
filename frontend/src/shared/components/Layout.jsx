@@ -15,7 +15,7 @@ export default function Layout() {
                 <AppSidebar variant="inset" />
                 <SidebarInset className="peer-data-[variant=inset]:border">
                     <AppHeader />
-                    <div className="h-full px-4 md:px-6 pt-3 md:pt-4 pb-4 md:pb-6 flex flex-col min-h-0">
+                    <div className="h-full px-4 md:px-6 pt-3 md:pt-4 pb-4 md:pb-6 flex flex-col min-h-0 max-w-[1600px] mx-auto w-full">
                         <Outlet />
                     </div>
                 </SidebarInset>

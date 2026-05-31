@@ -124,7 +124,7 @@ export default function ReportsPage() {
     );
 
     return (
-        <div className="flex flex-col gap-4 max-w-[1600px] mx-auto w-full h-[calc(100vh-88px)] overflow-hidden">
+        <div className="flex flex-col gap-4 w-full h-[calc(100vh-88px)] overflow-hidden">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
                 <div>
                     <h1 className="text-2xl font-semibold tracking-tight text-foreground">Raporlar</h1>

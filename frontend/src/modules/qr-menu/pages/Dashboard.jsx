@@ -7,7 +7,7 @@ export default function Dashboard() {
     const { subeSlug, role } = useAuth();
 
     return (
-        <div className="space-y-6 max-w-6xl mx-auto">
+        <div className="space-y-6">
             {/* Sayfa Başlığı */}
             <div className="flex items-center justify-between">
                 <div>

@@ -457,7 +457,7 @@ export default function BudgetCampaignsPage() {
     };
 
     return (
-        <div className="flex flex-col gap-4 max-w-[1200px] mx-auto w-full">
+        <div className="flex flex-col gap-4 w-full">
             {modalOpen ? (
                 <BudgetCampaignForm
                     onCancel={() => setModalOpen(false)}

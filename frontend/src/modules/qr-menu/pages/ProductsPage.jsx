@@ -227,7 +227,7 @@ export default function ProductsPage() {
     // ---------- DETAIL / FORM VIEW ----------
     if (viewMode !== 'list') {
         return (
-            <div className="flex flex-1 flex-col gap-4 max-w-[1600px] mx-auto w-full h-full min-h-0">
+            <div className="flex flex-1 flex-col gap-4 w-full h-full min-h-0">
                 {/* Header */}
                 <div className="flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
@@ -430,7 +430,7 @@ export default function ProductsPage() {
 
     // ---------- LIST VIEW ----------
     return (
-        <div className="flex flex-1 flex-col gap-4 max-w-[1600px] mx-auto w-full h-full min-h-0">
+        <div className="flex flex-1 flex-col gap-4 w-full h-full min-h-0">
             {/* Page Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
                 <div>
