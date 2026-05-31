@@ -492,6 +492,7 @@ router.put('/sube/:kod', verifyToken, async (req, res) => {
 router.delete('/sube/:kod', verifyToken, async (req, res) => {
   try {
     await deleteSube(req.params.kod);
+    invalidateReportCache();
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
@@ -510,6 +511,7 @@ router.delete('/sube/:kod/donem', verifyToken, async (req, res) => {
     if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
 
     await deleteDonem(sube.kod, baslangic, bitis);
+    invalidateReportCache();
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
