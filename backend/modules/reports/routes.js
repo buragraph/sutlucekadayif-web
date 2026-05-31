@@ -829,8 +829,8 @@ router.post('/google-fetch', verifyToken, async (req, res) => {
     invalidateCache('/reports');
     res.json({ success: true, message: `${savedCount} şube için Google verileri güncellendi!` });
   } catch (err) {
-    console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    console.error('[Reports] google-fetch error:', err);
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 

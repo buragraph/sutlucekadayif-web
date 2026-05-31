@@ -117,9 +117,7 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
     console.error('Sunucu hatası:', err);
     res.status(err.status || 500).json({
-        error: process.env.NODE_ENV === 'production'
-            ? 'Sunucu hatası oluştu'
-            : err.message || 'Sunucu hatası oluştu',
+        error: err.message || 'Sunucu hatası oluştu',
     });
 });
 
