@@ -72,7 +72,7 @@ export function SettingsModal() {
                         <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Google Entegrasyonu</Label>
                         <div className="flex gap-4 mt-2">
                             <FormGroup label="Client ID"><Input value={form.googleClientId} onChange={e => setForm({...form, googleClientId: e.target.value})} className="font-mono text-xs" placeholder="103617...apps.googleusercontent.com" /></FormGroup>
-                            <FormGroup label="Client Secret"><Input type="password" value={form.googleClientSecret} onChange={e => setForm({...form, googleClientSecret: e.target.value})} className="font-mono text-xs" placeholder="GOCSPX-..." /></FormGroup>
+                            <FormGroup label="Client Secret"><Input type="password" value={form.googleClientSecret} onChange={e => setForm({...form, googleClientSecret: e.target.value})} className="font-mono text-xs" placeholder={settings.googleClientSecretMasked || 'GOCSPX-...'} /></FormGroup>
                         </div>
                         <div className="mt-3">
                             <FormGroup label="Yönlendirme (Redirect URI)"><Input value={form.googleRedirectUri} onChange={e => setForm({...form, googleRedirectUri: e.target.value})} className="font-mono text-xs" placeholder="Örn: https://sutlucekadayif.com/api/reports/auth/google/callback" /></FormGroup>
