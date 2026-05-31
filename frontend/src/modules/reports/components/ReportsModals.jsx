@@ -50,7 +50,7 @@ export function SettingsModal() {
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        if (open) setForm({ metaApiToken: settings.metaApiToken || '', googleClientId: settings.googleClientId || '', googleClientSecret: settings.googleClientSecret || '', googleRedirectUri: settings.googleRedirectUri || 'https://api-fyfp72cohq-uc.a.run.app/api/reports/auth/google/callback' });
+        if (open) setForm({ metaApiToken: '', googleClientId: settings.googleClientId || '', googleClientSecret: '', googleRedirectUri: settings.googleRedirectUri || 'https://api-fyfp72cohq-uc.a.run.app/api/reports/auth/google/callback' });
     }, [open, settings]);
 
     const handleSave = async () => {
@@ -66,7 +66,7 @@ export function SettingsModal() {
                 <DialogHeader><DialogTitle className="flex items-center gap-2 text-muted-foreground"><Settings className="w-4 h-4" /> Ayarlar</DialogTitle></DialogHeader>
                 <div className="flex flex-col gap-4 py-2">
                     <FormGroup label="Meta API Access Token" description="Meta verilerini çekmek için gerekli Graph API token'ı. (Veritabanında güvenli bir şekilde saklanır).">
-                        <Input type="password" value={form.metaApiToken} onChange={e => setForm({...form, metaApiToken: e.target.value})} className="font-mono text-xs" placeholder="EAAI..." />
+                        <Input type="password" value={form.metaApiToken} onChange={e => setForm({...form, metaApiToken: e.target.value})} className="font-mono text-xs" placeholder={settings.metaApiTokenMasked || 'EAAI...'} />
                     </FormGroup>
                     <div className="pt-2">
                         <Label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide">Google Entegrasyonu</Label>
@@ -530,9 +530,9 @@ export function EditBranchModal() {
                 setMetaMappedText(`🎯 ${reverseCampaigns[activeKod].length} kampanya ile otomatik eşleşti`);
             } else {
                 setMetaMappedText(null);
-                if (settings.metaApiToken) {
+                if (settings.hasMetaToken) {
                     setMetaPrefixLoading(true);
-                    reportsApi.previewMeta(settings.metaApiToken, '2025-06-01', '2026-12-31')
+                    reportsApi.previewMeta(null, '2025-06-01', '2026-12-31')
                         .then(res => setMetaPrefixes(res.gruplar.filter(g => g.kayitSayisi >= 3).sort((a,b) => a.prefix.localeCompare(b.prefix,'tr'))))
                         .catch(() => {})
                         .finally(() => setMetaPrefixLoading(false));
@@ -642,9 +642,9 @@ export function EditBranchModal() {
                                     className="w-full md:w-2/3 bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                                     value={selectedMetaPrefix}
                                     onChange={e => setSelectedMetaPrefix(e.target.value)}
-                                    disabled={!settings.metaApiToken || metaPrefixLoading}
+                                    disabled={!settings.hasMetaToken || metaPrefixLoading}
                                 >
-                                    {!settings.metaApiToken ? <option value="">— Token yok (Ayarlar'dan ayarlayın) —</option>
+                                    {!settings.hasMetaToken ? <option value="">— Token yok (Ayarlar'dan ayarlayın) —</option>
                                     : metaPrefixLoading ? <option value="">Yükleniyor...</option>
                                     : (
                                         <>
@@ -767,10 +767,10 @@ export function AddDataModal() {
 
     const handleMetaFetch = async () => {
         if (!form.since || !form.until) return toast.info('Tarih aralığı seçin.');
-        if (!settings.metaApiToken) return toast.error('Meta token bulunamadı. Ayarlardan ayarlayın.');
+        if (!settings.hasMetaToken) return toast.error('Meta token bulunamadı. Ayarlardan ayarlayın.');
         setMetaLoading(true);
         try {
-            const res = await reportsApi.metaFetchForBranch(settings.metaApiToken, form.since, form.until, data.kod);
+            const res = await reportsApi.metaFetchForBranch(null, form.since, form.until, data.kod);
             toast.success(res.message || 'Meta verileri çekildi!');
             await loadDashboard();
             selectBranch(data.kod, true);
@@ -902,9 +902,9 @@ export function CampaignMapModal() {
     const [selections, setSelections] = useState({}); // { campaignId: subeKod }
 
     useEffect(() => {
-        if (open && settings.metaApiToken) {
+        if (open && settings.hasMetaToken) {
             setLoading(true);
-            reportsApi.fetchCampaigns(settings.metaApiToken, dateRange.since || '2025-01-01', dateRange.until || '2026-12-31')
+            reportsApi.fetchCampaigns(null, dateRange.since || '2025-01-01', dateRange.until || '2026-12-31')
                 .then(res => {
                     setCampaigns(res.kampanyalar || []);
                     setSubeler(res.mevcutSubeler || []);
@@ -944,14 +944,14 @@ export function CampaignMapModal() {
                 <DialogHeader className="px-6 py-4 border-b border-border bg-card">
                     <DialogTitle className="flex items-center gap-2 text-foreground text-lg font-semibold tracking-tight"><GitBranch className="w-5 h-5 text-purple-500" /> Meta Kampanya Eşleştirme</DialogTitle>
                 </DialogHeader>
-                {campaigns.length > 0 && !loading && settings.metaApiToken && (
+                {campaigns.length > 0 && !loading && settings.hasMetaToken && (
                     <div className="px-6 py-3 border-b border-border bg-muted/50 text-xs font-semibold text-muted-foreground flex justify-between">
                         <span>KAMPANYA ADI</span>
                         <span>{campaigns.length} kayıt</span>
                     </div>
                 )}
                 <div className="p-0 overflow-y-auto h-[60vh] bg-card">
-                    {!settings.metaApiToken ? (
+                    {!settings.hasMetaToken ? (
                         <div className="p-8 text-center text-destructive text-sm">Meta token bulunamadı. Ayarlardan ayarlayın.</div>
                     ) : loading ? (
                         <div className="p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -1012,7 +1012,7 @@ export function AdsetMapModal() {
     const loadData = async (forceRefresh = false) => {
         setLoading(true);
         try {
-            const res = await reportsApi.fetchAdsets(settings.metaApiToken, dateRange.since || '2025-01-01', dateRange.until || '2026-12-31', forceRefresh);
+            const res = await reportsApi.fetchAdsets(null, dateRange.since || '2025-01-01', dateRange.until || '2026-12-31', forceRefresh);
             setAdsets(res.adsets || []);
             setSubeler(res.mevcutSubeler || []);
             const initialSelections = {};
@@ -1026,7 +1026,7 @@ export function AdsetMapModal() {
     };
 
     useEffect(() => {
-        if (open && settings.metaApiToken) {
+        if (open && settings.hasMetaToken) {
             setSearch(''); setBulkSelect('');
             loadData();
         }
@@ -1104,7 +1104,7 @@ export function AdsetMapModal() {
                     </div>
                 </div>
 
-                {filteredAdsets.length > 0 && !loading && settings.metaApiToken && (
+                {filteredAdsets.length > 0 && !loading && settings.hasMetaToken && (
                     <div className="px-6 py-3 bg-muted/50 border-b border-border flex items-center gap-4 text-xs font-semibold text-muted-foreground">
                         <input type="checkbox" onChange={handleToggleAll} className="cursor-pointer w-4 h-4 rounded border-input text-foreground focus:ring-foreground" checked={filteredAdsets.length > 0 && filteredAdsets.every(a => checked[a.id])} />
                         <span>TÜMÜNÜ SEÇ</span>
@@ -1112,7 +1112,7 @@ export function AdsetMapModal() {
                     </div>
                 )}
                 <div className="p-0 overflow-y-auto h-[50vh] bg-card">
-                    {!settings.metaApiToken ? (
+                    {!settings.hasMetaToken ? (
                         <div className="p-8 text-center text-destructive text-sm">Meta token bulunamadı. Ayarlardan ayarlayın.</div>
                     ) : loading ? (
                         <div className="p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">

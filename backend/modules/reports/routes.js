@@ -39,6 +39,7 @@ router.get('/settings', verifyToken, cacheMiddleware(600), async (req, res) => {
     const safe = { ...settings };
     if (safe.metaApiToken) {
       safe.metaApiTokenMasked = safe.metaApiToken.substring(0, 6) + '...' + safe.metaApiToken.slice(-4);
+      safe.hasMetaToken = true;
       delete safe.metaApiToken;
     }
     if (safe.googleClientSecret) {
@@ -55,6 +56,12 @@ router.get('/settings', verifyToken, cacheMiddleware(600), async (req, res) => {
 router.post('/save-settings', verifyToken, async (req, res) => {
   try {
     const newSettings = req.body;
+    // Boş gönderilen token/secret alanlarını mevcut değerlerle koru
+    if (!newSettings.metaApiToken || !newSettings.googleClientSecret) {
+      const existing = await getSettings();
+      if (!newSettings.metaApiToken && existing.metaApiToken) newSettings.metaApiToken = existing.metaApiToken;
+      if (!newSettings.googleClientSecret && existing.googleClientSecret) newSettings.googleClientSecret = existing.googleClientSecret;
+    }
     await saveSettings(newSettings);
     invalidateCache('/reports');
     res.json({ success: true, message: 'Ayarlar kaydedildi.' });
@@ -411,6 +418,7 @@ router.get('/dashboard-bundle', verifyToken, cacheMiddleware(300), async (req, r
     const settings = { ...settingsRaw };
     if (settings.metaApiToken) {
       settings.metaApiTokenMasked = settings.metaApiToken.substring(0, 6) + '...' + settings.metaApiToken.slice(-4);
+      settings.hasMetaToken = true;
       delete settings.metaApiToken;
     }
     if (settings.googleClientSecret) {
@@ -582,8 +590,13 @@ router.put('/sube/:kod/donem/overrides', verifyToken, async (req, res) => {
 // ══════════════════════════════════════════════════
 
 router.post('/campaign-fetch', verifyToken, async (req, res) => {
-  const { accessToken, since, until, subeKod, targetSubeKod } = req.body;
+  let { accessToken, since, until, subeKod, targetSubeKod } = req.body;
   try {
+    if (!accessToken) {
+      const s = await getSettings();
+      accessToken = s.metaApiToken;
+    }
+    if (!accessToken) return res.status(400).json({ error: 'Meta API token bulunamadı' });
     const defaultSube = targetSubeKod || subeKod || null;
     const result = await campaignBasedImport(accessToken, since, until, defaultSube);
     invalidateReportCache();
@@ -600,8 +613,10 @@ router.post('/campaign-fetch', verifyToken, async (req, res) => {
 });
 
 router.post('/quick-fetch-meta', verifyToken, async (req, res) => {
-  const { accessToken, since, until, subeKod, targetSubeKod } = req.body;
+  let { accessToken, since, until, subeKod, targetSubeKod } = req.body;
   try {
+    if (!accessToken) { const s = await getSettings(); accessToken = s.metaApiToken; }
+    if (!accessToken) return res.status(400).json({ error: 'Meta API token bulunamadı' });
     const defaultSube = targetSubeKod || subeKod || null; 
     try {
       const result = await campaignBasedImport(accessToken, since, until, defaultSube);
@@ -619,8 +634,10 @@ router.post('/quick-fetch-meta', verifyToken, async (req, res) => {
 });
 
 router.post('/preview-meta', verifyToken, async (req, res) => {
-  const { accessToken, since, until } = req.body;
+  let { accessToken, since, until } = req.body;
   try {
+    if (!accessToken) { const s = await getSettings(); accessToken = s.metaApiToken; }
+    if (!accessToken) return res.status(400).json({ error: 'Meta API token bulunamadı' });
     res.json(await previewMetaInsights(accessToken, since, until));
   } catch (err) {
     console.error('[Reports]', err);
@@ -629,8 +646,9 @@ router.post('/preview-meta', verifyToken, async (req, res) => {
 });
 
 router.post('/confirm-meta', verifyToken, async (req, res) => {
-  const { accessToken, since, until, eslesmeler, saveMappingsOnly } = req.body;
+  let { accessToken, since, until, eslesmeler, saveMappingsOnly } = req.body;
   try {
+    if (!accessToken) { const s = await getSettings(); accessToken = s.metaApiToken; }
     if (saveMappingsOnly) {
       await saveMappings(eslesmeler);
       invalidateCache('/reports');
@@ -680,8 +698,10 @@ router.post('/meta-mappings', verifyToken, async (req, res) => {
 });
 
 router.post('/meta-campaigns', verifyToken, async (req, res) => {
-  const { accessToken, since, until } = req.body;
+  let { accessToken, since, until } = req.body;
   try {
+    if (!accessToken) { const s = await getSettings(); accessToken = s.metaApiToken; }
+    if (!accessToken) return res.status(400).json({ error: 'Meta API token bulunamadı' });
     res.json(await fetchCampaigns(accessToken, since, until));
   } catch (err) {
     console.error('[Reports]', err);
@@ -696,8 +716,10 @@ router.post('/save-campaign-mappings', verifyToken, async (req, res) => {
 });
 
 router.post('/meta-adsets', verifyToken, async (req, res) => {
-  const { accessToken, since, until, forceRefresh } = req.body;
+  let { accessToken, since, until, forceRefresh } = req.body;
   try {
+    if (!accessToken) { const s = await getSettings(); accessToken = s.metaApiToken; }
+    if (!accessToken) return res.status(400).json({ error: 'Meta API token bulunamadı' });
     res.json(await fetchAdsets(accessToken, since, until, forceRefresh));
   } catch (err) {
     console.error('[Reports]', err);

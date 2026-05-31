@@ -37,12 +37,12 @@ export default function ReportsPage() {
     }, [dateRange.since, dateRange.until]);
 
     const handleMetaFetch = async () => {
-        if (!settings.metaApiToken) return toast.error('Meta token eksik. Ayarlardan ekleyin.');
+        if (!settings.hasMetaToken) return toast.error('Meta token eksik. Ayarlardan ekleyin.');
         if (!dateRange.since || !dateRange.until) return toast.error('Tarih aralığı seçin.');
         
         setIsFetchingMeta(true);
         try {
-            await reportsApi.globalMetaFetch(dateRange.since, dateRange.until, settings.metaApiToken);
+            await reportsApi.globalMetaFetch(dateRange.since, dateRange.until, null);
             toast.success('Meta verileri çekildi.');
             loadDashboard();
         } catch (err) {
@@ -73,8 +73,8 @@ export default function ReportsPage() {
         setIsFetchingMeta(true);
         setIsFetchingGoogle(true);
         const promises = [];
-        if (settings.metaApiToken) {
-            promises.push(reportsApi.globalMetaFetch(dateRange.since, dateRange.until, settings.metaApiToken));
+        if (settings.hasMetaToken) {
+            promises.push(reportsApi.globalMetaFetch(dateRange.since, dateRange.until, null));
         }
         promises.push(reportsApi.globalGoogleFetch(dateRange.since, dateRange.until));
         
@@ -150,7 +150,7 @@ export default function ReportsPage() {
                     </div>
                     
                     <div className="flex items-center gap-2 flex-wrap">
-                        {settings.metaApiToken && (
+                        {settings.hasMetaToken && (
                             <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleMetaFetch} disabled={isFetchingMeta}>
                                 {isFetchingMeta ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : (
                                     <svg className="w-3.5 h-3.5 mr-1.5 text-blue-600" viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/></svg>
