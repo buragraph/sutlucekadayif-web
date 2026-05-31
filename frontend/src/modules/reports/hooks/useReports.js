@@ -163,6 +163,19 @@ export const useReportsStore = create((set, get) => ({
             }
         }
     },
+
+    // ── Lokal cache'den şube aggregate'lerini yeniden hesapla (sidebar anında güncellenir) ──
+    recalcBranchFromCache: (kod) => {
+        const { donemCache, branches } = get();
+        const donemler = donemCache[kod] || [];
+        const toplamHarcama = donemler.reduce((sum, d) => sum + (d.harcama || 0), 0);
+        set({
+            branches: branches.map(b => b.kod === kod 
+                ? { ...b, toplamHarcama, donemSayisi: donemler.length }
+                : b
+            )
+        });
+    },
 }));
 
 // ── Standalone API functions ──

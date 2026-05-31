@@ -445,7 +445,7 @@ export function DeleteDonemModal() {
             await reportsApi.deleteDonem(kod, b, e);
             toast.success('Dönem verileri silindi.');
             closeModal();
-            // Silinen dönemi donemCache'den hemen kaldır (anlık UI güncellemesi)
+            // Silinen dönemi donemCache'den hemen kaldır
             const currentCache = useReportsStore.getState().donemCache;
             const filtered = (currentCache[kod] || []).filter(
                 d => !(d.baslangic === b && d.bitis === e)
@@ -453,8 +453,8 @@ export function DeleteDonemModal() {
             useReportsStore.setState({
                 donemCache: { ...currentCache, [kod]: filtered }
             });
-            // Dashboard'u yenile (aggregate verileri güncellemek için)
-            await loadDashboard();
+            // Sidebar'daki harcama/dönem sayılarını lokal olarak güncelle
+            useReportsStore.getState().recalcBranchFromCache(kod);
         } catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
     };
@@ -775,8 +775,8 @@ export function AddDataModal() {
         try {
             const res = await reportsApi.metaFetchForBranch(null, form.since, form.until, data.kod);
             toast.success(res.message || 'Meta verileri çekildi!');
-            await loadDashboard();
             await selectBranch(data.kod, true);
+            useReportsStore.getState().recalcBranchFromCache(data.kod);
         } catch (err) { toast.error(err.message); }
         finally { setMetaLoading(false); }
     };
@@ -787,8 +787,8 @@ export function AddDataModal() {
         try {
             const res = await reportsApi.googleFetchForBranch(form.since, form.until, data.kod);
             toast.success(res.message || 'Google verileri çekildi!');
-            await loadDashboard();
             await selectBranch(data.kod, true);
+            useReportsStore.getState().recalcBranchFromCache(data.kod);
         } catch (err) { toast.error(err.message); }
         finally { setGoogleLoading(false); }
     };
