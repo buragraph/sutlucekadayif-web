@@ -339,7 +339,9 @@ router.post('/upload', verifyToken, upload.single('csv'), async (req, res) => {
 
     const count = typeof result === 'number' ? result : (result.count || 0);
 
-    // Aggregates yeni db katmanında otomatik güncellenir
+    // Cache temizle — yeni veriler hemen görünsün
+    invalidateReportCache();
+    invalidateCache('/reports');
 
     res.json({
        success: true,
