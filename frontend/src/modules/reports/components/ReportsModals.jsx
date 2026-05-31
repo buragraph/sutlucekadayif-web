@@ -55,7 +55,7 @@ export function SettingsModal() {
 
     const handleSave = async () => {
         setLoading(true);
-        try { await reportsApi.saveSettings(form); toast.success('Ayarlar kaydedildi.'); closeModal(); loadDashboard(); } 
+        try { await reportsApi.saveSettings(form); toast.success('Ayarlar kaydedildi.'); closeModal(); loadDashboard(true); } 
         catch (err) { toast.error(err.message || 'Ayarlar kaydedilemedi.'); } 
         finally { setLoading(false); }
     };
@@ -184,7 +184,7 @@ export function BulkUploadModal() {
             const data = await reportsApi.uploadData(fd);
             toast.success(`${data.message} (${data.subeAd || data.subeKod})`);
             closeModal();
-            await loadDashboard();
+            await loadDashboard(true);
             if (data.subeKod) selectBranch(data.subeKod, true);
         } catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
@@ -252,7 +252,7 @@ export function AddBranchModal() {
             await reportsApi.addBranch({ kod, ad, adres: form.adres.trim(), link: form.link.trim() });
             toast.success('Şube eklendi');
             closeModal();
-            await loadDashboard();
+            await loadDashboard(true);
             selectBranch(kod);
         } catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
@@ -351,7 +351,7 @@ export function DataEditModal() {
             await reportsApi.saveOverrides(data.kod, data.baslangic, data.bitis, overrides);
             toast.success('Rapor verileri güncellendi!');
             closeModal();
-            await loadDashboard();
+            await loadDashboard(true);
             selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setSaving(false); }
@@ -582,7 +582,7 @@ export function EditBranchModal() {
 
             toast.success('Şube güncellendi.');
             closeModal();
-            await loadDashboard();
+            await loadDashboard(true);
             selectBranch(activeKod);
         } catch (err) { toast.error(err.message); }
         finally { setSaving(false); }
@@ -596,7 +596,7 @@ export function EditBranchModal() {
             toast.success('Şube silindi.');
             closeModal();
             setActiveBranch(null);
-            await loadDashboard();
+            await loadDashboard(true);
         } catch (err) { toast.error(err.message); }
         finally { setDeleting(false); }
     };
@@ -821,7 +821,7 @@ export function AddDataModal() {
             await reportsApi.uploadData(fd);
             toast.success('Veriler başarıyla yüklendi!');
             closeModal();
-            await loadDashboard();
+            await loadDashboard(true);
             selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setUploadLoading(false); }
@@ -936,7 +936,7 @@ export function CampaignMapModal() {
             const res = await reportsApi.saveCampaignMappings(mappings);
             toast.success(res.message);
             closeModal();
-            await loadDashboard();
+            await loadDashboard(true);
         } catch (err) { toast.error(err.message); }
         finally { setSaving(false); }
     };
@@ -1049,7 +1049,7 @@ export function AdsetMapModal() {
             const res = await reportsApi.saveAdsetMappings(mappings);
             toast.success(res.message);
             closeModal();
-            await loadDashboard();
+            await loadDashboard(true);
         } catch (err) { toast.error(err.message); }
         finally { setSaving(false); }
     };

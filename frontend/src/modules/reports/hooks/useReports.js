@@ -117,7 +117,10 @@ export const useReportsStore = create((set, get) => ({
     setActiveBranch: (kod) => set({ activeBranch: kod }),
 
     // ── Load Dashboard (tek bundle istek) ──
-    loadDashboard: async () => {
+    loadDashboard: async (force = false) => {
+        const { branches } = get();
+        if (!force && branches.length > 0) return; // Zaten yüklüyse (sayfalar arası geçişte) API'ye gitme (0 Read)
+
         set({ loading: true });
         try {
             const res = await authFetch(`${API}/dashboard-bundle`);

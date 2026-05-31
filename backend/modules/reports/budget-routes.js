@@ -4,9 +4,10 @@ import { db } from '../../config/firebase.js';
 import admin from 'firebase-admin';
 import { verifyToken, requirePermission } from '../../middleware/auth.js';
 import { uploadFile, deleteFile, urlToKey } from '../../config/r2.js';
-import { upsertButce, getAllSubeler, recalcSubeAggregates, getDonemVeri } from './db.js';
+import { upsertButce, getAllSubeler, recalcSubeAggregates, getDonemVeri, getSettings } from './db.js';
 import { invalidateReportCache } from './services/report-data.js';
 import { invalidateCache } from '../../middleware/cache.js';
+import { campaignBasedImport } from './services/meta-api.js';
 
 const router = Router();
 
@@ -267,7 +268,25 @@ router.post(
 
       await BUTCE_DOC_REF.update(updates);
 
-      // Aggregate'leri güncelle
+      // Meta'dan verileri otomatik çek (Arka planda)
+      const { donem_baslangic, donem_bitis } = kampanya;
+      getSettings().then(async (settings) => {
+        if (settings?.metaApiToken) {
+          for (const subeKod of onaylananSubeler) {
+            try {
+              await campaignBasedImport(settings.metaApiToken, donem_baslangic, donem_bitis, subeKod);
+              console.log(`[Budget] ${subeKod} için Meta verisi otomatik çekildi.`);
+              await recalcSubeAggregates(subeKod);
+            } catch (e) {
+              console.error(`[Budget] ${subeKod} Meta otomatik çekim hatası:`, e.message);
+            }
+          }
+          invalidateReportCache();
+          invalidateCache('/reports');
+        }
+      }).catch(err => console.error('[Budget] Otomatik Meta çekim genel hatası:', err));
+
+      // İlk Aggregate'leri güncelle (Bütçe eklendiği için)
       for (const subeKod of onaylananSubeler) {
         await recalcSubeAggregates(subeKod);
       }
@@ -314,7 +333,23 @@ router.post(
         [`kampanyalar.${id}.yanitlar.${subeKod}.durum`]: 'onaylandi',
       });
 
-      // Aggregate'leri güncelle
+      // Meta'dan verileri otomatik çek (Arka planda)
+      const { donem_baslangic, donem_bitis } = kampanya;
+      getSettings().then(async (settings) => {
+        if (settings?.metaApiToken) {
+          try {
+            await campaignBasedImport(settings.metaApiToken, donem_baslangic, donem_bitis, subeKod);
+            console.log(`[Budget] ${subeKod} için Meta verisi otomatik çekildi.`);
+            await recalcSubeAggregates(subeKod);
+            invalidateReportCache();
+            invalidateCache('/reports');
+          } catch (e) {
+            console.error(`[Budget] ${subeKod} Meta otomatik çekim hatası:`, e.message);
+          }
+        }
+      }).catch(err => console.error('[Budget] Otomatik Meta çekim genel hatası:', err));
+
+      // İlk Aggregate'leri güncelle (Bütçe eklendiği için)
       await recalcSubeAggregates(subeKod);
       invalidateReportCache();
       invalidateCache('/reports');
