@@ -148,8 +148,19 @@ export const useReportsStore = create((set, get) => ({
     // ── Select Branch ──
     selectBranch: async (kod, force = false) => {
         set({ activeBranch: kod });
-        const { donemCache } = get();
+        const { donemCache, branches } = get();
+        
         if (force || !donemCache[kod]) {
+            // NoSQL Optimizasyonu: Şube dokümanında donem_ozetleri varsa hiç API'ye gitme (0 Read!)
+            const sube = branches.find(b => b.kod === kod);
+            if (!force && sube && sube.donem_ozetleri) {
+                set((s) => ({
+                    donemCache: { ...s.donemCache, [kod]: sube.donem_ozetleri },
+                }));
+                return;
+            }
+
+            // Geriye dönük uyumluluk veya force refresh için API'den çek
             try {
                 const r = await authFetch(`${API}/sube/${kod}/donemler`);
                 const d = await r.json();

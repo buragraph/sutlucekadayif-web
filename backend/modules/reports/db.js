@@ -246,6 +246,8 @@ export async function recalcSubeAggregates(subeKod) {
   let toplam_tiklama = 0;
   let son_donem = null;
   let donem_sayisi = 0;
+  
+  const donem_ozetleri = [];
 
   snap.forEach(d => {
     const data = d.data();
@@ -259,6 +261,17 @@ export async function recalcSubeAggregates(subeKod) {
     if (!son_donem) {
       son_donem = `${data.donem_baslangic}_${data.donem_bitis}`;
     }
+    
+    // UI için gereken özet veriyi diziye ekle
+    donem_ozetleri.push({
+      baslangic: data.donem_baslangic,
+      bitis: data.donem_bitis,
+      meta: data.harcama !== undefined ? { harcama: 1 } : null,
+      google: data.google_arama !== undefined ? { gorunurluk: 1 } : null,
+      planlanan_butce: data.planlanan_butce || 0,
+      devredilen_miktar: data.devredilen_miktar || 0,
+      harcama: data.harcama || 0,
+    });
   });
 
   await db.collection('subeler').doc(subeKod).set({
@@ -269,6 +282,7 @@ export async function recalcSubeAggregates(subeKod) {
     toplam_tiklama,
     son_donem,
     donem_sayisi,
+    donem_ozetleri // 0 Read için sihirli dokunuş!
   }, { merge: true });
 }
 
