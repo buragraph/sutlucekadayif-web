@@ -49,7 +49,7 @@ router.get('/settings', verifyToken, cacheMiddleware(600), async (req, res) => {
     res.json(safe);
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -67,7 +67,7 @@ router.post('/save-settings', verifyToken, async (req, res) => {
     res.json({ success: true, message: 'Ayarlar kaydedildi.' });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -176,7 +176,7 @@ router.post('/preview', verifyToken, async (req, res) => {
     res.type('html').send(html);
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -215,7 +215,7 @@ router.post('/generate-pdf', verifyToken, async (req, res) => {
     res.send(pdfBuffer);
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -294,7 +294,7 @@ router.post('/generate-pdf-bulk', verifyToken, async (req, res) => {
     res.send(zipBuffer);
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -351,7 +351,7 @@ router.post('/upload', verifyToken, upload.single('csv'), async (req, res) => {
     });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -370,7 +370,7 @@ router.get('/dashboard', verifyToken, cacheMiddleware(300), async (req, res) => 
     res.json({ subeler: dashData });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -439,7 +439,7 @@ router.get('/dashboard-bundle', verifyToken, cacheMiddleware(300), async (req, r
     });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -464,7 +464,7 @@ router.get('/sube/:kod/donemler', verifyToken, (req, res, next) => {
     res.json({ donemler });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -477,7 +477,7 @@ router.post('/sube', verifyToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -489,7 +489,7 @@ router.put('/sube/:kod', verifyToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -501,7 +501,7 @@ router.delete('/sube/:kod', verifyToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -520,7 +520,7 @@ router.delete('/sube/:kod/donem', verifyToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -559,7 +559,7 @@ router.get('/sube/:kod/donem/veriler', verifyToken, async (req, res) => {
     res.json({ computed, overrides });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -586,7 +586,7 @@ router.put('/sube/:kod/donem/overrides', verifyToken, async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -614,8 +614,8 @@ router.post('/campaign-fetch', verifyToken, async (req, res) => {
     if (err.message.includes("Eşleşme bulunamadı") || err.message.includes("eşleştirme")) {
       res.status(400).json({ error: 'Kampanya eşleştirmesi bulunamadı' });
     } else {
-      console.error('[Reports]', err);
-      res.status(500).json({ error: 'Sunucu hatası oluştu' });
+      console.error('[Reports] campaign-fetch error:', err);
+      res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
     }
   }
 });
@@ -637,7 +637,7 @@ router.post('/quick-fetch-meta', verifyToken, async (req, res) => {
     }
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -649,7 +649,7 @@ router.post('/preview-meta', verifyToken, async (req, res) => {
     res.json(await previewMetaInsights(accessToken, since, until));
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -668,7 +668,7 @@ router.post('/confirm-meta', verifyToken, async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -713,7 +713,7 @@ router.post('/meta-campaigns', verifyToken, async (req, res) => {
     res.json(await fetchCampaigns(accessToken, since, until));
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -731,7 +731,7 @@ router.post('/meta-adsets', verifyToken, async (req, res) => {
     res.json(await fetchAdsets(accessToken, since, until, forceRefresh));
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
@@ -759,7 +759,7 @@ router.get('/google-locations', verifyToken, cacheMiddleware(600), async (req, r
     res.json({ locations: mapped, subeler, mappings });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: 'Sunucu hatası oluştu' });
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
