@@ -375,7 +375,7 @@ router.get('/dashboard', verifyToken, cacheMiddleware(300), async (req, res) => 
 });
 
 // Dashboard Bundle API — Tek istek ile tüm dashboard verisini döndürür (4 ayrı istek yerine)
-router.get('/dashboard-bundle', verifyToken, cacheMiddleware(300), async (req, res) => {
+router.get('/dashboard-bundle', verifyToken, async (req, res) => {
   try {
     const [subeler, mappingsRaw, campaignMappingsRaw, adsetMappingsRaw, settingsRaw, googleMappingsRaw] = await Promise.all([
       getAllSubeler(),
