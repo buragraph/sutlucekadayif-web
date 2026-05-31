@@ -773,7 +773,7 @@ export function AddDataModal() {
             const res = await reportsApi.metaFetchForBranch(null, form.since, form.until, data.kod);
             toast.success(res.message || 'Meta verileri çekildi!');
             await loadDashboard();
-            selectBranch(data.kod, true);
+            await selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setMetaLoading(false); }
     };
@@ -785,7 +785,7 @@ export function AddDataModal() {
             const res = await reportsApi.googleFetchForBranch(form.since, form.until, data.kod);
             toast.success(res.message || 'Google verileri çekildi!');
             await loadDashboard();
-            selectBranch(data.kod, true);
+            await selectBranch(data.kod, true);
         } catch (err) { toast.error(err.message); }
         finally { setGoogleLoading(false); }
     };
