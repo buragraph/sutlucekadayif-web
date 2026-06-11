@@ -4,7 +4,7 @@ import { db } from '../../config/firebase.js';
 import admin from 'firebase-admin';
 import { verifyToken, requirePermission } from '../../middleware/auth.js';
 import { uploadFile, deleteFile, urlToKey } from '../../config/r2.js';
-import { upsertButce, getAllSubeler, getDonemVeri, getSettings, getDataVersion, bumpDataVersion } from './db.js';
+import { upsertButce, getAllSubeler, getSubeByKod, getDonemVeri, getSettings, getDataVersion, bumpDataVersion } from './db.js';
 import { invalidateReportCache } from './services/report-data.js';
 import { invalidateCache } from '../../middleware/cache.js';
 import { campaignBasedImport } from './services/meta-api.js';
@@ -395,14 +395,19 @@ router.get(
   requirePermission('budget.view'),
   async (req, res) => {
     try {
-      const { since, until } = req.query;
+      const { since, until, subeKod } = req.query;
       if (!since || !until) {
         return res.status(400).json({ error: 'since ve until parametreleri zorunludur.' });
       }
 
-      // Kapsam: admin tüm şubeleri, sube_sahibi yalnızca kendi şubesini görür
+      // Kapsam: admin tüm şubeleri (veya subeKod ile tek şubeyi), sube_sahibi
+      // yalnızca kendi şubesini görür
       const isAdmin = req.user.role === 'admin';
-      const scope = isAdmin ? 'all' : (req.user.subeSlug || 'none');
+      if (subeKod && !isAdmin && subeKod !== req.user.subeSlug) {
+        return res.status(403).json({ error: 'Bu şubeye erişim yetkiniz yok' });
+      }
+      const hedefKod = subeKod || (!isAdmin ? req.user.subeSlug : null);
+      const scope = hedefKod || 'all';
 
       // Cache kontrol — veri versiyonu + kapsam eşleşiyorsa servis et
       const version = await getDataVersion();
@@ -412,11 +417,14 @@ router.get(
         return res.json(cached.data);
       }
 
-      // Optimizasyon: getAllSubeler() zaten donem_ozetleri içeriyor
-      // Her şube için ayrı getDonemVeri() çağırmak yerine donem_ozetleri'nden oku (0 ek read!)
-      let subeler = await getAllSubeler();
-      if (!isAdmin) {
-        subeler = subeler.filter(s => s.kod === req.user.subeSlug);
+      // Optimizasyon: şube dokümanı zaten donem_ozetleri içeriyor — dönem
+      // dokümanlarına hiç gidilmez. Tek şube modunda 1 read yeterli.
+      let subeler;
+      if (hedefKod) {
+        const sube = await getSubeByKod(hedefKod);
+        subeler = sube ? [sube] : [];
+      } else {
+        subeler = await getAllSubeler();
       }
       const sonuc = [];
       let toplamPlanlanan = 0;
@@ -468,6 +476,10 @@ router.get(
           kalan,
           kullanimOrani,
           durum,
+          // Dönem bilgisi — UI'daki günlük bütçe hesabı ve yenile butonu için
+          baslangic: since,
+          bitis: until,
+          donem: `${since} - ${until}`,
         });
       }
 

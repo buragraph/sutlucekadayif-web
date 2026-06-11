@@ -488,6 +488,30 @@ router.get('/dashboard-bundle', verifyToken, requirePermission('reports.view'), 
   }
 });
 
+// Tek şube dokümanını döner (aggregate'ler + donem_ozetleri) — hedefli yenileme için (1 read)
+router.get('/sube/:kod', verifyToken, requirePermission('reports.view'), async (req, res) => {
+  try {
+    const { kod } = req.params;
+    if (!ensureBranchAccess(req, res, kod)) return;
+
+    const sube = await getSubeByKod(kod);
+    if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
+
+    res.json({
+      sube: {
+        ...sube,
+        donemSayisi: sube.donem_sayisi || 0,
+        toplamHarcama: sube.toplam_harcama || 0,
+        toplamErisim: sube.toplam_erisim || 0,
+        toplamSonuc: sube.toplam_sonuc || 0,
+      },
+    });
+  } catch (err) {
+    console.error('[Reports]', err);
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
+  }
+});
+
 // Şubenin dönemlerini döner (şubeye tıklandığında çağrılır — sadece tarih + veri var/yok)
 router.get('/sube/:kod/donemler', verifyToken, requirePermission('reports.view'), async (req, res) => {
   try {
@@ -828,14 +852,14 @@ router.post('/google-fetch', verifyToken, requirePermission('reports.manage'), a
     const sDate = { year: parseInt(since.split('-')[0]), month: parseInt(since.split('-')[1]), day: parseInt(since.split('-')[2]) };
     const eDate = { year: parseInt(until.split('-')[0]), month: parseInt(until.split('-')[1]), day: parseInt(until.split('-')[2]) };
     
-    const subeler = await getAllSubeler();
     let savedCount = 0;
 
     if (subeKod) {
       const locationName = Object.keys(mappings).find(k => mappings[k] === subeKod);
       if (!locationName) throw new Error("Bu şube için Google lokasyon eşleştirmesi bulunamadı.");
-      
-      const sube = subeler.find(s => s.kod === subeKod);
+
+      // Tek şube modu: getAllSubeler (N read) yerine tek doküman okuması
+      const sube = await getSubeByKod(subeKod);
       if (!sube) throw new Error("Şube veritabanında bulunamadı.");
 
       const metrics = await fetchLocationMetrics(locationName, sDate, eDate);
@@ -849,13 +873,14 @@ router.post('/google-fetch', verifyToken, requirePermission('reports.manage'), a
       });
       savedCount = 1;
     } else {
+      const subeler = await getAllSubeler();
       const results = await fetchAllLocationMetrics(sDate, eDate);
       const updatedKods = new Set();
       for (const r of results) {
         if (r.error) continue;
         const mappedKod = mappings[r.name];
         if (!mappedKod || mappedKod === '__atla__') continue;
-        
+
         const sube = subeler.find(s => s.kod === mappedKod);
         if (!sube) continue;
         

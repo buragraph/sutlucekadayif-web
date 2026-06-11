@@ -1,4 +1,4 @@
-import { upsertSube, upsertMetaToplanlar, upsertToplamErisim, getAllSubeler, getMetaMappings, saveMetaMappings as dbSaveMetaMappings, getCampaignMappings, saveCampaignMappings as dbSaveCampaignMappings, getAdsetMappings, saveAdsetMappings as dbSaveAdsetMappings, getAdsetsCache, saveAdsetsCache, recalcSubeAggregates, bumpDataVersion } from '../db.js';
+import { upsertSube, upsertMetaToplanlar, upsertToplamErisim, getAllSubeler, getSubeByKod, getMetaMappings, saveMetaMappings as dbSaveMetaMappings, getCampaignMappings, saveCampaignMappings as dbSaveCampaignMappings, getAdsetMappings, saveAdsetMappings as dbSaveAdsetMappings, getAdsetsCache, saveAdsetsCache, recalcSubeAggregates, bumpDataVersion } from '../db.js';
 
 // Batch sonunda şube aggregate'lerini paralel hesaplar, versiyonu tek seferde artırır
 async function recalcAll(kodlar) {
@@ -329,35 +329,88 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
   if (Object.keys(mappings).length === 0 && Object.keys(adsetMappings).length === 0) {
     throw new Error('Eşleştirme bulunamadı. Önce eşleştirmeleri yapın.');
   }
+
+  const mapSube = (v) => (typeof v === 'object' ? v.sube : v);
+
+  // Hedef şube modu: yalnızca o şubenin kampanya/adset ID'leri Meta'dan sorgulanır
+  // (filtering parametresi — tüm hesabın insight'larını çekip atmak yerine)
+  let targetCampIds = [];
+  let targetAdsetIds = [];
   if (targetSubeKod) {
-    const hasCamp = Object.values(mappings).some(v => (typeof v === 'object' ? v.sube : v) === targetSubeKod);
-    const hasAdset = Object.values(adsetMappings).some(v => (typeof v === 'object' ? v.sube : v) === targetSubeKod);
-    if (!hasCamp && !hasAdset) throw new Error(`Hedef şube (${targetSubeKod}) için eşleştirme bulunamadı.`);
+    targetCampIds = Object.keys(mappings).filter(id => mapSube(mappings[id]) === targetSubeKod);
+    targetAdsetIds = Object.keys(adsetMappings).filter(id => mapSube(adsetMappings[id]) === targetSubeKod);
+    if (targetCampIds.length === 0 && targetAdsetIds.length === 0) {
+      throw new Error(`Hedef şube (${targetSubeKod}) için eşleştirme bulunamadı.`);
+    }
   }
 
-  // Kampanya seviyesinde tekil erişim çek
-  let campaignData = [];
-  let url = `${BASE_URL}/${AD_ACCOUNT_ID}/insights?level=campaign&fields=campaign_id,campaign_name,reach,impressions,spend&time_range={"since":"${since}","until":"${until}"}&limit=500&access_token=${accessToken}`;
-  while (url) {
-    const res = await fetch(url);
-    const json = await res.json();
-    if (json.error) throw new Error(`Meta API Hatası: ${json.error.message}`);
-    if (json.data) campaignData = campaignData.concat(json.data);
-    url = json.paging?.next || null;
+  const ADSET_FIELDS = 'adset_id,adset_name,campaign_id,spend,reach,impressions,actions,frequency,ctr,cpc,cpm,clicks,inline_link_clicks';
+  const CAMPAIGN_FIELDS = 'campaign_id,campaign_name,reach,impressions,spend';
+
+  const insightsUrl = (level, fields, filtering) =>
+    `${BASE_URL}/${AD_ACCOUNT_ID}/insights?level=${level}&fields=${fields}` +
+    `&time_range={"since":"${since}","until":"${until}"}&limit=500` +
+    (filtering ? `&filtering=${encodeURIComponent(JSON.stringify(filtering))}` : '') +
+    `&access_token=${accessToken}`;
+
+  async function fetchInsightRows(url) {
+    const rows = [];
+    while (url) {
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.error) throw new Error(`Meta API Hatası: ${json.error.message}`);
+      if (json.data) rows.push(...json.data);
+      url = json.paging?.next || null;
+    }
+    return rows;
   }
 
   // Reklam seti seviyesinde detay çek
+  // Meta filtering OR'u tek sorguda desteklemediği için kampanya ve adset
+  // filtreleri ayrı sorgular olarak çalışır, satırlar adset_id ile tekilleştirilir
   let adsetCampaignMap = [];
-  let url2 = `${BASE_URL}/${AD_ACCOUNT_ID}/insights?level=adset&fields=adset_id,adset_name,campaign_id,spend,reach,impressions,actions,frequency,ctr,cpc,cpm,clicks,inline_link_clicks&time_range={"since":"${since}","until":"${until}"}&limit=500&access_token=${accessToken}`;
-  while (url2) {
-    const res = await fetch(url2);
-    const json = await res.json();
-    if (json.error) throw new Error(`Meta API Hatası: ${json.error.message}`);
-    if (json.data) adsetCampaignMap = adsetCampaignMap.concat(json.data);
-    url2 = json.paging?.next || null;
+  if (targetSubeKod) {
+    const filters = [];
+    if (targetCampIds.length) filters.push([{ field: 'campaign.id', operator: 'IN', value: targetCampIds }]);
+    if (targetAdsetIds.length) filters.push([{ field: 'adset.id', operator: 'IN', value: targetAdsetIds }]);
+    const seen = new Set();
+    for (const f of filters) {
+      for (const row of await fetchInsightRows(insightsUrl('adset', ADSET_FIELDS, f))) {
+        const id = row.adset_id || row.id;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        adsetCampaignMap.push(row);
+      }
+    }
+  } else {
+    adsetCampaignMap = await fetchInsightRows(insightsUrl('adset', ADSET_FIELDS, null));
   }
 
-  const mevcutSubeler = await getAllSubeler();
+  // Kampanya seviyesinde tekil erişim çek (hedef modda yalnızca ilgili kampanyalar)
+  let campaignData = [];
+  if (targetSubeKod) {
+    const relevantCampIds = new Set(targetCampIds);
+    for (const row of adsetCampaignMap) {
+      if (row.campaign_id) relevantCampIds.add(row.campaign_id);
+    }
+    if (relevantCampIds.size > 0) {
+      campaignData = await fetchInsightRows(
+        insightsUrl('campaign', CAMPAIGN_FIELDS, [{ field: 'campaign.id', operator: 'IN', value: [...relevantCampIds] }])
+      );
+    }
+  } else {
+    campaignData = await fetchInsightRows(insightsUrl('campaign', CAMPAIGN_FIELDS, null));
+  }
+
+  // Hedef şube modunda tek şube dokümanı okunur (getAllSubeler = N read yerine 1 read)
+  let mevcutSubeler;
+  if (targetSubeKod) {
+    const sube = await getSubeByKod(targetSubeKod);
+    if (!sube) throw new Error(`Şube veritabanında bulunamadı: ${targetSubeKod}`);
+    mevcutSubeler = [sube];
+  } else {
+    mevcutSubeler = await getAllSubeler();
+  }
   const subeGruplari = {};
   const atlanan = [];
 

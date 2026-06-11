@@ -15,7 +15,6 @@ export function BranchDetail() {
     const setSort = useReportsStore((s) => s.setSort);
     const openModal = useReportsStore((s) => s.openModal);
     const budgetStatus = useReportsStore((s) => s.budgetStatus);
-    const loadDashboard = useReportsStore((s) => s.loadDashboard);
 
     const [currentPage, setCurrentPage] = useState(1);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -27,7 +26,12 @@ export function BranchDetail() {
                 reportsApi.metaFetchForBranch(null, baslangic, bitis, activeBranchCode),
                 reportsApi.googleFetchForBranch(baslangic, bitis, activeBranchCode)
             ]);
-            await loadDashboard(true);
+            // Tam dashboard yenileme yerine yalnızca bu şubeyi tazele (~2 read):
+            // şube dokümanı (aggregate + donem_ozetleri) ve bütçe durumu kaydı
+            await Promise.allSettled([
+                reportsApi.refreshBranch(activeBranchCode),
+                reportsApi.fetchBudgetStatus(baslangic, bitis, activeBranchCode),
+            ]);
             toast.success('Dönem verileri güncellendi!');
         } catch (err) {
             toast.error(err.message || 'Güncelleme sırasında bir hata oluştu');
