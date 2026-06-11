@@ -372,10 +372,13 @@ router.post('/upload', verifyToken, requirePermission('reports.manage'), upload.
 // Dashboard API — Hafif şube listesi (aggregate alanlar subeler dokümanından)
 router.get('/dashboard', verifyToken, requirePermission('reports.view'), versionedCacheMiddleware(900, getDataVersion), async (req, res) => {
   try {
-    let subeler = await getAllSubeler();
-    // sube_sahibi yalnızca kendi şubesini görür
-    if (req.user.role !== 'admin') {
-      subeler = subeler.filter(s => s.kod === req.user.subeSlug);
+    // sube_sahibi yalnızca kendi şubesini görür — tek doküman okuması (N read yerine 1)
+    let subeler;
+    if (req.user.role === 'admin') {
+      subeler = await getAllSubeler();
+    } else {
+      const sube = req.user.subeSlug ? await getSubeByKod(req.user.subeSlug) : null;
+      subeler = sube ? [sube] : [];
     }
     const dashData = subeler.map(sube => ({
       ...sube,
@@ -397,19 +400,17 @@ router.get('/dashboard-bundle', verifyToken, requirePermission('reports.view'), 
   try {
     const isAdmin = req.user.role === 'admin';
 
-    // sube_sahibi yalnızca kendi şubesini görür; Meta/Google eşleştirmeleri ve
-    // ayarlar admin yapılandırmasıdır — şube sahibine sızdırılmaz.
-    let subeler = await getAllSubeler();
+    // sube_sahibi yalnızca kendi şubesini görür — tek doküman okuması (N read yerine 1).
+    // Meta/Google eşleştirmeleri ve ayarlar admin yapılandırmasıdır — şube sahibine sızdırılmaz.
     if (!isAdmin) {
-      subeler = subeler.filter(s => s.kod === req.user.subeSlug);
-
-      const dashData = subeler.map(sube => ({
-        ...sube,
-        donemSayisi: sube.donem_sayisi || 0,
+      const sube = req.user.subeSlug ? await getSubeByKod(req.user.subeSlug) : null;
+      const dashData = (sube ? [sube] : []).map(s => ({
+        ...s,
+        donemSayisi: s.donem_sayisi || 0,
         donemler: [],
-        toplamHarcama: sube.toplam_harcama || 0,
-        toplamErisim: sube.toplam_erisim || 0,
-        toplamSonuc: sube.toplam_sonuc || 0,
+        toplamHarcama: s.toplam_harcama || 0,
+        toplamErisim: s.toplam_erisim || 0,
+        toplamSonuc: s.toplam_sonuc || 0,
       }));
 
       return res.json({
@@ -423,7 +424,8 @@ router.get('/dashboard-bundle', verifyToken, requirePermission('reports.view'), 
       });
     }
 
-    const [mappingsRaw, campaignMappingsRaw, adsetMappingsRaw, settingsRaw, googleMappingsRaw] = await Promise.all([
+    const [subeler, mappingsRaw, campaignMappingsRaw, adsetMappingsRaw, settingsRaw, googleMappingsRaw] = await Promise.all([
+      getAllSubeler(),
       import('./services/meta-api.js').then(m => m.loadMappings()).catch(() => ({})),
       getCampaignMappings().catch(() => ({})),
       getAdsetMappings().catch(() => ({})),
