@@ -1,4 +1,4 @@
-import { getDonemVeri, getOncekiDonem, getSubeByKod } from '../db.js';
+import { getDonemVeri, getOncekiDonem, getSubeByKod, getDataVersion } from '../db.js';
 import NodeCache from 'node-cache';
 
 // Rapor verisi cache'i — aynı dönem için tekrar istendiğinde Firestore'a gitmez
@@ -30,8 +30,10 @@ function pctChange(current, previous) {
  * @param {object} [subeData] - Opsiyonel: önceden yüklenmiş şube verisi (batch işlemlerinde gereksiz read önler)
  */
 export async function buildReportData(subeKod, donemBaslangic, donemBitis, subeData = null) {
-  // Cache kontrolü
-  const cacheKey = `report_${subeKod}_${donemBaslangic}_${donemBitis}`;
+  // Cache kontrolü — anahtar veri versiyonunu içerir, böylece başka bir
+  // instance'ta yapılan güncelleme sonrası bayat rapor servis edilmez (1 read)
+  const version = await getDataVersion();
+  const cacheKey = `report_${subeKod}_${donemBaslangic}_${donemBitis}_v${version}`;
   const cached = reportCache.get(cacheKey);
   if (cached) return cached;
 
@@ -110,6 +112,7 @@ export async function buildReportData(subeKod, donemBaslangic, donemBitis, subeD
   // ── Bütçe ──
   const planlananButce = overrides.planlananButce ?? donem.planlanan_butce ?? null;
   const devredilenMiktar = overrides.devredilenMiktar ?? donem.devredilen_miktar ?? null;
+  const merkezDestegi = overrides.merkezDestegi ?? donem.merkez_destegi ?? null;
 
   const result = {
     sube: {
@@ -127,6 +130,7 @@ export async function buildReportData(subeKod, donemBaslangic, donemBitis, subeD
     karsilastirma,
     planlananButce,
     devredilenMiktar,
+    merkezDestegi,
     veriVar: true,
   };
 

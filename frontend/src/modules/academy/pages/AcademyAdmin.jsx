@@ -556,13 +556,24 @@ export default function AcademyAdmin() {
                                             )}
                                         </div>
                                     </div>
+                                ) : form.lessonType === 'video' ? (
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-medium">YouTube Video URL veya ID</Label>
+                                        <Input
+                                            value={uploadedFileUrl}
+                                            onChange={e => setUploadedFileUrl(e.target.value)}
+                                            placeholder="Örn: https://youtube.com/watch?v=... veya dQw4w9WgXcQ"
+                                            className="h-9"
+                                        />
+                                        <p className="text-[10px] text-muted-foreground">YouTube video linki, video ID veya playlist linki yapıştırın.</p>
+                                    </div>
                                 ) : (
                                     <div className="space-y-1.5">
-                                        <Label className="text-xs font-medium">{form.lessonType === 'video' ? 'Video Dosyası (MP4/WebM)' : 'PDF Dosyası'}</Label>
+                                        <Label className="text-xs font-medium">PDF Dosyası</Label>
                                         {uploadedFileUrl ? (
                                             <div className="flex items-center gap-3 rounded-lg border bg-emerald-50/50 p-3">
-                                                <div className={`flex size-8 shrink-0 items-center justify-center rounded-md ${form.lessonType === 'video' ? 'bg-blue-100 text-blue-600' : 'bg-amber-100 text-amber-600'}`}>
-                                                    {form.lessonType === 'video' ? <Video className="size-4" /> : <FileText className="size-4" />}
+                                                <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-600">
+                                                    <FileText className="size-4" />
                                                 </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="text-xs font-medium text-foreground truncate">{uploadedFileName || 'Dosya başarıyla yüklendi'}</div>
@@ -572,7 +583,7 @@ export default function AcademyAdmin() {
                                             </div>
                                         ) : (
                                             <label className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-8 text-center transition-colors ${uploading ? 'bg-muted/50 border-muted' : 'border-border hover:border-primary/40 hover:bg-muted/20'}`}>
-                                                <input type="file" accept={form.lessonType === 'video' ? 'video/mp4,video/webm,video/quicktime' : 'application/pdf'} onChange={handleFileUpload} className="hidden" disabled={uploading} />
+                                                <input type="file" accept="application/pdf" onChange={handleFileUpload} className="hidden" disabled={uploading} />
                                                 {uploading ? (
                                                     <>
                                                         <Spinner className="size-6 text-primary" />
@@ -598,7 +609,7 @@ export default function AcademyAdmin() {
                     </div>
                     <DialogFooter className="px-5 py-3 border-t bg-card/50 m-0">
                         <Button variant="outline" size="sm" onClick={() => setShowModal(false)}>İptal</Button>
-                        <Button onClick={modalMode === 'course' ? saveCourse : saveLesson} size="sm" disabled={uploading || (modalMode === 'lesson' && form.lessonType !== 'quiz' && !uploadedFileUrl)}>{editingItem ? 'Değişiklikleri Kaydet' : (modalMode === 'course' ? 'Kursu Oluştur' : 'Dersi Ekle')}</Button>
+                        <Button onClick={modalMode === 'course' ? saveCourse : saveLesson} size="sm" disabled={uploading || (modalMode === 'lesson' && form.lessonType === 'pdf' && !uploadedFileUrl) || (modalMode === 'lesson' && form.lessonType === 'video' && !uploadedFileUrl)}>{editingItem ? 'Değişiklikleri Kaydet' : (modalMode === 'course' ? 'Kursu Oluştur' : 'Dersi Ekle')}</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

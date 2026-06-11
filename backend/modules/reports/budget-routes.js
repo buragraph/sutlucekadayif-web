@@ -4,7 +4,7 @@ import { db } from '../../config/firebase.js';
 import admin from 'firebase-admin';
 import { verifyToken, requirePermission } from '../../middleware/auth.js';
 import { uploadFile, deleteFile, urlToKey } from '../../config/r2.js';
-import { upsertButce, getAllSubeler, recalcSubeAggregates, getDonemVeri, getSettings } from './db.js';
+import { upsertButce, getAllSubeler, getDonemVeri, getSettings, getDataVersion, bumpDataVersion } from './db.js';
 import { invalidateReportCache } from './services/report-data.js';
 import { invalidateCache } from '../../middleware/cache.js';
 import { campaignBasedImport } from './services/meta-api.js';
@@ -255,7 +255,16 @@ router.post(
       for (const [subeKod, yanit] of Object.entries(yanitlar)) {
         if (yanit.durum === 'gonderildi') {
           // Bütçeyi dönem dokümanına yaz
-          await upsertButce(subeKod, kampanya.donem_baslangic, kampanya.donem_bitis, yanit.secilen_bakiye, 0);
+          const donemVeri = await getDonemVeri(subeKod, kampanya.donem_baslangic, kampanya.donem_bitis) || {};
+          await upsertButce(
+            subeKod,
+            kampanya.donem_baslangic,
+            kampanya.donem_bitis,
+            yanit.secilen_bakiye,
+            donemVeri.devredilen_miktar || 0,
+            donemVeri.merkez_destegi || 0,
+            { skipBump: true } // versiyon döngü sonunda bir kez artırılır
+          );
           onaylananSubeler.push(subeKod);
 
           // Yanıt durumunu güncelle
@@ -276,7 +285,7 @@ router.post(
             try {
               await campaignBasedImport(settings.metaApiToken, donem_baslangic, donem_bitis, subeKod);
               console.log(`[Budget] ${subeKod} için Meta verisi otomatik çekildi.`);
-              await recalcSubeAggregates(subeKod);
+              // Not: campaignBasedImport içinde recalcSubeAggregates zaten çağrılıyor
             } catch (e) {
               console.error(`[Budget] ${subeKod} Meta otomatik çekim hatası:`, e.message);
             }
@@ -286,10 +295,8 @@ router.post(
         }
       }).catch(err => console.error('[Budget] Otomatik Meta çekim genel hatası:', err));
 
-      // İlk Aggregate'leri güncelle (Bütçe eklendiği için)
-      for (const subeKod of onaylananSubeler) {
-        await recalcSubeAggregates(subeKod);
-      }
+      // Not: upsertButce donem_ozetleri'ni kendisi günceller; tam recalc gerekmez
+      if (onaylananSubeler.length > 0) await bumpDataVersion();
       invalidateReportCache();
       invalidateCache('/reports');
       butceDurumCache.clear();
@@ -310,6 +317,7 @@ router.post(
   async (req, res) => {
     try {
       const { id, subeKod } = req.params;
+      const { bakiye } = req.body || {};
       const doc = await getButceDoc();
       const kampanya = doc.kampanyalar?.[id];
 
@@ -321,16 +329,30 @@ router.post(
       if (!yanit) {
         return res.status(404).json({ error: 'Bu şube için yanıt bulunamadı.' });
       }
-      if (yanit.durum !== 'gonderildi') {
+      
+      const adminBakiye = bakiye !== undefined && bakiye !== null ? Number(bakiye) : null;
+      
+      if (adminBakiye === null && yanit.durum !== 'gonderildi') {
         return res.status(400).json({ error: 'Bu yanıt henüz gönderilmemiş veya zaten onaylanmış.' });
       }
 
-      // Bütçeyi dönem dokümanına yaz
-      await upsertButce(subeKod, kampanya.donem_baslangic, kampanya.donem_bitis, yanit.secilen_bakiye, 0);
+      const finalBakiye = adminBakiye !== null ? adminBakiye : Number(yanit.secilen_bakiye || 0);
+
+      // Bütçeyi dönem dokümanına yaz (mevcut devredilen ve merkez desteğini koru)
+      const donemVeri = await getDonemVeri(subeKod, kampanya.donem_baslangic, kampanya.donem_bitis) || {};
+      await upsertButce(
+          subeKod, 
+          kampanya.donem_baslangic, 
+          kampanya.donem_bitis, 
+          finalBakiye, 
+          donemVeri.devredilen_miktar || 0,
+          donemVeri.merkez_destegi || 0
+      );
 
       // Yanıt durumunu güncelle
       await BUTCE_DOC_REF.update({
         [`kampanyalar.${id}.yanitlar.${subeKod}.durum`]: 'onaylandi',
+        ...(adminBakiye !== null && { [`kampanyalar.${id}.yanitlar.${subeKod}.secilen_bakiye`]: finalBakiye })
       });
 
       // Meta'dan verileri otomatik çek (Arka planda)
@@ -340,7 +362,7 @@ router.post(
           try {
             await campaignBasedImport(settings.metaApiToken, donem_baslangic, donem_bitis, subeKod);
             console.log(`[Budget] ${subeKod} için Meta verisi otomatik çekildi.`);
-            await recalcSubeAggregates(subeKod);
+            // Not: campaignBasedImport içinde recalcSubeAggregates zaten çağrılıyor
             invalidateReportCache();
             invalidateCache('/reports');
           } catch (e) {
@@ -349,8 +371,7 @@ router.post(
         }
       }).catch(err => console.error('[Budget] Otomatik Meta çekim genel hatası:', err));
 
-      // İlk Aggregate'leri güncelle (Bütçe eklendiği için)
-      await recalcSubeAggregates(subeKod);
+      // Not: upsertButce donem_ozetleri'ni kendisi günceller; tam recalc gerekmez
       invalidateReportCache();
       invalidateCache('/reports');
       butceDurumCache.clear();
@@ -364,13 +385,14 @@ router.post(
 );
 
 
-// GET /butce-durum — Tüm şubelerin bütçe durumunu döner (10dk cache)
+// GET /butce-durum — Tüm şubelerin bütçe durumunu döner
+// Cache, Firestore'daki veri versiyonuyla doğrulanır (multi-instance güvenli, HIT = 1 read)
 const butceDurumCache = new Map();
-const BUTCE_DURUM_TTL = 10 * 60 * 1000; // 10 dakika
 
 router.get(
   '/butce-durum',
   verifyToken,
+  requirePermission('budget.view'),
   async (req, res) => {
     try {
       const { since, until } = req.query;
@@ -378,14 +400,24 @@ router.get(
         return res.status(400).json({ error: 'since ve until parametreleri zorunludur.' });
       }
 
-      // Cache kontrol
-      const cacheKey = `${since}_${until}`;
+      // Kapsam: admin tüm şubeleri, sube_sahibi yalnızca kendi şubesini görür
+      const isAdmin = req.user.role === 'admin';
+      const scope = isAdmin ? 'all' : (req.user.subeSlug || 'none');
+
+      // Cache kontrol — veri versiyonu + kapsam eşleşiyorsa servis et
+      const version = await getDataVersion();
+      const cacheKey = `${since}_${until}#${scope}`;
       const cached = butceDurumCache.get(cacheKey);
-      if (cached && Date.now() - cached.ts < BUTCE_DURUM_TTL) {
+      if (cached && cached.v === version) {
         return res.json(cached.data);
       }
 
-      const subeler = await getAllSubeler();
+      // Optimizasyon: getAllSubeler() zaten donem_ozetleri içeriyor
+      // Her şube için ayrı getDonemVeri() çağırmak yerine donem_ozetleri'nden oku (0 ek read!)
+      let subeler = await getAllSubeler();
+      if (!isAdmin) {
+        subeler = subeler.filter(s => s.kod === req.user.subeSlug);
+      }
       const sonuc = [];
       let toplamPlanlanan = 0;
       let toplamHarcama = 0;
@@ -394,12 +426,16 @@ router.get(
       let uyariSayisi = 0;
 
       for (const sube of subeler) {
-        const donem = await getDonemVeri(sube.kod, since, until);
+        // donem_ozetleri array'inden eşleşen dönemi bul (0 read!)
+        const donemOzet = (sube.donem_ozetleri || []).find(
+          d => d.baslangic === since && d.bitis === until
+        );
 
-        const planlananButce = donem?.planlanan_butce || 0;
-        const devredilen = donem?.devredilen_miktar || 0;
-        const toplamButce = planlananButce + devredilen;
-        const harcama = donem?.harcama || 0;
+        const planlananButce = donemOzet?.planlanan_butce || 0;
+        const devredilen = donemOzet?.devredilen_miktar || 0;
+        const merkezDestegi = donemOzet?.merkez_destegi || 0;
+        const toplamButce = planlananButce + devredilen + merkezDestegi;
+        const harcama = donemOzet?.harcama || 0;
         const kalan = toplamButce - harcama;
 
         // Kullanım oranı ve durum hesapla
@@ -426,6 +462,7 @@ router.get(
           ad: sube.ad,
           planlananButce,
           devredilen,
+          merkezDestegi,
           toplamButce,
           harcama,
           kalan,
@@ -445,8 +482,8 @@ router.get(
         },
       };
 
-      // Cache'e yaz
-      butceDurumCache.set(cacheKey, { ts: Date.now(), data: responseData });
+      // Cache'e yaz (versiyon damgalı)
+      butceDurumCache.set(cacheKey, { v: version, data: responseData });
 
       res.json(responseData);
     } catch (err) {

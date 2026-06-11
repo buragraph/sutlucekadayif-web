@@ -80,6 +80,7 @@ export const useReportsStore = create((set, get) => ({
     sortCol: 'donem',
     sortDir: 'desc',
     dateRange: getDefaultDateRange(),
+    selectedFilterBranches: [],
 
     // Modal state
     modals: {
@@ -105,6 +106,15 @@ export const useReportsStore = create((set, get) => ({
             set({ sortCol: col, sortDir: 'desc' });
         }
     },
+
+    toggleFilterBranch: (kod) => set((s) => {
+        const selected = s.selectedFilterBranches.includes(kod)
+            ? s.selectedFilterBranches.filter((k) => k !== kod)
+            : [...s.selectedFilterBranches, kod];
+        return { selectedFilterBranches: selected };
+    }),
+    clearFilterBranches: () => set({ selectedFilterBranches: [] }),
+    selectAllFilterBranches: (kodlar) => set({ selectedFilterBranches: kodlar }),
 
     openModal: (name, data = {}) => set((s) => ({
         modals: { ...s.modals, [name]: true },

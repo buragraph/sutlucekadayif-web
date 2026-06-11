@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -8,7 +9,7 @@ import {
 } from '@/components/ui/table';
 import {
     ArrowLeft, Plus, Loader2, Trash2, CheckCircle2,
-    Clock, Users, Wallet, FileText, ExternalLink,
+    Clock, Users, Wallet, FileText, ExternalLink, ArrowUpDown,
 } from 'lucide-react';
 import { format, differenceInDays, isPast, parseISO } from 'date-fns';
 import { tr } from 'date-fns/locale';
@@ -49,6 +50,8 @@ export default function BudgetCampaignsPage() {
     const [approvingAll, setApprovingAll] = useState(false);
     const [approvingSube, setApprovingSube] = useState(null);
     const [deleting, setDeleting] = useState(null);
+    const [editedBalances, setEditedBalances] = useState({});
+    const [sortType, setSortType] = useState('status'); // 'status' | 'name_asc' | 'name_desc'
     const confirm = useConfirm();
 
     const fetchCampaigns = useCallback(async () => {
@@ -63,18 +66,19 @@ export default function BudgetCampaignsPage() {
         }
     }, []);
 
-    const fetchDetail = useCallback(async (id) => {
+    const fetchDetail = async (id) => {
         setDetailLoading(true);
         try {
             const { data } = await api.get(`/reports/butce-kampanya/${id}`);
             setDetailData(data);
+            setEditedBalances({}); // Reset edited balances when opening detail
         } catch (err) {
-            toast.error('Kampanya detayı yüklenemedi.');
+            toast.error('Detay yüklenemedi.');
             setSelectedCampaign(null);
         } finally {
             setDetailLoading(false);
         }
-    }, []);
+    };
 
     useEffect(() => {
         fetchCampaigns();
@@ -82,7 +86,7 @@ export default function BudgetCampaignsPage() {
 
     useEffect(() => {
         if (selectedCampaign) fetchDetail(selectedCampaign);
-    }, [selectedCampaign, fetchDetail]);
+    }, [selectedCampaign]);
 
     const handleApproveAll = async () => {
         if (!detailData) return;
@@ -105,7 +109,9 @@ export default function BudgetCampaignsPage() {
     const handleApproveSingle = async (subeKod) => {
         setApprovingSube(subeKod);
         try {
-            await api.post(`/reports/butce-kampanya/${selectedCampaign}/onayla/${subeKod}`);
+            const bakiye = editedBalances[subeKod];
+            const payload = bakiye !== undefined ? { bakiye } : {};
+            await api.post(`/reports/butce-kampanya/${selectedCampaign}/onayla/${subeKod}`, payload);
             toast.success('Bildirim onaylandı.');
             fetchDetail(selectedCampaign);
             fetchCampaigns();
@@ -257,21 +263,66 @@ export default function BudgetCampaignsPage() {
         const toplamButce = bildirimler
             .filter((b) => b.durum === 'gonderildi' || b.durum === 'onaylandi')
             .reduce((sum, b) => sum + (Number(b.kdv_dahil_tutar) || 0), 0);
+        const onaylananButce = bildirimler
+            .filter((b) => b.durum === 'onaylandi')
+            .reduce((sum, b) => sum + (Number(b.kdv_dahil_tutar) || 0), 0);
         const dolduranSayisi = bildirimler.filter(
             (b) => b.durum === 'gonderildi' || b.durum === 'onaylandi'
         ).length;
         const bekleyenSayisi = bildirimler.filter((b) => b.durum === 'bekliyor').length;
         const gonderildiSayisi = bildirimler.filter((b) => b.durum === 'gonderildi').length;
+        const onaylananSayisi = bildirimler.filter((b) => b.durum === 'onaylandi').length;
+        const toplamSube = bildirimler.length;
+        const tamamlanmaPct = toplamSube > 0 ? Math.round(((dolduranSayisi) / toplamSube) * 100) : 0;
+
+        const sonTarih = kampanya.son_tarih ? parseISO(kampanya.son_tarih) : null;
+        const expired = sonTarih ? isPast(sonTarih) : false;
+        const daysLeft = sonTarih ? differenceInDays(sonTarih, new Date()) : null;
+        const status = kampanya.durum || (expired ? 'tamamlandi' : 'aktif');
+        const cfg = statusConfig[status] || statusConfig.aktif;
+
+        // Sort: gonderildi first (action needed), then bekliyor, then onaylandi
+        const statusOrder = { gonderildi: 0, bekliyor: 1, onaylandi: 2 };
+        const sortedBildirimler = [...bildirimler].sort((a, b) => {
+            if (sortType === 'status') {
+                return (statusOrder[a.durum] ?? 1) - (statusOrder[b.durum] ?? 1);
+            }
+            
+            const nameA = (a.sube_adi || a.subeAdi || a.sube_kod || '').toLowerCase();
+            const nameB = (b.sube_adi || b.subeAdi || b.sube_kod || '').toLowerCase();
+            
+            if (sortType === 'name_asc') {
+                return nameA.localeCompare(nameB);
+            } else if (sortType === 'name_desc') {
+                return nameB.localeCompare(nameA);
+            }
+            return 0;
+        });
+
+        const toggleSort = () => {
+            if (sortType === 'status') setSortType('name_asc');
+            else if (sortType === 'name_asc') setSortType('name_desc');
+            else setSortType('status');
+        };
+
+        const renderStatusDot = (durum) => {
+            const colors = {
+                bekliyor: 'bg-gray-300 dark:bg-gray-600',
+                gonderildi: 'bg-blue-500',
+                onaylandi: 'bg-emerald-500',
+            };
+            return <div className={cn('w-2 h-2 rounded-full shrink-0', colors[durum] || colors.bekliyor)} />;
+        };
 
         return (
             <>
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-start gap-3">
                         <Button
                             variant="ghost"
                             size="icon"
-                            className="shrink-0"
+                            className="shrink-0 mt-0.5"
                             onClick={() => {
                                 setSelectedCampaign(null);
                                 setDetailData(null);
@@ -280,17 +331,28 @@ export default function BudgetCampaignsPage() {
                             <ArrowLeft className="w-5 h-5" />
                         </Button>
                         <div>
-                            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                                {kampanya.baslik}
-                            </h1>
-                            <p className="text-sm text-muted-foreground mt-0.5">
-                                Dönem: {fmtDate(kampanya.donem_baslangic)} – {fmtDate(kampanya.donem_bitis)}
-                                {' · '}Son tarih: {fmtDate(kampanya.son_tarih)}
-                            </p>
+                            <div className="flex items-center gap-3">
+                                <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                                    {kampanya.baslik}
+                                </h1>
+                                <Badge className={cn('text-xs', cfg.className)}>{cfg.label}</Badge>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1.5 text-sm text-muted-foreground flex-wrap">
+                                <span>{fmtDate(kampanya.donem_baslangic)} – {fmtDate(kampanya.donem_bitis)}</span>
+                                <span className="text-border">·</span>
+                                <span className="flex items-center gap-1">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    {expired ? (
+                                        <span className="text-destructive font-medium">Süresi doldu</span>
+                                    ) : daysLeft !== null ? (
+                                        <span>Son tarih: {fmtDate(kampanya.son_tarih)} <span className="font-medium text-foreground">({daysLeft} gün)</span></span>
+                                    ) : '-'}
+                                </span>
+                            </div>
                         </div>
                     </div>
                     {gonderildiSayisi > 0 && (
-                        <Button onClick={handleApproveAll} disabled={approvingAll}>
+                        <Button onClick={handleApproveAll} disabled={approvingAll} className="shrink-0">
                             {approvingAll && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                             <CheckCircle2 className="w-4 h-4 mr-2" />
                             Toplu Onayla ({gonderildiSayisi})
@@ -298,109 +360,159 @@ export default function BudgetCampaignsPage() {
                     )}
                 </div>
 
-                {/* IBAN / Ödeme Notu */}
+                {/* IBAN / Ödeme bilgileri */}
                 {(kampanya.iban || kampanya.odeme_notu || kampanya.alici_adi) && (
-                    <div className="bg-muted/50 border rounded-lg p-4 space-y-1">
+                    <div className="bg-muted/40 border rounded-xl p-4 flex flex-wrap gap-x-8 gap-y-2">
                         {kampanya.alici_adi && (
-                            <p className="text-sm">
-                                <span className="font-medium">Alıcı Adı:</span> {kampanya.alici_adi}
-                            </p>
+                            <div className="text-sm">
+                                <span className="text-muted-foreground">Alıcı:</span>{' '}
+                                <span className="font-medium">{kampanya.alici_adi}</span>
+                            </div>
                         )}
                         {kampanya.iban && (
-                            <p className="text-sm">
-                                <span className="font-medium">IBAN:</span>{' '}
-                                <span className="font-mono text-xs">{kampanya.iban}</span>
-                            </p>
+                            <div className="text-sm">
+                                <span className="text-muted-foreground">IBAN:</span>{' '}
+                                <span className="font-mono text-xs font-medium tracking-wide">{kampanya.iban}</span>
+                            </div>
                         )}
                         {kampanya.odeme_notu && (
-                            <p className="text-sm">
-                                <span className="font-medium">Ödeme Notu:</span> {kampanya.odeme_notu}
-                            </p>
+                            <div className="text-sm">
+                                <span className="text-muted-foreground">Not:</span>{' '}
+                                <span className="font-medium">{kampanya.odeme_notu}</span>
+                            </div>
                         )}
                     </div>
                 )}
 
                 {/* Summary Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <Card>
-                        <CardContent className="pt-5">
-                            <div className="flex items-center gap-3">
-                                <div className="rounded-lg bg-primary/10 p-2.5">
-                                    <Wallet className="w-5 h-5 text-primary" />
-                                </div>
-                                <div>
-                                    <p className="text-xs text-muted-foreground">Toplam Bütçe</p>
-                                    <p className="text-lg font-semibold">{fmtCurrency(toplamButce)}</p>
-                                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="rounded-xl border bg-card p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="rounded-lg bg-violet-100 dark:bg-violet-900/30 p-1.5">
+                                <Wallet className="w-4 h-4 text-violet-600 dark:text-violet-400" />
                             </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-5">
-                            <div className="flex items-center gap-3">
-                                <div className="rounded-lg bg-green-100 dark:bg-green-900/30 p-2.5">
-                                    <CheckCircle2 className="w-5 h-5 text-green-600" />
-                                </div>
-                                <div>
-                                    <p className="text-xs text-muted-foreground">Dolduran</p>
-                                    <p className="text-lg font-semibold">{dolduranSayisi}</p>
-                                </div>
+                            <span className="text-xs text-muted-foreground">Toplanan</span>
+                        </div>
+                        <p className="text-xl font-semibold tracking-tight">{fmtCurrency(toplamButce)}</p>
+                        {onaylananButce > 0 && onaylananButce < toplamButce && (
+                            <p className="text-[10px] text-muted-foreground mt-1">{fmtCurrency(onaylananButce)} onaylandı</p>
+                        )}
+                    </div>
+
+                    <div className="rounded-xl border bg-card p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="rounded-lg bg-emerald-100 dark:bg-emerald-900/30 p-1.5">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                             </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardContent className="pt-5">
-                            <div className="flex items-center gap-3">
-                                <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-2.5">
-                                    <Users className="w-5 h-5 text-amber-600" />
-                                </div>
-                                <div>
-                                    <p className="text-xs text-muted-foreground">Bekleyen</p>
-                                    <p className="text-lg font-semibold">{bekleyenSayisi}</p>
-                                </div>
+                            <span className="text-xs text-muted-foreground">Tamamlama</span>
+                        </div>
+                        <p className="text-xl font-semibold tracking-tight">{dolduranSayisi}<span className="text-sm font-normal text-muted-foreground">/{toplamSube}</span></p>
+                        <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${tamamlanmaPct}%` }} />
+                        </div>
+                    </div>
+
+                    <div className="rounded-xl border bg-card p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="rounded-lg bg-blue-100 dark:bg-blue-900/30 p-1.5">
+                                <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                             </div>
-                        </CardContent>
-                    </Card>
+                            <span className="text-xs text-muted-foreground">Onay Bekleyen</span>
+                        </div>
+                        <p className="text-xl font-semibold tracking-tight">{gonderildiSayisi}</p>
+                        {gonderildiSayisi > 0 && (
+                            <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium mt-1">İşlem gerekli</p>
+                        )}
+                    </div>
+
+                    <div className="rounded-xl border bg-card p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-1.5">
+                                <Users className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <span className="text-xs text-muted-foreground">Bekleyen</span>
+                        </div>
+                        <p className="text-xl font-semibold tracking-tight">{bekleyenSayisi}</p>
+                        {bekleyenSayisi > 0 && toplamSube > 0 && (
+                            <p className="text-[10px] text-muted-foreground mt-1">%{Math.round((bekleyenSayisi / toplamSube) * 100)} henüz doldurmadı</p>
+                        )}
+                    </div>
                 </div>
 
                 {/* Table */}
-                <Card>
+                <Card className="overflow-hidden rounded-xl py-0 gap-0">
                     <CardContent className="p-0">
                         <Table>
                             <TableHeader>
-                                <TableRow>
-                                    <TableHead>Şube Adı</TableHead>
-                                    <TableHead>Durum</TableHead>
-                                    <TableHead className="text-right">Seçilen Bakiye</TableHead>
+                                <TableRow className="bg-muted/30">
+                                    <TableHead className="w-[220px] pl-5 cursor-pointer hover:bg-muted/50 transition-colors" onClick={toggleSort}>
+                                        <div className="flex items-center gap-1">
+                                            Şube
+                                            <ArrowUpDown className={cn("w-3 h-3 text-muted-foreground transition-colors", sortType !== 'status' && "text-foreground")} />
+                                        </div>
+                                    </TableHead>
+                                    <TableHead className="w-[120px]">Durum</TableHead>
+                                    <TableHead className="text-right">Bakiye</TableHead>
                                     <TableHead className="text-right">KDV Dahil</TableHead>
-                                    <TableHead>Dekont</TableHead>
+                                    <TableHead className="w-[100px]">Dekont</TableHead>
                                     <TableHead>Tarih</TableHead>
-                                    <TableHead className="text-right">İşlem</TableHead>
+                                    <TableHead className="text-right w-[100px] pr-5">İşlem</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {bildirimler.length === 0 ? (
+                                {sortedBildirimler.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                                            <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
                                             Henüz bildirim yok.
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    bildirimler.map((b) => {
+                                    sortedBildirimler.map((b) => {
                                         const durumCfg = bildirimDurumConfig[b.durum] || bildirimDurumConfig.bekliyor;
+                                        const isActionNeeded = b.durum === 'gonderildi';
                                         return (
-                                            <TableRow key={b.sube_kod || b.subeKod}>
-                                                <TableCell className="font-medium">{b.sube_adi || b.subeAdi || '-'}</TableCell>
+                                            <TableRow 
+                                                key={b.sube_kod || b.subeKod}
+                                                className={cn(
+                                                    isActionNeeded && 'bg-blue-50/50 dark:bg-blue-950/20'
+                                                )}
+                                            >
+                                                <TableCell className="pl-5">
+                                                    <span className="font-medium text-sm">{b.sube_adi || b.subeAdi || '-'}</span>
+                                                </TableCell>
                                                 <TableCell>
-                                                    <Badge className={cn('text-xs', durumCfg.className)}>
-                                                        {durumCfg.label}
-                                                    </Badge>
+                                                    <div className="flex items-center gap-2">
+                                                        {renderStatusDot(b.durum)}
+                                                        <span className={cn(
+                                                            'text-xs font-medium',
+                                                            b.durum === 'gonderildi' && 'text-blue-600 dark:text-blue-400',
+                                                            b.durum === 'onaylandi' && 'text-emerald-600 dark:text-emerald-400',
+                                                            b.durum === 'bekliyor' && 'text-muted-foreground'
+                                                        )}>
+                                                            {durumCfg.label}
+                                                        </span>
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    {b.secilen_bakiye ? fmtCurrency(b.secilen_bakiye) : '-'}
+                                                    {b.durum !== 'onaylandi' ? (
+                                                        <div className="flex justify-end">
+                                                            <Input
+                                                                type="number"
+                                                                placeholder="Tutar (₺)"
+                                                                className="w-24 h-7 text-right text-xs"
+                                                                value={editedBalances[b.sube_kod || b.subeKod] !== undefined ? editedBalances[b.sube_kod || b.subeKod] : (b.secilen_bakiye || '')}
+                                                                onChange={(e) => setEditedBalances(prev => ({ ...prev, [b.sube_kod || b.subeKod]: e.target.value }))}
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="tabular-nums text-sm">
+                                                            {b.secilen_bakiye ? fmtCurrency(b.secilen_bakiye) : <span className="text-muted-foreground/40">—</span>}
+                                                        </div>
+                                                    )}
                                                 </TableCell>
-                                                <TableCell className="text-right">
-                                                    {b.kdv_dahil_tutar ? fmtCurrency(b.kdv_dahil_tutar) : '-'}
+                                                <TableCell className="text-right tabular-nums text-sm font-medium">
+                                                    {b.kdv_dahil_tutar ? fmtCurrency(b.kdv_dahil_tutar) : <span className="text-muted-foreground/40">—</span>}
                                                 </TableCell>
                                                 <TableCell>
                                                     {b.dekont_url ? (
@@ -408,26 +520,24 @@ export default function BudgetCampaignsPage() {
                                                             href={b.dekont_url}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
+                                                            className="inline-flex items-center gap-1.5 text-primary hover:underline text-xs font-medium"
                                                         >
                                                             <FileText className="w-3.5 h-3.5" />
                                                             Görüntüle
-                                                            <ExternalLink className="w-3 h-3" />
                                                         </a>
                                                     ) : (
-                                                        <span className="text-muted-foreground text-xs">❌</span>
+                                                        <span className="text-muted-foreground/40">—</span>
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-xs text-muted-foreground">
-                                                    {b.gonderim_tarihi ? fmtDate(b.gonderim_tarihi) : '-'}
+                                                    {b.gonderim_tarihi ? fmtDate(b.gonderim_tarihi) : <span className="text-muted-foreground/40">—</span>}
                                                 </TableCell>
-                                                <TableCell className="text-right">
-                                                    {b.durum === 'gonderildi' && (
+                                                <TableCell className="text-right pr-5">
+                                                    {b.durum !== 'onaylandi' && (
                                                         <Button
                                                             size="sm"
-                                                            variant="outline"
-                                                            className="h-7 text-xs"
-                                                            disabled={approvingSube === (b.sube_kod || b.subeKod)}
+                                                            className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                                                            disabled={approvingSube === (b.sube_kod || b.subeKod) || (editedBalances[b.sube_kod || b.subeKod] === undefined ? !b.secilen_bakiye : !editedBalances[b.sube_kod || b.subeKod])}
                                                             onClick={() => handleApproveSingle(b.sube_kod || b.subeKod)}
                                                         >
                                                             {approvingSube === (b.sube_kod || b.subeKod) ? (
@@ -441,7 +551,10 @@ export default function BudgetCampaignsPage() {
                                                         </Button>
                                                     )}
                                                     {b.durum === 'onaylandi' && (
-                                                        <span className="text-xs text-green-600 font-medium">✓ Onaylandı</span>
+                                                        <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                                            Onaylandı
+                                                        </span>
                                                     )}
                                                 </TableCell>
                                             </TableRow>
@@ -457,7 +570,7 @@ export default function BudgetCampaignsPage() {
     };
 
     return (
-        <div className="flex flex-col gap-4 w-full">
+        <div className="flex flex-col gap-5 w-full max-w-[1400px]">
             {modalOpen ? (
                 <BudgetCampaignForm
                     onCancel={() => setModalOpen(false)}

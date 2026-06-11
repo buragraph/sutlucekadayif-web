@@ -44,6 +44,17 @@ const PERMISSIONS = {
     // ── Akademi ──
     'academy.view': ['admin', 'sube_sahibi', 'calisan'],
     'academy.manage': ['admin'],
+
+    // ── Bütçe Toplama ──
+    'budget.manage': ['admin'],
+    'budget.submit': ['admin', 'sube_sahibi'],
+    'budget.view': ['admin', 'sube_sahibi'],
+
+    // ── Raporlar / Reklam ──
+    // view: kendi şube verisini görüntüleme (sube_sahibi yalnızca kendi şubesi)
+    // manage: şube CRUD, veri içe aktarma, Meta/Google çekme, ayarlar (admin)
+    'reports.view': ['admin', 'sube_sahibi'],
+    'reports.manage': ['admin'],
 };
 
 /**

@@ -1,11 +1,10 @@
 import express, { Router } from 'express';
-import { cacheMiddleware, invalidateCache } from '../../middleware/cache.js';
+import { cacheMiddleware, versionedCacheMiddleware, invalidateCache } from '../../middleware/cache.js';
 import { verifyToken, requirePermission } from '../../middleware/auth.js';
 import multer from 'multer';
 import { join, dirname, extname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync, readdirSync, unlinkSync, readFileSync, rmSync, writeFileSync, createWriteStream } from 'fs';
-import archiver from 'archiver';
 
 // Yeni modül yollarına göre servisleri dahil ediyoruz
 import { importMetaCsv, importGoogleCsv, importSubeVerileri, importGoogleCsvBulk, importMetaCsvAutoMatch } from './services/import.js';
@@ -15,7 +14,7 @@ import { buildReportData, invalidateReportCache } from './services/report-data.j
 import budgetRouter from './budget-routes.js';
 import { generateReportHtml } from './services/report-template.js';
 import { generatePdf } from './services/generate-pdf.js';
-import { getAllSubeler, getSubeByKod, getDonemler, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleToplanlar, closeDb, getDb, clearAllData, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings, recalcSubeAggregates } from './db.js';
+import { getAllSubeler, getSubeByKod, getDonemler, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleToplanlar, closeDb, getDb, clearAllData, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings, recalcSubeAggregates, getDataVersion, bumpDataVersion } from './db.js';
 
 import os from 'os';
 
@@ -32,8 +31,20 @@ else {
 
 const router = Router();
 
+/**
+ * Şube erişim kontrolü — sube_sahibi yalnızca kendi şubesine erişebilir.
+ * Admin tüm şubelere erişir. İzin yoksa response'a 403 yazıp false döner.
+ * @returns {boolean} Erişim varsa true, yoksa (response gönderilmiş) false
+ */
+function ensureBranchAccess(req, res, kod) {
+  if (req.user.role === 'admin') return true;
+  if (kod && kod === req.user.subeSlug) return true;
+  res.status(403).json({ error: 'Bu şubeye erişim yetkiniz yok' });
+  return false;
+}
+
 // Rapor UI tarafından çağrılan API ayarları
-router.get('/settings', verifyToken, cacheMiddleware(600), async (req, res) => {
+router.get('/settings', verifyToken, requirePermission('reports.manage'), versionedCacheMiddleware(900, getDataVersion), async (req, res) => {
   try {
     const settings = await getSettings();
     const safe = { ...settings };
@@ -53,7 +64,7 @@ router.get('/settings', verifyToken, cacheMiddleware(600), async (req, res) => {
   }
 });
 
-router.post('/save-settings', verifyToken, async (req, res) => {
+router.post('/save-settings', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     const newSettings = req.body;
     // Boş gönderilen token/secret alanlarını mevcut değerlerle koru
@@ -72,7 +83,7 @@ router.post('/save-settings', verifyToken, async (req, res) => {
 });
 
 // Google OAuth Yönlendirmeleri
-router.get('/auth/google', verifyToken, async (req, res) => {
+router.get('/auth/google', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     const url = await getGoogleAuthUrl();
     res.redirect(url);
@@ -92,7 +103,7 @@ router.get('/auth/google/callback', async (req, res) => {
   }
 });
 
-router.get('/google-status', verifyToken, async (req, res) => {
+router.get('/google-status', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     res.json({ connected: await isGoogleConnected() });
   } catch (err) {
@@ -153,9 +164,10 @@ function getRaporDosyaAdi(subeAd, baslangic, bitis) {
 }
 
 // Rapor önizleme (HTML döndürür)
-router.post('/preview', verifyToken, async (req, res) => {
+router.post('/preview', verifyToken, requirePermission('reports.view'), async (req, res) => {
   try {
     const { subeKod, donemBaslangic, donemBitis } = req.body;
+    if (!ensureBranchAccess(req, res, subeKod)) return;
     const sube = await getSubeByKod(subeKod);
     if (!sube) return res.status(404).json({ error: 'Şube bulunamadı.' });
 
@@ -181,9 +193,10 @@ router.post('/preview', verifyToken, async (req, res) => {
 });
 
 // ── PDF Üret ve İndir ──
-router.post('/generate-pdf', verifyToken, async (req, res) => {
+router.post('/generate-pdf', verifyToken, requirePermission('reports.view'), async (req, res) => {
   try {
     const { subeKod, donemBaslangic, donemBitis } = req.body;
+    if (!ensureBranchAccess(req, res, subeKod)) return;
     const sube = await getSubeByKod(subeKod);
     if (!sube) return res.status(404).json({ error: 'Şube bulunamadı.' });
 
@@ -220,7 +233,7 @@ router.post('/generate-pdf', verifyToken, async (req, res) => {
 });
 
 // ── Toplu PDF Üret — ZIP olarak indir ──
-router.post('/generate-pdf-bulk', verifyToken, async (req, res) => {
+router.post('/generate-pdf-bulk', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     const { subeKodlari, donemBaslangic, donemBitis } = req.body;
 
@@ -264,6 +277,7 @@ router.post('/generate-pdf-bulk', verifyToken, async (req, res) => {
     }
 
     // ZIP oluştur — memory-based, diske yazmaz
+    const { default: archiver } = await import('archiver');
     const archive = archiver('zip', { zlib: { level: 5 } });
     const chunks = [];
 
@@ -307,7 +321,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-router.post('/upload', verifyToken, upload.single('csv'), async (req, res) => {
+router.post('/upload', verifyToken, requirePermission('reports.manage'), upload.single('csv'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Dosya seçilmedi.' });
   const platform = req.body.platform;
   const subeKod = req.body.sube;
@@ -356,9 +370,13 @@ router.post('/upload', verifyToken, upload.single('csv'), async (req, res) => {
 });
 
 // Dashboard API — Hafif şube listesi (aggregate alanlar subeler dokümanından)
-router.get('/dashboard', verifyToken, cacheMiddleware(300), async (req, res) => {
+router.get('/dashboard', verifyToken, requirePermission('reports.view'), versionedCacheMiddleware(900, getDataVersion), async (req, res) => {
   try {
-    const subeler = await getAllSubeler();
+    let subeler = await getAllSubeler();
+    // sube_sahibi yalnızca kendi şubesini görür
+    if (req.user.role !== 'admin') {
+      subeler = subeler.filter(s => s.kod === req.user.subeSlug);
+    }
     const dashData = subeler.map(sube => ({
       ...sube,
       donemSayisi: sube.donem_sayisi || 0,
@@ -375,10 +393,37 @@ router.get('/dashboard', verifyToken, cacheMiddleware(300), async (req, res) => 
 });
 
 // Dashboard Bundle API — Tek istek ile tüm dashboard verisini döndürür (4 ayrı istek yerine)
-router.get('/dashboard-bundle', verifyToken, async (req, res) => {
+router.get('/dashboard-bundle', verifyToken, requirePermission('reports.view'), versionedCacheMiddleware(900, getDataVersion), async (req, res) => {
   try {
-    const [subeler, mappingsRaw, campaignMappingsRaw, adsetMappingsRaw, settingsRaw, googleMappingsRaw] = await Promise.all([
-      getAllSubeler(),
+    const isAdmin = req.user.role === 'admin';
+
+    // sube_sahibi yalnızca kendi şubesini görür; Meta/Google eşleştirmeleri ve
+    // ayarlar admin yapılandırmasıdır — şube sahibine sızdırılmaz.
+    let subeler = await getAllSubeler();
+    if (!isAdmin) {
+      subeler = subeler.filter(s => s.kod === req.user.subeSlug);
+
+      const dashData = subeler.map(sube => ({
+        ...sube,
+        donemSayisi: sube.donem_sayisi || 0,
+        donemler: [],
+        toplamHarcama: sube.toplam_harcama || 0,
+        toplamErisim: sube.toplam_erisim || 0,
+        toplamSonuc: sube.toplam_sonuc || 0,
+      }));
+
+      return res.json({
+        subeler: dashData,
+        mappings: {},
+        reverseCampaigns: {},
+        reverseAdsets: {},
+        hasMappings: false,
+        settings: {},
+        googleMappings: {},
+      });
+    }
+
+    const [mappingsRaw, campaignMappingsRaw, adsetMappingsRaw, settingsRaw, googleMappingsRaw] = await Promise.all([
       import('./services/meta-api.js').then(m => m.loadMappings()).catch(() => ({})),
       getCampaignMappings().catch(() => ({})),
       getAdsetMappings().catch(() => ({})),
@@ -444,9 +489,10 @@ router.get('/dashboard-bundle', verifyToken, async (req, res) => {
 });
 
 // Şubenin dönemlerini döner (şubeye tıklandığında çağrılır — sadece tarih + veri var/yok)
-router.get('/sube/:kod/donemler', verifyToken, async (req, res) => {
+router.get('/sube/:kod/donemler', verifyToken, requirePermission('reports.view'), async (req, res) => {
   try {
     const { kod } = req.params;
+    if (!ensureBranchAccess(req, res, kod)) return;
     const donemlerResult = await getDonemler(kod);
     const donemler = donemlerResult.meta.map(veri => ({
       baslangic: veri.donem_baslangic,
@@ -464,7 +510,7 @@ router.get('/sube/:kod/donemler', verifyToken, async (req, res) => {
   }
 });
 
-router.post('/sube', verifyToken, async (req, res) => {
+router.post('/sube', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     const { kod, ad, link } = req.body;
     if (!kod) return res.status(400).json({ error: 'Şube kodu zorunludur' });
@@ -477,7 +523,7 @@ router.post('/sube', verifyToken, async (req, res) => {
   }
 });
 
-router.put('/sube/:kod', verifyToken, async (req, res) => {
+router.put('/sube/:kod', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     const { ad, adres, link } = req.body;
     await updateSube(req.params.kod, ad, adres, link);
@@ -489,7 +535,7 @@ router.put('/sube/:kod', verifyToken, async (req, res) => {
   }
 });
 
-router.delete('/sube/:kod', verifyToken, async (req, res) => {
+router.delete('/sube/:kod', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     await deleteSube(req.params.kod);
     invalidateReportCache();
@@ -501,7 +547,7 @@ router.delete('/sube/:kod', verifyToken, async (req, res) => {
   }
 });
 
-router.delete('/sube/:kod/donem', verifyToken, async (req, res) => {
+router.delete('/sube/:kod/donem', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     const { kod } = req.params;
     const { baslangic, bitis } = req.query;
@@ -520,11 +566,12 @@ router.delete('/sube/:kod/donem', verifyToken, async (req, res) => {
   }
 });
 
-router.get('/sube/:kod/donem/veriler', verifyToken, async (req, res) => {
+router.get('/sube/:kod/donem/veriler', verifyToken, requirePermission('reports.view'), async (req, res) => {
   try {
     const { kod } = req.params;
     const { baslangic, bitis } = req.query;
-    
+    if (!ensureBranchAccess(req, res, kod)) return;
+
     const sube = await getSubeByKod(kod);
     if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
 
@@ -548,6 +595,7 @@ router.get('/sube/:kod/donem/veriler', verifyToken, async (req, res) => {
       googleMenuTiklama: veri?.google_menu_tiklama || 0,
       planlananButce: veri?.planlanan_butce || 0,
       devredilenMiktar: veri?.devredilen_miktar || 0,
+      merkezDestegi: veri?.merkez_destegi || 0,
     };
 
     const overrides = veri?.veri_overrides || {};
@@ -559,7 +607,7 @@ router.get('/sube/:kod/donem/veriler', verifyToken, async (req, res) => {
   }
 });
 
-router.put('/sube/:kod/donem/overrides', verifyToken, async (req, res) => {
+router.put('/sube/:kod/donem/overrides', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     const { kod } = req.params;
     const { baslangic, bitis, overrides } = req.body;
@@ -569,14 +617,16 @@ router.put('/sube/:kod/donem/overrides', verifyToken, async (req, res) => {
 
     await updateOverrides(sube.kod, baslangic, bitis, overrides);
 
-    if (overrides.planlananButce !== undefined || overrides.devredilenMiktar !== undefined) {
+    if (overrides.planlananButce !== undefined || overrides.devredilenMiktar !== undefined || overrides.merkezDestegi !== undefined) {
       const bRow = await getButce(sube.kod, baslangic, bitis) || {};
       const plan = overrides.planlananButce !== undefined ? overrides.planlananButce : (bRow.planlanan_butce || 0);
       const devr = overrides.devredilenMiktar !== undefined ? overrides.devredilenMiktar : (bRow.devredilen_miktar || 0);
-      await upsertButce(sube.kod, baslangic, bitis, plan, devr);
+      const merk = overrides.merkezDestegi !== undefined ? overrides.merkezDestegi : (bRow.merkez_destegi || 0);
+      // upsertButce donem_ozetleri'ni kendisi günceller; overrides aggregate'leri
+      // etkilemediği için ayrıca tam recalc gerekmez
+      await upsertButce(sube.kod, baslangic, bitis, plan, devr, merk);
     }
-    
-    await recalcSubeAggregates(sube.kod);
+
     invalidateReportCache(sube.kod);
     invalidateCache('/reports');
     res.json({ success: true });
@@ -593,7 +643,7 @@ router.put('/sube/:kod/donem/overrides', verifyToken, async (req, res) => {
 // ── META API ENDPOINTS ──
 // ══════════════════════════════════════════════════
 
-router.post('/campaign-fetch', verifyToken, async (req, res) => {
+router.post('/campaign-fetch', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   let { accessToken, since, until, subeKod, targetSubeKod } = req.body;
   try {
     if (!accessToken) {
@@ -616,7 +666,7 @@ router.post('/campaign-fetch', verifyToken, async (req, res) => {
   }
 });
 
-router.post('/quick-fetch-meta', verifyToken, async (req, res) => {
+router.post('/quick-fetch-meta', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   let { accessToken, since, until, subeKod, targetSubeKod } = req.body;
   try {
     if (!accessToken) { const s = await getSettings(); accessToken = s.metaApiToken; }
@@ -637,7 +687,7 @@ router.post('/quick-fetch-meta', verifyToken, async (req, res) => {
   }
 });
 
-router.post('/preview-meta', verifyToken, async (req, res) => {
+router.post('/preview-meta', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   let { accessToken, since, until } = req.body;
   try {
     if (!accessToken) { const s = await getSettings(); accessToken = s.metaApiToken; }
@@ -649,7 +699,7 @@ router.post('/preview-meta', verifyToken, async (req, res) => {
   }
 });
 
-router.post('/confirm-meta', verifyToken, async (req, res) => {
+router.post('/confirm-meta', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   let { accessToken, since, until, eslesmeler, saveMappingsOnly } = req.body;
   try {
     if (!accessToken) { const s = await getSettings(); accessToken = s.metaApiToken; }
@@ -668,7 +718,7 @@ router.post('/confirm-meta', verifyToken, async (req, res) => {
   }
 });
 
-router.get('/meta-mappings', verifyToken, cacheMiddleware(600), async (req, res) => {
+router.get('/meta-mappings', verifyToken, requirePermission('reports.manage'), versionedCacheMiddleware(900, getDataVersion), async (req, res) => {
   try {
     const mappings = await loadMappings() || {};
     const campaignMappings = await getCampaignMappings() || {};
@@ -695,13 +745,13 @@ router.get('/meta-mappings', verifyToken, cacheMiddleware(600), async (req, res)
     res.json({ mappings: {}, reverseCampaigns: {}, reverseAdsets: {} });
   }
 });
-router.post('/meta-mappings', verifyToken, async (req, res) => {
+router.post('/meta-mappings', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   await saveMappings(req.body.mappings || {});
   invalidateCache('/reports');
   res.json({ success: true });
 });
 
-router.post('/meta-campaigns', verifyToken, async (req, res) => {
+router.post('/meta-campaigns', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   let { accessToken, since, until } = req.body;
   try {
     if (!accessToken) { const s = await getSettings(); accessToken = s.metaApiToken; }
@@ -713,13 +763,13 @@ router.post('/meta-campaigns', verifyToken, async (req, res) => {
   }
 });
 
-router.post('/save-campaign-mappings', verifyToken, async (req, res) => {
+router.post('/save-campaign-mappings', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   await saveCampaignMappings(req.body.mappings || {});
   invalidateCache('/reports');
   res.json({ success: true, message: 'Kampanya eşleştirmeleri kaydedildi.' });
 });
 
-router.post('/meta-adsets', verifyToken, async (req, res) => {
+router.post('/meta-adsets', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   let { accessToken, since, until, forceRefresh } = req.body;
   try {
     if (!accessToken) { const s = await getSettings(); accessToken = s.metaApiToken; }
@@ -731,7 +781,7 @@ router.post('/meta-adsets', verifyToken, async (req, res) => {
   }
 });
 
-router.post('/save-adset-mappings', verifyToken, async (req, res) => {
+router.post('/save-adset-mappings', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   await saveAdsetMappings(req.body.mappings || {});
   invalidateCache('/reports');
   res.json({ success: true, message: 'Reklam seti eşleştirmeleri kaydedildi.' });
@@ -742,7 +792,7 @@ router.post('/save-adset-mappings', verifyToken, async (req, res) => {
 // ── GOOGLE API ENDPOINTS ──
 // ══════════════════════════════════════════════════
 
-router.get('/google-locations', verifyToken, cacheMiddleware(600), async (req, res) => {
+router.get('/google-locations', verifyToken, requirePermission('reports.manage'), versionedCacheMiddleware(900, getDataVersion), async (req, res) => {
   try {
     const locations = await listAccounts();
     const subeler = await getAllSubeler();
@@ -759,17 +809,17 @@ router.get('/google-locations', verifyToken, cacheMiddleware(600), async (req, r
   }
 });
 
-router.get('/google-mappings', verifyToken, async (req, res) => {
+router.get('/google-mappings', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   res.json(await loadGoogleMappings());
 });
 
-router.post('/google-mappings', verifyToken, async (req, res) => {
+router.post('/google-mappings', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   await saveGoogleMappings(req.body.mappings || {});
   invalidateCache('/reports');
   res.json({ success: true, message: 'Google lokasyon eşleştirmeleri kaydedildi.' });
 });
 
-router.post('/google-fetch', verifyToken, async (req, res) => {
+router.post('/google-fetch', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   const { since, until, subeKod } = req.body;
   try {
     const mappings = await loadGoogleMappings();
@@ -800,6 +850,7 @@ router.post('/google-fetch', verifyToken, async (req, res) => {
       savedCount = 1;
     } else {
       const results = await fetchAllLocationMetrics(sDate, eDate);
+      const updatedKods = new Set();
       for (const r of results) {
         if (r.error) continue;
         const mappedKod = mappings[r.name];
@@ -815,9 +866,13 @@ router.post('/google-fetch', verifyToken, async (req, res) => {
           google_yol_tarifi: r.metrics.yol_tarifi || 0,
           google_web_tiklama: r.metrics.web_tiklama || 0,
           google_menu_tiklama: r.metrics.menu_tiklama || 0,
-        });
+        }, { skipRecalc: true });
+        updatedKods.add(sube.kod);
         savedCount++;
       }
+      // Aggregate'leri sonda bir kez, paralel hesapla; versiyon tek seferde artırılır
+      await Promise.all([...updatedKods].map(kod => recalcSubeAggregates(kod, { skipBump: true })));
+      if (updatedKods.size > 0) await bumpDataVersion();
     }
     
     // Aggregates yeni db katmanında otomatik güncellenir

@@ -290,7 +290,7 @@ export function DataEditModal() {
     const [form, setForm] = useState({
         deHarcama:'', deErisim:'', deGosterim:'', deSonuc:'', deTiklama:'', deTiklamaTumu:'', dePaylasim:'', deYorum:'', deMesaj:'',
         deGoogleArama:'', deGoogleHarita:'', deGoogleYol:'', deGoogleTelefon:'', deGoogleWeb:'', deGoogleMenu:'',
-        dePlanlananButce:'', deDevredilenMiktar:''
+        dePlanlananButce:'', deDevredilenMiktar:'', deMerkezDestegi:''
     });
 
     useEffect(() => {
@@ -318,6 +318,7 @@ export function DataEditModal() {
                         deGoogleMenu: formatVal(o.googleMenuTiklama ?? c.googleMenuTiklama),
                         dePlanlananButce: formatVal(o.planlananButce ?? c.planlananButce),
                         deDevredilenMiktar: formatVal(o.devredilenMiktar ?? c.devredilenMiktar),
+                        deMerkezDestegi: formatVal(o.merkezDestegi ?? c.merkezDestegi),
                     });
                 })
                 .catch(err => { toast.error('Veri yüklenemedi'); closeModal(); })
@@ -345,7 +346,7 @@ export function DataEditModal() {
             toplamYorum: getV(form.deYorum), toplamMesaj: getV(form.deMesaj),
             googleArama: getV(form.deGoogleArama), googleHarita: getV(form.deGoogleHarita), googleYolTarifi: getV(form.deGoogleYol),
             googleTelefon: getV(form.deGoogleTelefon), googleWebTiklama: getV(form.deGoogleWeb), googleMenuTiklama: getV(form.deGoogleMenu),
-            planlananButce: getV(form.dePlanlananButce), devredilenMiktar: getV(form.deDevredilenMiktar)
+            planlananButce: getV(form.dePlanlananButce), devredilenMiktar: getV(form.deDevredilenMiktar), merkezDestegi: getV(form.deMerkezDestegi)
         };
         try {
             await reportsApi.saveOverrides(data.kod, data.baslangic, data.bitis, overrides);
@@ -388,6 +389,9 @@ export function DataEditModal() {
                             <FormGroup label="Devredilen Miktar (₺)">
                                 <Input value={form.deDevredilenMiktar} onChange={e=>handleInput('deDevredilenMiktar', e.target.value)} placeholder="0" />
                                 {form.deDevredilenMiktar.startsWith('-') && <div className="text-[10px] text-amber-500 mt-1 flex items-start gap-1"><Info className="w-3 h-3 shrink-0 mt-0.5" /> Eksi (-) değer</div>}
+                            </FormGroup>
+                            <FormGroup label="Merkez Desteği (₺)" description="Genel merkezden gelen destek bütçesi">
+                                <Input value={form.deMerkezDestegi} onChange={e=>handleInput('deMerkezDestegi', e.target.value)} placeholder="0" />
                             </FormGroup>
                         </div>
                     </div>
