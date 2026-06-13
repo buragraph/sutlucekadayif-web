@@ -1,10 +1,30 @@
 import { Router } from 'express';
 import { db } from '../config/firebase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
-import { cacheMiddleware, invalidateCache } from '../middleware/cache.js';
 import asyncHandler from '../utils/asyncHandler.js';
 
 const router = Router();
+
+/**
+ * İl + ilçe metnini koordinata çevirir (OpenStreetMap Nominatim, ücretsiz/anahtarsız).
+ * Harita işaretçisini ilçe seviyesinde konumlandırmak için kullanılır.
+ * Best-effort: başarısız olursa null döner (harita il merkezine düşer).
+ */
+async function geocodeIlce(il, ilce) {
+    if (!il || !ilce) return null;
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&country=Turkey&state=${encodeURIComponent(il)}&county=${encodeURIComponent(ilce)}`;
+        const res = await fetch(url, { headers: { 'User-Agent': 'SutluceKadayifWeb/1.0 (sube konum)' } });
+        if (!res.ok) return null;
+        const arr = await res.json();
+        if (!arr[0]) return null;
+        const lat = parseFloat(arr[0].lat);
+        const lng = parseFloat(arr[0].lon);
+        return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * GET /api/branches
@@ -32,19 +52,31 @@ router.get(
 /**
  * GET /api/branches/konumlar
  * Harita için hafif şube konum listesi — sadece ad + il + ilçe.
- * Ürün sayım sorguları (N ek read) yapılmaz; 5 dk cache'lenir.
+ * Ürün sayım sorguları (N ek read) yapılmaz. Cache yok: şube/il-ilçe
+ * güncellemesi sonrası multi-instance bayatlık olmasın diye hep taze okunur
+ * (admin'e özel, seyrek çağrı — N read kabul edilebilir).
  */
 router.get(
     '/konumlar',
     verifyToken,
     requirePermission('branches.view'),
-    cacheMiddleware(300),
     asyncHandler(async (req, res) => {
-        const snap = await db.collection('subeler').get();
-        const konumlar = snap.docs.map((d) => {
-            const data = d.data();
-            return { slug: d.id, ad: data.ad || d.id, il: data.il || null, ilce: data.ilce || null };
+        const toKonum = (id, data) => ({
+            slug: id, ad: data.ad || id, il: data.il || null, ilce: data.ilce || null,
+            lat: data.lat ?? null, lng: data.lng ?? null,
         });
+
+        // Admin tüm şubeleri görür; sube_sahibi yalnızca kendi şubesini (1 read)
+        let konumlar;
+        if (req.user.role === 'admin') {
+            const snap = await db.collection('subeler').get();
+            konumlar = snap.docs.map((d) => toKonum(d.id, d.data()));
+        } else if (req.user.subeSlug) {
+            const doc = await db.collection('subeler').doc(req.user.subeSlug).get();
+            konumlar = doc.exists ? [toKonum(doc.id, doc.data())] : [];
+        } else {
+            konumlar = [];
+        }
         res.json({ konumlar });
     })
 );
@@ -75,7 +107,7 @@ router.post(
         }
 
         const slugVal = slug.trim().toLowerCase();
-        await db.collection('subeler').doc(slugVal).set({
+        const data = {
             ad: ad.trim(),
             adres: adres?.trim() || '',
             telefon: telefon?.trim() || '',
@@ -85,9 +117,12 @@ router.post(
             sirket_tipi: sirket_tipi?.trim() || '',
             il: il?.trim() || '',
             ilce: ilce?.trim() || '',
-        });
+        };
+        // İlçe seviyesinde harita konumu — best-effort geocode
+        const konum = await geocodeIlce(data.il, data.ilce);
+        if (konum) { data.lat = konum.lat; data.lng = konum.lng; }
+        await db.collection('subeler').doc(slugVal).set(data);
 
-        invalidateCache('/branches/konumlar');
         res.status(201).json({ slug: slugVal, ad: ad.trim() });
     })
 );
@@ -122,8 +157,15 @@ router.put(
         if (il !== undefined) updateData.il = il.trim();
         if (ilce !== undefined) updateData.ilce = ilce.trim();
 
+        // İl/ilçe değiştiyse harita konumunu yeniden geocode et (best-effort)
+        if (il !== undefined || ilce !== undefined) {
+            const finalIl = updateData.il ?? doc.data().il;
+            const finalIlce = updateData.ilce ?? doc.data().ilce;
+            const konum = await geocodeIlce(finalIl, finalIlce);
+            if (konum) { updateData.lat = konum.lat; updateData.lng = konum.lng; }
+        }
+
         await docRef.update(updateData);
-        invalidateCache('/branches/konumlar');
         res.json({ success: true });
     })
 );
@@ -152,7 +194,6 @@ router.delete(
         }
 
         await docRef.delete();
-        invalidateCache('/branches/konumlar');
         res.json({ success: true });
     })
 );
