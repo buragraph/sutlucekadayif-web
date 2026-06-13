@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { useReportsStore, fmt, fmtC, formatDateTR } from '../hooks/useReports';
-import { Plus, ArrowUpDown, ArrowUp, ArrowDown, LayoutDashboard, BarChart2, SlidersHorizontal, Eye, FileDown, Trash2, Settings, ChevronLeft, ChevronRight, AlertTriangle, Wallet } from 'lucide-react';
+import { useReportsStore, fmt, fmtC, formatDateTR, reportsApi } from '../hooks/useReports';
+import { Plus, ArrowUpDown, ArrowUp, ArrowDown, LayoutDashboard, BarChart2, SlidersHorizontal, Eye, FileDown, Trash2, Settings, ChevronLeft, ChevronRight, AlertTriangle, Wallet, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 const ITEMS_PER_PAGE = 5;
 
@@ -16,6 +17,28 @@ export function BranchDetail() {
     const budgetStatus = useReportsStore((s) => s.budgetStatus);
 
     const [currentPage, setCurrentPage] = useState(1);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const handleRefresh = async (baslangic, bitis) => {
+        setIsRefreshing(true);
+        try {
+            await Promise.allSettled([
+                reportsApi.metaFetchForBranch(null, baslangic, bitis, activeBranchCode),
+                reportsApi.googleFetchForBranch(baslangic, bitis, activeBranchCode)
+            ]);
+            // Tam dashboard yenileme yerine yalnızca bu şubeyi tazele (~2 read):
+            // şube dokümanı (aggregate + donem_ozetleri) ve bütçe durumu kaydı
+            await Promise.allSettled([
+                reportsApi.refreshBranch(activeBranchCode),
+                reportsApi.fetchBudgetStatus(baslangic, bitis, activeBranchCode),
+            ]);
+            toast.success('Dönem verileri güncellendi!');
+        } catch (err) {
+            toast.error(err.message || 'Güncelleme sırasında bir hata oluştu');
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
 
     // Reset page when branch changes
     const [prevBranch, setPrevBranch] = useState(null);
@@ -126,20 +149,58 @@ export function BranchDetail() {
                         const sorted = [...donemler].sort((a, b) => (b.baslangic || '').localeCompare(a.baslangic || ''));
                         const latestBudget = sorted.find(d => (d.planlanan_butce || 0) > 0);
                         if (latestBudget) {
-                            const pb = latestBudget.planlanan_butce || 0;
-                            const dev = latestBudget.devredilen_miktar || 0;
-                            const tb = pb + dev;
-                            const harc = latestBudget.harcama || 0;
-                            const kalan = tb - harc;
-                            const oran = tb > 0 ? Math.round((harc / tb) * 1000) / 10 : 0;
-                            let durum = 'normal';
-                            if (oran >= 100) durum = 'asim';
-                            else if (oran >= 80) durum = 'uyari';
-                            bs = { kod: activeBranchCode, planlananButce: pb, devredilen: dev, toplamButce: tb, harcama: harc, kalan, kullanimOrani: oran, durum, donem: `${latestBudget.baslangic} - ${latestBudget.bitis}` };
+                            const todayStr = new Date().toISOString().split('T')[0];
+                            if (latestBudget.bitis >= todayStr) {
+                                const pb = latestBudget.planlanan_butce || 0;
+                                const dev = latestBudget.devredilen_miktar || 0;
+                                const merk = latestBudget.merkez_destegi || 0;
+                                const tb = pb + dev + merk;
+                                const harc = latestBudget.harcama || 0;
+                                const kalan = tb - harc;
+                                const oran = tb > 0 ? Math.round((harc / tb) * 1000) / 10 : 0;
+                                let durum = 'normal';
+                                if (oran >= 100) durum = 'asim';
+                                else if (oran >= 80) durum = 'uyari';
+                                bs = { kod: activeBranchCode, planlananButce: pb, devredilen: dev, merkezDestegi: merk, toplamButce: tb, harcama: harc, kalan, kullanimOrani: oran, durum, donem: `${latestBudget.baslangic} - ${latestBudget.bitis}`, baslangic: latestBudget.baslangic, bitis: latestBudget.bitis };
+                            }
                         }
                     }
 
                     if (!bs || !bs.toplamButce) return null;
+
+                    let remainingDays = 0;
+                    let dailyBudget = 0;
+                    let projectedOverage = 0;
+                    let currentDailySpend = 0;
+
+                    if (bs.baslangic && bs.bitis && bs.kalan > 0) {
+                        const today = new Date();
+                        today.setHours(0,0,0,0);
+                        const startDate = new Date(bs.baslangic);
+                        startDate.setHours(0,0,0,0);
+                        const endDate = new Date(bs.bitis);
+                        endDate.setHours(0,0,0,0);
+                        
+                        if (today <= endDate) {
+                            const calcStart = today > startDate ? today : startDate;
+                            remainingDays = Math.ceil((endDate - calcStart) / (1000 * 60 * 60 * 24)) + 1;
+                        }
+                        if (remainingDays > 0) {
+                            dailyBudget = bs.kalan / remainingDays;
+                        }
+
+                        if (today > startDate && today <= endDate && bs.harcama > 0) {
+                            const passedDays = Math.ceil((today - startDate) / (1000 * 60 * 60 * 24));
+                            if (passedDays > 0) {
+                                currentDailySpend = bs.harcama / passedDays;
+                                const projectedTotal = bs.harcama + (currentDailySpend * remainingDays);
+                                if (projectedTotal > bs.toplamButce) {
+                                    projectedOverage = projectedTotal - bs.toplamButce;
+                                }
+                            }
+                        }
+                    }
+
                     const pct = Math.min(bs.kullanimOrani, 100);
                     const borderColor = bs.durum === 'asim' ? 'border-red-500/50' : bs.durum === 'uyari' ? 'border-amber-500/50' : 'border-border';
                     const barColor = bs.durum === 'asim' ? 'bg-red-500' : bs.durum === 'uyari' ? 'bg-amber-500' : 'bg-emerald-500';
@@ -149,6 +210,18 @@ export function BranchDetail() {
                                 <Wallet className={`w-4 h-4 ${bs.durum === 'asim' ? 'text-red-500' : bs.durum === 'uyari' ? 'text-amber-500' : 'text-emerald-500'}`} />
                                 <span className="text-sm font-semibold text-foreground">Bütçe Durumu</span>
                                 {bs.donem && <span className="text-[10px] text-muted-foreground ml-1">({bs.donem})</span>}
+                                
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-6 w-6 ml-1 text-muted-foreground hover:text-foreground"
+                                    disabled={isRefreshing}
+                                    onClick={() => handleRefresh(bs.baslangic, bs.bitis)}
+                                    title="Dönem verilerini yenile"
+                                >
+                                    {isRefreshing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                </Button>
+
                                 {bs.durum === 'asim' && (
                                     <span className="ml-auto text-xs font-medium text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">
                                         <AlertTriangle className="w-3 h-3" /> Bütçe Aşıldı
@@ -164,7 +237,13 @@ export function BranchDetail() {
                                 <div>
                                     <div className="text-xs text-muted-foreground">Planlanan</div>
                                     <div className="text-lg font-semibold text-foreground">{fmtC(bs.toplamButce)}</div>
-                                    {bs.devredilen > 0 && <div className="text-[10px] text-muted-foreground">({fmtC(bs.planlananButce)} + {fmtC(bs.devredilen)} devir)</div>}
+                                    {(bs.devredilen > 0 || bs.merkezDestegi > 0) && (
+                                        <div className="text-[10px] text-muted-foreground">
+                                            {fmtC(bs.planlananButce)}
+                                            {bs.devredilen > 0 && <> + {fmtC(bs.devredilen)} devir</>}
+                                            {bs.merkezDestegi > 0 && <> + {fmtC(bs.merkezDestegi)} merkez</>}
+                                        </div>
+                                    )}
                                 </div>
                                 <div>
                                     <div className="text-xs text-muted-foreground">Harcanan</div>
@@ -173,6 +252,11 @@ export function BranchDetail() {
                                 <div>
                                     <div className="text-xs text-muted-foreground">Kalan</div>
                                     <div className={`text-lg font-semibold ${bs.kalan < 0 ? 'text-red-500' : 'text-emerald-600'}`}>{fmtC(bs.kalan)}</div>
+                                    {remainingDays > 0 && dailyBudget > 0 && (
+                                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                                            Günlük: {fmtC(dailyBudget)} ({remainingDays} gün)
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
@@ -183,6 +267,15 @@ export function BranchDetail() {
                                     %{Math.round(bs.kullanimOrani)}
                                 </span>
                             </div>
+                            
+                            {projectedOverage > 0 && remainingDays > 0 && dailyBudget > 0 && bs.durum !== 'asim' && (
+                                <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-md text-xs text-amber-700 dark:text-amber-400/90 flex items-start gap-2.5 leading-relaxed">
+                                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                                    <div>
+                                        Mevcut harcama hızıyla (<span className="font-semibold">{fmtC(currentDailySpend)}/gün</span>) devam edilirse dönem sonunda bütçe <span className="font-semibold">{fmtC(projectedOverage)}</span> aşılacak. Hedefi tutturmak için kalan günlerde <span className="font-semibold underline underline-offset-2">günlük en fazla {fmtC(dailyBudget)}</span> harcanmalıdır.
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     );
                 })()}

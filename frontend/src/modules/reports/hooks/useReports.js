@@ -80,6 +80,7 @@ export const useReportsStore = create((set, get) => ({
     sortCol: 'donem',
     sortDir: 'desc',
     dateRange: getDefaultDateRange(),
+    selectedFilterBranches: [],
 
     // Modal state
     modals: {
@@ -105,6 +106,15 @@ export const useReportsStore = create((set, get) => ({
             set({ sortCol: col, sortDir: 'desc' });
         }
     },
+
+    toggleFilterBranch: (kod) => set((s) => {
+        const selected = s.selectedFilterBranches.includes(kod)
+            ? s.selectedFilterBranches.filter((k) => k !== kod)
+            : [...s.selectedFilterBranches, kod];
+        return { selectedFilterBranches: selected };
+    }),
+    clearFilterBranches: () => set({ selectedFilterBranches: [] }),
+    selectAllFilterBranches: (kodlar) => set({ selectedFilterBranches: kodlar }),
 
     openModal: (name, data = {}) => set((s) => ({
         modals: { ...s.modals, [name]: true },
@@ -464,11 +474,39 @@ export const reportsApi = {
         return data;
     },
 
-    async fetchBudgetStatus(since, until) {
-        const res = await authFetch(`${API}/butce-durum?since=${since}&until=${until}`);
+    async fetchBudgetStatus(since, until, subeKod = null) {
+        const url = `${API}/butce-durum?since=${since}&until=${until}` + (subeKod ? `&subeKod=${subeKod}` : '');
+        const res = await authFetch(url);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Hata');
-        useReportsStore.setState({ budgetStatus: data });
+
+        if (subeKod) {
+            // Tek şube yenilemesi: mevcut listede yalnızca o şubenin kaydını değiştir
+            useReportsStore.setState((s) => {
+                const prev = s.budgetStatus;
+                if (!prev?.subeler) return { budgetStatus: data };
+                const others = prev.subeler.filter((b) => b.kod !== subeKod);
+                return { budgetStatus: { ...prev, subeler: [...others, ...(data.subeler || [])] } };
+            });
+        } else {
+            useReportsStore.setState({ budgetStatus: data });
+        }
         return data;
+    },
+
+    /**
+     * Tek şubeyi tazeler (1 read) — tam dashboard yenileme yerine.
+     * Şube dokümanındaki güncel aggregate'leri ve donem_ozetleri'ni
+     * store'daki branches + donemCache'e işler.
+     */
+    async refreshBranch(kod) {
+        const res = await authFetch(`${API}/sube/${kod}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Hata');
+        useReportsStore.setState((s) => ({
+            branches: s.branches.map((b) => (b.kod === kod ? { ...b, ...data.sube } : b)),
+            donemCache: { ...s.donemCache, [kod]: data.sube.donem_ozetleri || [] },
+        }));
+        return data.sube;
     },
 };

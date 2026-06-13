@@ -184,8 +184,12 @@ export function BulkUploadModal() {
             const data = await reportsApi.uploadData(fd);
             toast.success(`${data.message} (${data.subeAd || data.subeKod})`);
             closeModal();
-            await loadDashboard(true);
-            if (data.subeKod) selectBranch(data.subeKod, true);
+            await loadDashboard(true); // yeni şube oluşmuş olabilir — tam liste gerekli
+            if (data.subeKod) {
+                // Dönem listesini tüm dönem dokümanlarını okumadan tazele (1 read)
+                await reportsApi.refreshBranch(data.subeKod).catch(() => {});
+                selectBranch(data.subeKod);
+            }
         } catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
     };
@@ -282,7 +286,6 @@ export function DataEditModal() {
     const open = useReportsStore(s => s.modals.dataEdit);
     const data = useReportsStore(s => s.modalData.dataEdit);
     const closeModal = () => useReportsStore.getState().closeModal('dataEdit');
-    const loadDashboard = useReportsStore(s => s.loadDashboard);
     const selectBranch = useReportsStore(s => s.selectBranch);
 
     const [loading, setLoading] = useState(false);
@@ -290,7 +293,7 @@ export function DataEditModal() {
     const [form, setForm] = useState({
         deHarcama:'', deErisim:'', deGosterim:'', deSonuc:'', deTiklama:'', deTiklamaTumu:'', dePaylasim:'', deYorum:'', deMesaj:'',
         deGoogleArama:'', deGoogleHarita:'', deGoogleYol:'', deGoogleTelefon:'', deGoogleWeb:'', deGoogleMenu:'',
-        dePlanlananButce:'', deDevredilenMiktar:''
+        dePlanlananButce:'', deDevredilenMiktar:'', deMerkezDestegi:''
     });
 
     useEffect(() => {
@@ -318,6 +321,7 @@ export function DataEditModal() {
                         deGoogleMenu: formatVal(o.googleMenuTiklama ?? c.googleMenuTiklama),
                         dePlanlananButce: formatVal(o.planlananButce ?? c.planlananButce),
                         deDevredilenMiktar: formatVal(o.devredilenMiktar ?? c.devredilenMiktar),
+                        deMerkezDestegi: formatVal(o.merkezDestegi ?? c.merkezDestegi),
                     });
                 })
                 .catch(err => { toast.error('Veri yüklenemedi'); closeModal(); })
@@ -345,14 +349,15 @@ export function DataEditModal() {
             toplamYorum: getV(form.deYorum), toplamMesaj: getV(form.deMesaj),
             googleArama: getV(form.deGoogleArama), googleHarita: getV(form.deGoogleHarita), googleYolTarifi: getV(form.deGoogleYol),
             googleTelefon: getV(form.deGoogleTelefon), googleWebTiklama: getV(form.deGoogleWeb), googleMenuTiklama: getV(form.deGoogleMenu),
-            planlananButce: getV(form.dePlanlananButce), devredilenMiktar: getV(form.deDevredilenMiktar)
+            planlananButce: getV(form.dePlanlananButce), devredilenMiktar: getV(form.deDevredilenMiktar), merkezDestegi: getV(form.deMerkezDestegi)
         };
         try {
             await reportsApi.saveOverrides(data.kod, data.baslangic, data.bitis, overrides);
             toast.success('Rapor verileri güncellendi!');
             closeModal();
-            await loadDashboard(true);
-            selectBranch(data.kod, true);
+            // Düzenleme yalnızca bu şubeyi etkiler — tam dashboard yenileme yerine 1 read
+            await reportsApi.refreshBranch(data.kod).catch(() => {});
+            selectBranch(data.kod);
         } catch (err) { toast.error(err.message); }
         finally { setSaving(false); }
     };
@@ -388,6 +393,9 @@ export function DataEditModal() {
                             <FormGroup label="Devredilen Miktar (₺)">
                                 <Input value={form.deDevredilenMiktar} onChange={e=>handleInput('deDevredilenMiktar', e.target.value)} placeholder="0" />
                                 {form.deDevredilenMiktar.startsWith('-') && <div className="text-[10px] text-amber-500 mt-1 flex items-start gap-1"><Info className="w-3 h-3 shrink-0 mt-0.5" /> Eksi (-) değer</div>}
+                            </FormGroup>
+                            <FormGroup label="Merkez Desteği (₺)" description="Genel merkezden gelen destek bütçesi">
+                                <Input value={form.deMerkezDestegi} onChange={e=>handleInput('deMerkezDestegi', e.target.value)} placeholder="0" />
                             </FormGroup>
                         </div>
                     </div>
@@ -432,8 +440,6 @@ export function DeleteDonemModal() {
     const open = useReportsStore(s => s.modals.deleteDonem);
     const data = useReportsStore(s => s.modalData.deleteDonem);
     const closeModal = () => useReportsStore.getState().closeModal('deleteDonem');
-    const loadDashboard = useReportsStore(s => s.loadDashboard);
-    const selectBranch = useReportsStore(s => s.selectBranch);
     const [loading, setLoading] = useState(false);
 
     const handleDelete = async () => {
@@ -740,7 +746,6 @@ export function AddDataModal() {
     const open = useReportsStore(s => s.modals.addData);
     const data = useReportsStore(s => s.modalData.addData);
     const closeModal = () => useReportsStore.getState().closeModal('addData');
-    const loadDashboard = useReportsStore(s => s.loadDashboard);
     const selectBranch = useReportsStore(s => s.selectBranch);
     const settings = useReportsStore(s => s.settings);
 
@@ -775,8 +780,8 @@ export function AddDataModal() {
         try {
             const res = await reportsApi.metaFetchForBranch(null, form.since, form.until, data.kod);
             toast.success(res.message || 'Meta verileri çekildi!');
-            await selectBranch(data.kod, true);
-            useReportsStore.getState().recalcBranchFromCache(data.kod);
+            // Şube dokümanından güncel aggregate + dönem listesi (1 read)
+            await reportsApi.refreshBranch(data.kod);
         } catch (err) { toast.error(err.message); }
         finally { setMetaLoading(false); }
     };
@@ -787,8 +792,8 @@ export function AddDataModal() {
         try {
             const res = await reportsApi.googleFetchForBranch(form.since, form.until, data.kod);
             toast.success(res.message || 'Google verileri çekildi!');
-            await selectBranch(data.kod, true);
-            useReportsStore.getState().recalcBranchFromCache(data.kod);
+            // Şube dokümanından güncel aggregate + dönem listesi (1 read)
+            await reportsApi.refreshBranch(data.kod);
         } catch (err) { toast.error(err.message); }
         finally { setGoogleLoading(false); }
     };
@@ -821,8 +826,9 @@ export function AddDataModal() {
             await reportsApi.uploadData(fd);
             toast.success('Veriler başarıyla yüklendi!');
             closeModal();
-            await loadDashboard(true);
-            selectBranch(data.kod, true);
+            // Yükleme yalnızca bu şubeyi etkiler — tam dashboard yenileme yerine 1 read
+            await reportsApi.refreshBranch(data.kod).catch(() => {});
+            selectBranch(data.kod);
         } catch (err) { toast.error(err.message); }
         finally { setUploadLoading(false); }
     };

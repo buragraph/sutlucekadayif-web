@@ -2,6 +2,28 @@ import { db } from '../../config/firebase.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 // ═══════════════════════════════════════════════════
+// ── Veri Versiyonu (cross-instance cache doğrulama) ──
+// ═══════════════════════════════════════════════════
+// Cloud Run'da her instance'ın kendi in-memory cache'i var. Cache'in bayat olup
+// olmadığı Firestore'daki tek bir versiyon dokümanıyla (1 read) doğrulanır:
+// her veri yazımı versiyonu artırır, cache yalnızca versiyon eşleşirse servis edilir.
+
+const VERSION_REF = db.collection('reports').doc('meta');
+
+export async function getDataVersion() {
+  const doc = await VERSION_REF.get();
+  return doc.exists ? (doc.data().v || 0) : 0;
+}
+
+export async function bumpDataVersion() {
+  try {
+    await VERSION_REF.set({ v: FieldValue.increment(1) }, { merge: true });
+  } catch (err) {
+    console.error('[db] Versiyon artırılamadı:', err.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════
 // ── Şube CRUD (subeler collection) ──
 // ═══════════════════════════════════════════════════
 
@@ -9,6 +31,7 @@ export async function upsertSube(kod, ad, adres = null, link = null) {
   const docRef = db.collection('subeler').doc(kod);
   const data = { ad, adres: adres || '', link: link || '' };
   await docRef.set(data, { merge: true });
+  await bumpDataVersion();
   return { id: kod, kod, ...data };
 }
 
@@ -31,6 +54,7 @@ export async function updateSube(kod, ad, adres, link) {
   if (adres !== undefined) data.adres = adres;
   if (link !== undefined) data.link = link;
   await docRef.update(data);
+  await bumpDataVersion();
   return { id: kod, kod, ...data };
 }
 
@@ -43,6 +67,7 @@ export async function deleteSube(kod) {
   await db.recursiveDelete(docRef.collection('donemler'));
 
   await docRef.delete();
+  await bumpDataVersion();
   return true;
 }
 
@@ -59,7 +84,7 @@ function donemDocId(baslangic, bitis) {
  * Meta toplamlarını dönem dokümanına yazar.
  * Import/API'den gelen veriler önceden toplanıp buraya geçilir.
  */
-export async function upsertMetaToplanlar(subeKod, donemBaslangic, donemBitis, toplamlar) {
+export async function upsertMetaToplanlar(subeKod, donemBaslangic, donemBitis, toplamlar, { skipRecalc = false } = {}) {
   const docId = donemDocId(donemBaslangic, donemBitis);
   const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
 
@@ -78,14 +103,14 @@ export async function upsertMetaToplanlar(subeKod, donemBaslangic, donemBitis, t
     updatedAt: new Date().toISOString(),
   }, { merge: true });
 
-  // Aggregate güncelle
-  await recalcSubeAggregates(subeKod);
+  // Aggregate güncelle (skipRecalc: batch işlemlerde sonda bir kez çağrılır)
+  if (!skipRecalc) await recalcSubeAggregates(subeKod);
 }
 
 /**
  * Google toplamlarını dönem dokümanına yazar.
  */
-export async function upsertGoogleToplanlar(subeKod, donemBaslangic, donemBitis, toplamlar) {
+export async function upsertGoogleToplanlar(subeKod, donemBaslangic, donemBitis, toplamlar, { skipRecalc = false } = {}) {
   const docId = donemDocId(donemBaslangic, donemBitis);
   const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
 
@@ -101,14 +126,14 @@ export async function upsertGoogleToplanlar(subeKod, donemBaslangic, donemBitis,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
 
-  // Aggregate güncelle
-  await recalcSubeAggregates(subeKod);
+  // Aggregate güncelle (skipRecalc: batch işlemlerde sonda bir kez çağrılır)
+  if (!skipRecalc) await recalcSubeAggregates(subeKod);
 }
 
 /**
  * Bütçe verilerini dönem dokümanına yazar.
  */
-export async function upsertButce(subeKod, donemBaslangic, donemBitis, planlananButce, devredilenMiktar = 0) {
+export async function upsertButce(subeKod, donemBaslangic, donemBitis, planlananButce, devredilenMiktar = 0, merkezDestegi = 0, { skipBump = false } = {}) {
   const docId = donemDocId(donemBaslangic, donemBitis);
   const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
 
@@ -117,15 +142,39 @@ export async function upsertButce(subeKod, donemBaslangic, donemBitis, planlanan
     donem_bitis: donemBitis,
     planlanan_butce: planlananButce,
     devredilen_miktar: devredilenMiktar,
+    merkez_destegi: merkezDestegi,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
+
+  // Bütçe alanları toplam_* aggregate'lerini etkilemez; donem_ozetleri'ndeki
+  // ilgili kaydı yerinde güncellemek yeterli (tüm dönemleri okuyan recalc yerine 1 read).
+  const subeRef = db.collection('subeler').doc(subeKod);
+  const subeDoc = await subeRef.get();
+  const ozetler = subeDoc.exists ? subeDoc.data().donem_ozetleri : null;
+  const idx = Array.isArray(ozetler)
+    ? ozetler.findIndex(o => o.baslangic === donemBaslangic && o.bitis === donemBitis)
+    : -1;
+
+  if (idx >= 0) {
+    ozetler[idx] = {
+      ...ozetler[idx],
+      planlanan_butce: planlananButce,
+      devredilen_miktar: devredilenMiktar,
+      merkez_destegi: merkezDestegi,
+    };
+    await subeRef.update({ donem_ozetleri: ozetler });
+    if (!skipBump) await bumpDataVersion();
+  } else {
+    // Özet kaydı yok (yeni dönem veya eski format şube) — tam yeniden hesapla
+    await recalcSubeAggregates(subeKod, { skipBump });
+  }
 }
 
 /**
  * Toplam erişim override'ını dönem dokümanına yazar.
  * Kampanya seviyesinde tekil erişim (deduplicated).
  */
-export async function upsertToplamErisim(subeKod, donemBaslangic, donemBitis, toplamErisim) {
+export async function upsertToplamErisim(subeKod, donemBaslangic, donemBitis, toplamErisim, { skipRecalc = false } = {}) {
   const docId = donemDocId(donemBaslangic, donemBitis);
   const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
 
@@ -136,7 +185,7 @@ export async function upsertToplamErisim(subeKod, donemBaslangic, donemBitis, to
     updatedAt: new Date().toISOString(),
   }, { merge: true });
 
-  await recalcSubeAggregates(subeKod);
+  if (!skipRecalc) await recalcSubeAggregates(subeKod);
 }
 
 /**
@@ -152,6 +201,7 @@ export async function updateOverrides(subeKod, donemBaslangic, donemBitis, overr
     veri_overrides: overrides,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
+  await bumpDataVersion();
 }
 
 /**
@@ -233,8 +283,11 @@ export async function deleteDonem(subeKod, donemBaslangic, donemBitis) {
 /**
  * Şubenin tüm dönemlerini tarayarak aggregate alanlarını günceller.
  * Veri ekleme, silme, güncelleme işlemlerinden sonra çağrılır.
+ * @param {object} [opts]
+ * @param {boolean} [opts.skipBump] - Batch işlemlerde versiyon artışı sonda
+ *   bir kez yapılır (aynı dokümana N paralel increment çakışmasını önler).
  */
-export async function recalcSubeAggregates(subeKod) {
+export async function recalcSubeAggregates(subeKod, { skipBump = false } = {}) {
   const snap = await db.collection('subeler').doc(subeKod).collection('donemler')
     .orderBy('donem_baslangic', 'desc')
     .get();
@@ -270,6 +323,7 @@ export async function recalcSubeAggregates(subeKod) {
       google: data.google_arama !== undefined ? { gorunurluk: 1 } : null,
       planlanan_butce: data.planlanan_butce || 0,
       devredilen_miktar: data.devredilen_miktar || 0,
+      merkez_destegi: data.merkez_destegi || 0,
       harcama: data.harcama || 0,
     });
   });
@@ -284,6 +338,8 @@ export async function recalcSubeAggregates(subeKod) {
     donem_sayisi,
     donem_ozetleri // 0 Read için sihirli dokunuş!
   }, { merge: true });
+
+  if (!skipBump) await bumpDataVersion();
 }
 
 
@@ -307,6 +363,7 @@ export async function clearAllData() {
       donem_sayisi: FieldValue.delete(),
     });
   }
+  await bumpDataVersion();
 }
 
 
@@ -325,6 +382,7 @@ export async function getSettings() {
 
 export async function saveSettings(data) {
   await db.collection('reports').doc('settings').set(data, { merge: true });
+  await bumpDataVersion();
 }
 
 // ── Google Token Saklama ──
@@ -343,6 +401,7 @@ export async function getGoogleMappings() {
 }
 export async function saveGoogleMappings(mappings) {
   await db.collection('reports').doc('google_mappings').set(mappings, { merge: false });
+  await bumpDataVersion();
 }
 
 // ── Meta Genel/Şube Eşleştirmeleri ──
@@ -352,6 +411,7 @@ export async function getMetaMappings() {
 }
 export async function saveMetaMappings(mappings) {
   await db.collection('reports').doc('meta_mappings').set(mappings, { merge: false });
+  await bumpDataVersion();
 }
 
 // ── Meta Kampanya Eşleştirmeleri ──
@@ -361,6 +421,7 @@ export async function getCampaignMappings() {
 }
 export async function saveCampaignMappings(mappings) {
   await db.collection('reports').doc('campaign_mappings').set(mappings, { merge: false });
+  await bumpDataVersion();
 }
 
 // ── Meta Reklam Seti Eşleştirmeleri ──
@@ -370,6 +431,7 @@ export async function getAdsetMappings() {
 }
 export async function saveAdsetMappings(mappings) {
   await db.collection('reports').doc('adset_mappings').set(mappings, { merge: false });
+  await bumpDataVersion();
 }
 
 // ── Meta Adset Cache ──

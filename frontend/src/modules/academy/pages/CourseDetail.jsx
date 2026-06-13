@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Video, FileText, CheckCircle, Circle, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react';
+import VideoPlayer from '../components/VideoPlayer';
+import PdfViewer from '../components/PdfViewer';
 import api from '../../../services/api';
 import { useToast } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
@@ -188,12 +190,14 @@ export default function CourseDetail() {
                         {currentLesson && (
                             <>
                                 {/* Video / PDF Viewer */}
-                                <div className="overflow-hidden rounded-xl border bg-black shadow-md flex-1 min-h-0 flex flex-col">
+                                <div className={`overflow-hidden rounded-xl border bg-black shadow-md ${currentLesson.lessonType === 'video' || currentLesson.lessonType === 'pdf' ? '' : 'flex-1 min-h-0 flex flex-col'}`}>
                                     {currentLesson.lessonType === 'video' ? (
                                         currentLesson.videoUrl ? (
-                                            <video key={currentLesson.id} controls className="flex-1 w-full bg-black object-contain min-h-0" src={currentLesson.videoUrl}>
-                                                Tarayıcınız video oynatmayı desteklemiyor.
-                                            </video>
+                                            <VideoPlayer
+                                                key={currentLesson.id}
+                                                videoId={currentLesson.videoUrl}
+                                                title={currentLesson.title}
+                                            />
                                         ) : (
                                                 <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/10 border-b border-border/10 min-h-[300px]">
                                                 <div className="size-16 rounded-full bg-muted/20 flex items-center justify-center"><Video className="size-8 opacity-50" /></div>
@@ -202,7 +206,11 @@ export default function CourseDetail() {
                                         )
                                     ) : currentLesson.lessonType === 'pdf' ? (
                                         currentLesson.pdfUrl ? (
-                                            <iframe key={currentLesson.id} src={currentLesson.pdfUrl} className="flex-1 w-full bg-white min-h-0" title={currentLesson.title} />
+                                            <PdfViewer
+                                                key={currentLesson.id}
+                                                url={currentLesson.pdfUrl}
+                                                title={currentLesson.title}
+                                            />
                                         ) : (
                                                 <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/10 border-b border-border/10 min-h-[300px]">
                                                 <div className="size-16 rounded-full bg-muted/20 flex items-center justify-center"><FileText className="size-8 opacity-50" /></div>

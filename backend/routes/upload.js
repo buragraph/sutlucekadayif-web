@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import multer from 'multer';
-import sharp from 'sharp';
 import { uploadFile, deleteFile, urlToKey, r2, BUCKET, PUBLIC_URL } from '../config/r2.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
@@ -27,6 +26,8 @@ const upload = multer({
  * Görseli optimize et: max 800px genişlik, WebP, quality 80
  */
 async function optimizeImage(buffer) {
+    // sharp (native modül) cold start'ı şişirmemek için ilk kullanımda yüklenir
+    const { default: sharp } = await import('sharp');
     return sharp(buffer)
         .resize(800, null, { withoutEnlargement: true })
         .webp({ quality: 80 })

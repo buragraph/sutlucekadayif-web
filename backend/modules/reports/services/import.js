@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join, basename } from 'path';
 import { parse } from 'csv-parse/sync';
-import { upsertSube, upsertMetaToplanlar, upsertGoogleToplanlar, getSubeByKod, getAllSubeler } from '../db.js';
+import { upsertSube, upsertMetaToplanlar, upsertGoogleToplanlar, getSubeByKod, getAllSubeler, recalcSubeAggregates, bumpDataVersion } from '../db.js';
 
 // ── Türkçe sütun eşleme ──
 
@@ -160,9 +160,12 @@ export async function importMetaCsv(buffer, subeKod) {
   // Her dönem için tek doküman yaz
   let count = 0;
   for (const toplam of donemToplamlari) {
-    await upsertMetaToplanlar(sube.kod, toplam.donem_baslangic, toplam.donem_bitis, toplam);
+    await upsertMetaToplanlar(sube.kod, toplam.donem_baslangic, toplam.donem_bitis, toplam, { skipRecalc: true });
     count += mappedRows.filter(r => r.donem_baslangic === toplam.donem_baslangic && r.donem_bitis === toplam.donem_bitis).length;
   }
+
+  // Aggregate'leri sonda bir kez hesapla
+  await recalcSubeAggregates(sube.kod);
 
   return count;
 }
@@ -217,9 +220,12 @@ export async function importGoogleCsv(buffer, subeKod, originalFilename = null) 
       google_menu_tiklama: parseInt2(mapped.menu_tiklama),
     };
 
-    await upsertGoogleToplanlar(sube.kod, dates.baslangic, dates.bitis, toplamlar);
+    await upsertGoogleToplanlar(sube.kod, dates.baslangic, dates.bitis, toplamlar, { skipRecalc: true });
     count++;
   }
+
+  // Aggregate'leri sonda bir kez hesapla
+  if (count > 0) await recalcSubeAggregates(subeKod);
 
   return count;
 }
@@ -321,9 +327,14 @@ export async function importGoogleCsvBulk(buffer, originalFilename) {
       google_menu_tiklama: parseInt2(mapped.menu_tiklama),
     };
 
-    await upsertGoogleToplanlar(sube.kod, dates.baslangic, dates.bitis, toplamlar);
+    await upsertGoogleToplanlar(sube.kod, dates.baslangic, dates.bitis, toplamlar, { skipRecalc: true });
     results.push({ kod: subeKod, ad: isletmeAdi });
   }
+
+  // Aggregate'leri sonda bir kez, paralel hesapla; versiyon tek seferde artırılır
+  const processedKods = [...new Set(results.map(r => r.kod))];
+  await Promise.all(processedKods.map(kod => recalcSubeAggregates(kod, { skipBump: true })));
+  if (processedKods.length > 0) await bumpDataVersion();
 
   return { count: results.length, subeler: results, dates };
 }
@@ -374,9 +385,12 @@ export async function importMetaCsvAutoMatch(buffer) {
 
   let count = 0;
   for (const toplam of donemToplamlari) {
-    await upsertMetaToplanlar(sube.kod, toplam.donem_baslangic, toplam.donem_bitis, toplam);
+    await upsertMetaToplanlar(sube.kod, toplam.donem_baslangic, toplam.donem_bitis, toplam, { skipRecalc: true });
     count += mappedRows.filter(r => r.donem_baslangic === toplam.donem_baslangic && r.donem_bitis === toplam.donem_bitis).length;
   }
+
+  // Aggregate'leri sonda bir kez hesapla
+  await recalcSubeAggregates(sube.kod);
 
   return { count, subeKod: sube.kod, subeAd: sube.ad };
 }

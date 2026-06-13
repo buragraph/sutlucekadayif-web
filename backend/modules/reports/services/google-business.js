@@ -1,5 +1,13 @@
-import { google } from 'googleapis';
 import { getSettings, getGoogleToken, saveGoogleToken, getGoogleMappings as dbGetGoogleMappings, saveGoogleMappings as dbSaveGoogleMappings } from '../db.js';
+
+// googleapis çok büyük bir paket — cold start'ı şişirmemek için ilk kullanımda yüklenir
+let _google = null;
+async function getGoogle() {
+  if (!_google) {
+    ({ google: _google } = await import('googleapis'));
+  }
+  return _google;
+}
 
 const SCOPES = [
   'https://www.googleapis.com/auth/business.manage',
@@ -15,6 +23,7 @@ async function getOAuthClient() {
     throw new Error('Google API Client ID veya Secret veritabanında (Ayarlar) bulunamadı.');
   }
 
+  const google = await getGoogle();
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
   
   // Token yönetimi
@@ -162,6 +171,7 @@ export async function listAccounts() {
 
 export async function fetchLocationMetrics(locationName, startDate, endDate) {
   const oauth2Client = await getOAuthClient();
+  const google = await getGoogle();
   const bpp = google.businessprofileperformance({ version: 'v1', auth: oauth2Client });
   
   const metrics = [

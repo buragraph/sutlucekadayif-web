@@ -1,10 +1,30 @@
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '../../../context/AuthContext';
+import api from '../../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Building2, UserCircle, QrCode, Sparkles, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight } from 'lucide-react';
+import { Building2, UserCircle, QrCode, Sparkles, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight, Map as MapIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+// MapLibre ağır bir paket — yalnızca harita gösterilince yüklensin (kod bölme)
+const BranchMap = lazy(() => import('../components/BranchMap'));
 
 export default function Dashboard() {
     const { subeSlug, role } = useAuth();
+    const [konumlar, setKonumlar] = useState([]);
+    // Harita admin (tüm şubeler) ve şube sahibi (kendi şubesi) için gösterilir
+    const haritaGoster = role === 'admin' || role === 'sube_sahibi';
+    // Yalnızca konumu (il) atanmış şubeler haritada görünür — çip de onları sayar
+    const konumluSubeler = konumlar.filter((k) => k.il);
+    const subeSayisi = konumluSubeler.length;
+    const ilSayisi = new Set(konumluSubeler.map((k) => k.il)).size;
+
+    // Konumları hafif endpoint'ten çek (admin: tümü, sube_sahibi: kendi şubesi)
+    useEffect(() => {
+        if (!haritaGoster) return;
+        api.get('/branches/konumlar')
+            .then(({ data }) => setKonumlar(data.konumlar || []))
+            .catch(() => {});
+    }, [haritaGoster]);
 
     return (
         <div className="space-y-6">
@@ -14,39 +34,56 @@ export default function Dashboard() {
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ana Menü</p>
                     <h1 className="text-3xl font-bold tracking-tight text-foreground" style={{ fontFamily: 'Montserrat, sans-serif' }}>Genel Bakış</h1>
                 </div>
-                <div className="flex items-center gap-1.5 bg-muted/60 border px-3 py-1.5 rounded-xl text-xs font-medium text-muted-foreground shadow-xs">
+                <div className="flex items-center gap-1.5 bg-muted/60 border px-3 py-1.5 rounded-xl text-xs font-medium text-muted-foreground">
                     <Sparkles className="size-3.5 text-yellow-600 dark:text-[#d8c7a3]" />
                     <span>Sistem Çevrimiçi</span>
                 </div>
             </div>
 
-            {/* Premium Hoş Geldiniz Karşılama Alanı */}
-            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#084529] via-[#05321d] to-[#021b0f] text-[#F6F1E7] p-6 md:p-8 shadow-lg shadow-[#084529]/15 border-none">
-                {/* Glow Işıkları */}
-                <div className="absolute right-0 top-0 size-80 rounded-full bg-emerald-500/10 blur-3xl" />
-                <div className="absolute -right-20 -bottom-20 size-80 rounded-full bg-[#d8c7a3]/10 blur-3xl" />
+            {/* Şube Haritası — tam genişlik, selamlama üstte overlay */}
+            {haritaGoster ? (
+                <div className="relative h-[520px] overflow-hidden rounded-3xl border">
+                    <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Harita yükleniyor…</div>}>
+                        <BranchMap
+                            branches={konumlar}
+                            focusIl={role === 'sube_sahibi' ? (konumlar[0]?.il || null) : null}
+                            focusCoord={role === 'sube_sahibi' && Number.isFinite(konumlar[0]?.lat) && Number.isFinite(konumlar[0]?.lng)
+                                ? [konumlar[0].lng, konumlar[0].lat]
+                                : null}
+                            className="absolute inset-0 h-full w-full"
+                            showFooter={false}
+                        />
+                    </Suspense>
 
-                <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="space-y-2.5 max-w-[560px]">
-                        <span className="inline-flex items-center gap-1 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 text-xs font-semibold text-[#d8c7a3]">
-                            <Sparkles className="size-3" />
-                            Sürüm 2.0 Yayında
-                        </span>
-                        <h2 className="text-3xl font-light tracking-tight leading-tight" style={{ fontFamily: 'Marcellus, serif' }}>
-                            Hoş geldiniz, <span className="font-bold text-[#d8c7a3]">{role === 'admin' ? 'Yönetici' : (subeSlug || 'Şube Yetkilisi')}</span> 👋
-                        </h2>
-                        <p className="text-sm text-[#F6F1E7]/75 leading-relaxed">
-                            {role === 'admin'
-                                ? 'Sütlüce Kadayıf ekosistemindeki tüm şubelerin dijital menülerini, fiyatlarını, aktif/pasif ürün durumlarını ve eğitim kütüphanelerini tek bir noktadan yönetme gücüne sahipsiniz.'
-                                : `${subeSlug || 'Şubeniz'} şubesine ait QR menü içeriklerini, ürün kategorilerini, fiyat güncellemelerini ve personelleriniz için eğitim sayfalarını buradan kolayca yönetebilirsiniz.`}
+                    {/* Selamlama overlay — haritanın üstünde */}
+                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-background/95 via-background/70 to-transparent p-5 md:p-7">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            {role === 'admin' ? 'Şube Ağı' : 'Şubeniz'}
                         </p>
+                        <h2 className="mt-1 text-2xl font-light leading-tight tracking-tight text-foreground md:text-3xl" style={{ fontFamily: 'Marcellus, serif' }}>
+                            Merhaba, <span className="font-bold text-[#084529] dark:text-[#d8c7a3]">{role === 'admin' ? 'Yönetici' : (subeSlug || 'Şube Yetkilisi')}</span> 👋
+                        </h2>
+                        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border bg-background/85 px-3 py-1 text-xs font-medium text-foreground backdrop-blur">
+                            <MapIcon className="size-3.5 text-[#084529] dark:text-[#d8c7a3]" />
+                            {role === 'admin'
+                                ? `${ilSayisi} il · ${subeSayisi} şube`
+                                : (konumlar[0]?.il
+                                    ? `${konumlar[0].il}${konumlar[0].ilce ? ' · ' + konumlar[0].ilce : ''}`
+                                    : 'Konum atanmadı')}
+                        </span>
                     </div>
                 </div>
-            </div>
+            ) : (
+                <div className="rounded-3xl border bg-gradient-to-br from-[#084529] via-[#05321d] to-[#021b0f] p-6 text-[#F6F1E7] md:p-8">
+                    <h2 className="text-3xl font-light leading-tight tracking-tight" style={{ fontFamily: 'Marcellus, serif' }}>
+                        Merhaba, <span className="font-bold text-[#d8c7a3]">{subeSlug || 'Şube Yetkilisi'}</span> 👋
+                    </h2>
+                </div>
+            )}
 
             {/* Metrik Kartlar Grubu */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <Card className="bg-linear-to-t from-primary/5 to-card shadow-xs transition-all hover:shadow-md hover:border-muted-foreground/30 rounded-2xl">
+                <Card className="bg-linear-to-t from-primary/5 to-card transition-all hover:border-muted-foreground/30 rounded-2xl">
                     <CardHeader className="flex flex-row items-center justify-between pb-3">
                         <div className="space-y-1">
                             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Aktif Şube</p>
@@ -54,7 +91,7 @@ export default function Dashboard() {
                                 {subeSlug ? (subeSlug.charAt(0).toUpperCase() + subeSlug.slice(1)) : 'Tüm Şubeler'}
                             </CardTitle>
                         </div>
-                        <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3] shadow-xs">
+                        <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3]">
                             <Building2 className="size-4.5" />
                         </div>
                     </CardHeader>
@@ -66,7 +103,7 @@ export default function Dashboard() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-linear-to-t from-primary/5 to-card shadow-xs transition-all hover:shadow-md hover:border-muted-foreground/30 rounded-2xl">
+                <Card className="bg-linear-to-t from-primary/5 to-card transition-all hover:border-muted-foreground/30 rounded-2xl">
                     <CardHeader className="flex flex-row items-center justify-between pb-3">
                         <div className="space-y-1">
                             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Yönetim Rolü</p>
@@ -74,7 +111,7 @@ export default function Dashboard() {
                                 {role === 'admin' ? 'Genel Yönetici' : 'Şube Yetkilisi'}
                             </CardTitle>
                         </div>
-                        <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3] shadow-xs">
+                        <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3]">
                             <UserCircle className="size-4.5" />
                         </div>
                     </CardHeader>
@@ -85,7 +122,7 @@ export default function Dashboard() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-linear-to-t from-primary/5 to-card shadow-xs transition-all hover:shadow-md hover:border-muted-foreground/30 rounded-2xl">
+                <Card className="bg-linear-to-t from-primary/5 to-card transition-all hover:border-muted-foreground/30 rounded-2xl">
                     <CardHeader className="flex flex-row items-center justify-between pb-3">
                         <div className="space-y-1">
                             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Müşteri Arayüzü</p>
@@ -93,7 +130,7 @@ export default function Dashboard() {
                                 QR Menüyü Önizle
                             </CardTitle>
                         </div>
-                        <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3] shadow-xs">
+                        <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3]">
                             <QrCode className="size-4.5" />
                         </div>
                     </CardHeader>

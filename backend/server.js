@@ -69,7 +69,7 @@ app.use(cors({
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         // Cloudflare Pages/Workers deploy'ları
-        } else if (origin.endsWith('.sutlucekadayif.pages.dev') || origin.endsWith('.sutlucekadayif.workers.dev')) {
+        } else if (origin.endsWith('.sutlucekadayif.pages.dev') || origin.endsWith('.sutlucekadayif.workers.dev') || origin.endsWith('.dijitalreklam.workers.dev')) {
             callback(null, true);
         } else {
             callback(new Error('CORS policy violation'));

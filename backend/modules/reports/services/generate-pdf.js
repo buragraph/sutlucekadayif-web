@@ -5,15 +5,18 @@
  * Dosya sistemine yazmaz — PDF'i Buffer olarak döndürür.
  */
 
-import chromium from '@sparticuz/chromium';
-import puppeteerCore from 'puppeteer-core';
-
 /**
  * HTML içeriğinden PDF Buffer üretir.
  * @param {string} htmlContent - PDF'e dönüştürülecek HTML string
  * @returns {Buffer} PDF içeriği
  */
 export async function generatePdf(htmlContent) {
+  // Ağır paketler cold start'ı şişirmemek için ilk kullanımda yüklenir
+  const [{ default: chromium }, { default: puppeteerCore }] = await Promise.all([
+    import('@sparticuz/chromium'),
+    import('puppeteer-core'),
+  ]);
+
   let browser = null;
   try {
     browser = await puppeteerCore.launch({

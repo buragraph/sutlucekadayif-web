@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { useReportsStore, fmtC } from '../hooks/useReports';
-import { Search, MapPin, AlertTriangle } from 'lucide-react';
+import { Search, MapPin, AlertTriangle, Filter, CheckSquare } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export function BranchSidebar() {
     const [search, setSearch] = useState('');
@@ -14,11 +17,20 @@ export function BranchSidebar() {
     const metaPrefixMappings = useReportsStore((s) => s.metaPrefixMappings);
     const googleMappings = useReportsStore((s) => s.googleMappings);
     const budgetStatus = useReportsStore((s) => s.budgetStatus);
+    
+    // Filter states
+    const selectedFilterBranches = useReportsStore((s) => s.selectedFilterBranches);
+    const toggleFilterBranch = useReportsStore((s) => s.toggleFilterBranch);
+    const clearFilterBranches = useReportsStore((s) => s.clearFilterBranches);
+    const selectAllFilterBranches = useReportsStore((s) => s.selectAllFilterBranches);
 
-    const filtered = branches.filter((b) => 
-        b.ad.toLowerCase().includes(search.toLowerCase()) || 
-        b.kod.toLowerCase().includes(search.toLowerCase())
-    );
+    const filtered = branches.filter((b) => {
+        const matchesSearch = b.ad.toLowerCase().includes(search.toLowerCase()) || b.kod.toLowerCase().includes(search.toLowerCase());
+        const matchesFilter = selectedFilterBranches.length === 0 || selectedFilterBranches.includes(b.kod);
+        return matchesSearch && matchesFilter;
+    });
+
+    const isFiltered = selectedFilterBranches.length > 0;
 
     const renderSkeletons = () => (
         Array(12).fill(0).map((_, i) => (
@@ -36,9 +48,50 @@ export function BranchSidebar() {
         <div className="w-[300px] shrink-0 border-r bg-card flex flex-col h-full z-10 overflow-hidden">
             <div className="px-4 py-3 border-b flex items-center justify-between shrink-0">
                 <span className="text-sm font-semibold text-foreground">Şubeler</span>
-                <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border">
-                    {loading ? '—' : branches.length}
-                </span>
+                <div className="flex items-center gap-2">
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button 
+                                variant={isFiltered ? "secondary" : "ghost"} 
+                                size="icon" 
+                                className={`w-7 h-7 ${isFiltered ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`}
+                                title="Şubeleri Filtrele"
+                            >
+                                <Filter className="w-3.5 h-3.5" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-0" align="end">
+                            <div className="flex items-center justify-between px-3 py-2 border-b">
+                                <span className="text-xs font-medium">Şube Filtresi</span>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={clearFilterBranches}
+                                        className="text-[10px] text-red-500 hover:text-red-600"
+                                    >
+                                        Temizle
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="max-h-[300px] overflow-y-auto p-2 flex flex-col gap-1">
+                                {branches.map(b => {
+                                    const checked = selectedFilterBranches.includes(b.kod);
+                                    return (
+                                        <label key={b.kod} className="flex items-center gap-2 p-1.5 hover:bg-muted rounded cursor-pointer">
+                                            <Checkbox 
+                                                checked={checked} 
+                                                onCheckedChange={() => toggleFilterBranch(b.kod)} 
+                                            />
+                                            <span className="text-xs">{b.ad}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+                    <span className="text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full border border-border">
+                        {loading ? '—' : filtered.length}
+                    </span>
+                </div>
             </div>
             
             <div className="p-3 border-b shrink-0 bg-muted/30">
@@ -96,25 +149,7 @@ export function BranchSidebar() {
                                 <span>{s.kod}</span>
                                 <span>{fmtC(tS)}</span>
                             </div>
-                            {(() => {
-                                const bs = budgetStatus?.subeler?.find(b => b.kod === s.kod);
-                                if (!bs || !bs.toplamButce) return null;
-                                const pct = Math.min(bs.kullanimOrani, 120);
-                                const barColor = bs.durum === 'asim' ? 'bg-red-500' : bs.durum === 'uyari' ? 'bg-amber-500' : 'bg-emerald-500';
-                                return (
-                                    <div className="px-1 mt-0.5">
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                                                <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-                                            </div>
-                                            <span className={`text-[10px] font-medium shrink-0 ${bs.durum === 'asim' ? 'text-red-500' : bs.durum === 'uyari' ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                                                {bs.durum === 'asim' && <AlertTriangle className="w-2.5 h-2.5 inline mr-0.5 -mt-px" />}
-                                                %{Math.round(bs.kullanimOrani)}
-                                            </span>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
+
                         </div>
                     );
                 })}
