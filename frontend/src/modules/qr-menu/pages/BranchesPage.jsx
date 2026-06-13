@@ -10,6 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import illerIlceler from '@/data/tr-iller-ilceler.json';
+
+const IL_LISTESI = Object.keys(illerIlceler);
 
 export default function BranchesPage() {
     const toast = useToast();
@@ -32,7 +35,7 @@ export default function BranchesPage() {
 
     function openAdd() {
         setEditing(null);
-        setForm({ slug: '', ad: '', adres: '', telefon: '', yetkili_adi: '', fatura_adresi: '', vkn: '', sirket_tipi: '' });
+        setForm({ slug: '', ad: '', adres: '', telefon: '', yetkili_adi: '', fatura_adresi: '', vkn: '', sirket_tipi: '', il: '', ilce: '' });
         setShowModal(true);
     }
 
@@ -47,6 +50,8 @@ export default function BranchesPage() {
             fatura_adresi: sube.fatura_adresi || '',
             vkn: sube.vkn || '',
             sirket_tipi: sube.sirket_tipi || '',
+            il: sube.il || '',
+            ilce: sube.ilce || '',
         });
         setShowModal(true);
     }
@@ -66,6 +71,8 @@ export default function BranchesPage() {
                     fatura_adresi: form.fatura_adresi,
                     vkn: form.vkn,
                     sirket_tipi: form.sirket_tipi,
+                    il: form.il,
+                    ilce: form.ilce,
                 });
             } else {
                 await api.post('/branches', form);
@@ -150,9 +157,37 @@ export default function BranchesPage() {
                             <Label>Şube Adı</Label>
                             <Input type="text" value={form.ad} onChange={(e) => setForm({ ...form, ad: e.target.value })} placeholder="örn: Ankara Şubesi" required autoFocus />
                         </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>İl</Label>
+                                <Select value={form.il} onValueChange={(val) => setForm({ ...form, il: val, ilce: '' })}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="İl seçiniz" />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-72">
+                                        {IL_LISTESI.map((il) => (
+                                            <SelectItem key={il} value={il}>{il}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>İlçe</Label>
+                                <Select value={form.ilce} onValueChange={(val) => setForm({ ...form, ilce: val })} disabled={!form.il}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder={form.il ? 'İlçe seçiniz' : 'Önce il seçin'} />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-72">
+                                        {(illerIlceler[form.il] || []).map((ilce) => (
+                                            <SelectItem key={ilce} value={ilce}>{ilce}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
                         <div className="space-y-1.5">
                             <Label>Adres</Label>
-                            <Input type="text" value={form.adres} onChange={(e) => setForm({ ...form, adres: e.target.value })} placeholder="Şube adresi (opsiyonel)" />
+                            <Input type="text" value={form.adres} onChange={(e) => setForm({ ...form, adres: e.target.value })} placeholder="Açık adres (opsiyonel)" />
                         </div>
                         <div className="space-y-1.5">
                             <Label>Telefon</Label>

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../config/firebase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
+import { cacheMiddleware, invalidateCache } from '../middleware/cache.js';
 import asyncHandler from '../utils/asyncHandler.js';
 
 const router = Router();
@@ -29,6 +30,26 @@ router.get(
 );
 
 /**
+ * GET /api/branches/konumlar
+ * Harita için hafif şube konum listesi — sadece ad + il + ilçe.
+ * Ürün sayım sorguları (N ek read) yapılmaz; 5 dk cache'lenir.
+ */
+router.get(
+    '/konumlar',
+    verifyToken,
+    requirePermission('branches.view'),
+    cacheMiddleware(300),
+    asyncHandler(async (req, res) => {
+        const snap = await db.collection('subeler').get();
+        const konumlar = snap.docs.map((d) => {
+            const data = d.data();
+            return { slug: d.id, ad: data.ad || d.id, il: data.il || null, ilce: data.ilce || null };
+        });
+        res.json({ konumlar });
+    })
+);
+
+/**
  * POST /api/branches
  * Yeni şube oluştur
  * Body: { slug, ad, adres?, telefon? }
@@ -38,7 +59,7 @@ router.post(
     verifyToken,
     requirePermission('branches.create'),
     asyncHandler(async (req, res) => {
-        const { slug, ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi } = req.body;
+        const { slug, ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi, il, ilce } = req.body;
 
         if (!slug || !slug.trim()) {
             return res.status(400).json({ error: 'Şube slug zorunludur (URL kısmı, örn: ankara)' });
@@ -62,8 +83,11 @@ router.post(
             fatura_adresi: fatura_adresi?.trim() || '',
             vkn: vkn?.trim() || '',
             sirket_tipi: sirket_tipi?.trim() || '',
+            il: il?.trim() || '',
+            ilce: ilce?.trim() || '',
         });
 
+        invalidateCache('/branches/konumlar');
         res.status(201).json({ slug: slugVal, ad: ad.trim() });
     })
 );
@@ -79,7 +103,7 @@ router.put(
     requirePermission('branches.edit'),
     asyncHandler(async (req, res) => {
         const { slug } = req.params;
-        const { ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi } = req.body;
+        const { ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi, il, ilce } = req.body;
 
         const docRef = db.collection('subeler').doc(slug);
         const doc = await docRef.get();
@@ -95,8 +119,11 @@ router.put(
         if (fatura_adresi !== undefined) updateData.fatura_adresi = fatura_adresi.trim();
         if (vkn !== undefined) updateData.vkn = vkn.trim();
         if (sirket_tipi !== undefined) updateData.sirket_tipi = sirket_tipi.trim();
+        if (il !== undefined) updateData.il = il.trim();
+        if (ilce !== undefined) updateData.ilce = ilce.trim();
 
         await docRef.update(updateData);
+        invalidateCache('/branches/konumlar');
         res.json({ success: true });
     })
 );
@@ -125,6 +152,7 @@ router.delete(
         }
 
         await docRef.delete();
+        invalidateCache('/branches/konumlar');
         res.json({ success: true });
     })
 );

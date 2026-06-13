@@ -1,10 +1,22 @@
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
+import api from '../../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Building2, UserCircle, QrCode, Sparkles, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight } from 'lucide-react';
+import { Building2, UserCircle, QrCode, Sparkles, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight, Map as MapIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import BranchMap from '../components/BranchMap';
 
 export default function Dashboard() {
     const { subeSlug, role } = useAuth();
+    const [konumlar, setKonumlar] = useState([]);
+
+    // Harita yalnızca admin için anlamlı (tüm şubeler) — konumları hafif endpoint'ten çek
+    useEffect(() => {
+        if (role !== 'admin') return;
+        api.get('/branches/konumlar')
+            .then(({ data }) => setKonumlar(data.konumlar || []))
+            .catch(() => {});
+    }, [role]);
 
     return (
         <div className="space-y-6">
@@ -110,6 +122,24 @@ export default function Dashboard() {
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Şube Konum Haritası (yalnızca admin) */}
+            {role === 'admin' && (
+                <Card className="rounded-2xl shadow-xs">
+                    <CardHeader className="flex flex-row items-center justify-between pb-3">
+                        <div className="space-y-1">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Şube Ağı</p>
+                            <CardTitle className="text-lg font-bold tracking-tight text-foreground">Şube Konumları</CardTitle>
+                        </div>
+                        <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3] shadow-xs">
+                            <MapIcon className="size-4.5" />
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <BranchMap branches={konumlar} />
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Hızlı Eylemler Panel Kartı */}
             <div className="space-y-3">
