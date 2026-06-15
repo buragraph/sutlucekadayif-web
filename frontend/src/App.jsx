@@ -9,6 +9,7 @@ import LoginPage from './modules/qr-menu/pages/LoginPage';
 import ProductsPage from './modules/qr-menu/pages/ProductsPage';
 import Dashboard from './modules/qr-menu/pages/Dashboard';
 import UsersPage from './modules/qr-menu/pages/UsersPage';
+import ProfilePage from './modules/qr-menu/pages/ProfilePage';
 import BranchesPage from './modules/qr-menu/pages/BranchesPage';
 import CategoriesPage from './modules/qr-menu/pages/CategoriesPage';
 import PhotoLibraryPage from './modules/qr-menu/pages/PhotoLibraryPage';
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/admin/reklam" element={<BranchReklamPage />} />
             <Route path="/admin/qr-menu" element={<ProductsPage />} />
             <Route path="/admin/kullanicilar" element={<UsersPage />} />
+            <Route path="/admin/profil" element={<ProfilePage />} />
             <Route path="/admin/subeler" element={<BranchesPage />} />
             <Route path="/admin/qr-menu/kategoriler" element={<CategoriesPage />} />
             <Route path="/admin/medya" element={<PhotoLibraryPage />} />

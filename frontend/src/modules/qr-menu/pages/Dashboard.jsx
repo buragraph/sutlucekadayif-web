@@ -2,21 +2,52 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Building2, UserCircle, QrCode, Sparkles, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight, Map as MapIcon } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Building2, UserCircle, QrCode, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight, Map as MapIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 // MapLibre ağır bir paket — yalnızca harita gösterilince yüklensin (kod bölme)
 const BranchMap = lazy(() => import('../components/BranchMap'));
+// recharts da ağır — yalnızca şube sahibi grafiğinde yüklensin
+const HarcamaGrafik = lazy(() => import('../components/HarcamaGrafik'));
+
+// Grafik yüklenirken yer ayıran iskelet — harita ile aynı boyda, layout sıçraması önler
+function GrafikIskelet() {
+    return (
+        <Card className="flex h-full flex-col">
+            <CardHeader>
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-3.5 w-56" />
+            </CardHeader>
+            <CardContent className="flex-1">
+                <Skeleton className="h-full min-h-[280px] w-full" />
+            </CardContent>
+        </Card>
+    );
+}
 
 export default function Dashboard() {
     const { subeSlug, role } = useAuth();
     const [konumlar, setKonumlar] = useState([]);
+    const [harcamaDonemler, setHarcamaDonemler] = useState([]);
+    const [harcamaLoading, setHarcamaLoading] = useState(true);
+    const bugun = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     // Harita admin (tüm şubeler) ve şube sahibi (kendi şubesi) için gösterilir
     const haritaGoster = role === 'admin' || role === 'sube_sahibi';
     // Yalnızca konumu (il) atanmış şubeler haritada görünür — çip de onları sayar
     const konumluSubeler = konumlar.filter((k) => k.il);
     const subeSayisi = konumluSubeler.length;
     const ilSayisi = new Set(konumluSubeler.map((k) => k.il)).size;
+    // Şube sahibi modunda (admin simülasyonu dahil) odaklanılacak şube: subeSlug'a eşleşen.
+    // Admin simülasyonunda backend tüm şubeleri döndürür; bu yüzden konumlar[0] değil subeSlug eşleşmesi alınır.
+    const kendiSube = role === 'sube_sahibi'
+        ? (konumlar.find((k) => k.slug === subeSlug) || null)
+        : null;
+    // Haritaya verilecek şubeler: şube sahibi modunda yalnızca kendi şubesi
+    const haritaSubeler = role === 'sube_sahibi' ? (kendiSube ? [kendiSube] : []) : konumlar;
+    // Grafik alanı: şube sahibinde, yüklenirken VEYA veri varken ayrılır → harita ile
+    // yan yana, baştan 2 sütun. Yüklenirken iskelet gösterilir, sıçrama olmaz.
+    const grafikAlani = role === 'sube_sahibi' && (harcamaLoading || harcamaDonemler.length > 0);
 
     // Konumları hafif endpoint'ten çek (admin: tümü, sube_sahibi: kendi şubesi)
     useEffect(() => {
@@ -24,31 +55,39 @@ export default function Dashboard() {
         api.get('/branches/konumlar')
             .then(({ data }) => setKonumlar(data.konumlar || []))
             .catch(() => {});
-    }, [haritaGoster]);
+        // subeSlug bağımlılığı: kullanıcının şubesi değişince harita konumları tazelensin
+    }, [haritaGoster, subeSlug]);
+
+    // Şube sahibi: geçmiş dönem harcamaları (donem_ozetleri — backend güncel dönemi filtreler)
+    useEffect(() => {
+        if (role !== 'sube_sahibi' || !subeSlug) { setHarcamaDonemler([]); setHarcamaLoading(false); return; }
+        let aktif = true;
+        setHarcamaLoading(true);
+        api.get(`/reports/sube/${subeSlug}`)
+            .then(({ data }) => { if (aktif) setHarcamaDonemler(data.sube?.donem_ozetleri || []); })
+            .catch(() => { if (aktif) setHarcamaDonemler([]); })
+            .finally(() => { if (aktif) setHarcamaLoading(false); });
+        return () => { aktif = false; };
+    }, [role, subeSlug]);
 
     return (
-        <div className="space-y-6">
-            {/* Sayfa Başlığı */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ana Menü</p>
-                    <h1 className="text-3xl font-bold tracking-tight text-foreground" style={{ fontFamily: 'Montserrat, sans-serif' }}>Genel Bakış</h1>
-                </div>
-                <div className="flex items-center gap-1.5 bg-muted/60 border px-3 py-1.5 rounded-xl text-xs font-medium text-muted-foreground">
-                    <Sparkles className="size-3.5 text-yellow-600 dark:text-[#d8c7a3]" />
-                    <span>Sistem Çevrimiçi</span>
-                </div>
+        <div className="flex flex-col gap-6">
+            {/* Sayfa Başlığı — referans "Store Overview" stili */}
+            <div className="flex flex-col gap-1">
+                <h1 className="text-3xl leading-none tracking-tight text-foreground">Genel Bakış</h1>
+                <p className="text-sm text-muted-foreground">{bugun}</p>
             </div>
 
-            {/* Şube Haritası — tam genişlik, selamlama üstte overlay */}
+            {/* Harita + Grafik — şube sahibinde dengeli yan yana (lg), admin'de tam genişlik */}
+            <div className={grafikAlani ? 'grid gap-4 lg:grid-cols-2' : ''}>
             {haritaGoster ? (
-                <div className="relative h-[520px] overflow-hidden rounded-3xl border">
+                <div className={`relative ${grafikAlani ? 'h-[400px]' : 'h-[440px]'} overflow-hidden rounded-3xl border`}>
                     <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Harita yükleniyor…</div>}>
                         <BranchMap
-                            branches={konumlar}
-                            focusIl={role === 'sube_sahibi' ? (konumlar[0]?.il || null) : null}
-                            focusCoord={role === 'sube_sahibi' && Number.isFinite(konumlar[0]?.lat) && Number.isFinite(konumlar[0]?.lng)
-                                ? [konumlar[0].lng, konumlar[0].lat]
+                            branches={haritaSubeler}
+                            focusIl={role === 'sube_sahibi' ? (kendiSube?.il || null) : null}
+                            focusCoord={role === 'sube_sahibi' && Number.isFinite(kendiSube?.lat) && Number.isFinite(kendiSube?.lng)
+                                ? [kendiSube.lng, kendiSube.lat]
                                 : null}
                             className="absolute inset-0 h-full w-full"
                             showFooter={false}
@@ -67,8 +106,8 @@ export default function Dashboard() {
                             <MapIcon className="size-3.5 text-[#084529] dark:text-[#d8c7a3]" />
                             {role === 'admin'
                                 ? `${ilSayisi} il · ${subeSayisi} şube`
-                                : (konumlar[0]?.il
-                                    ? `${konumlar[0].il}${konumlar[0].ilce ? ' · ' + konumlar[0].ilce : ''}`
+                                : (kendiSube?.il
+                                    ? `${kendiSube.il}${kendiSube.ilce ? ' · ' + kendiSube.ilce : ''}`
                                     : 'Konum atanmadı')}
                         </span>
                     </div>
@@ -80,6 +119,19 @@ export default function Dashboard() {
                     </h2>
                 </div>
             )}
+
+            {/* Geçmiş dönem harcama grafiği — harita ile yan yana (ekstra read yok).
+                Yüklenirken/lazy chunk gelene kadar iskelet → sıçrama olmaz. */}
+            {grafikAlani && (
+                harcamaDonemler.length > 0 ? (
+                    <Suspense fallback={<GrafikIskelet />}>
+                        <HarcamaGrafik className="h-full" donemler={harcamaDonemler} />
+                    </Suspense>
+                ) : (
+                    <GrafikIskelet />
+                )
+            )}
+            </div>{/* harita+grafik grid */}
 
             {/* Metrik Kartlar Grubu */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

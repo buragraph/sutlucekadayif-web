@@ -37,7 +37,7 @@ export default function AcademyDashboard() {
             {/* Page Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground">Akademi</h1>
+                    <h1 className="text-3xl leading-none tracking-tight text-foreground">Akademi</h1>
                     <p className="text-xs text-muted-foreground mt-0.5">Eğitim içeriklerine göz atın ve kendinizi geliştirin.</p>
                 </div>
                 {role === 'admin' && (

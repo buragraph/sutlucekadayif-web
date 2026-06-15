@@ -19,3 +19,6 @@ export function proxyImageUrl(url) {
     // R2 olmayan URL'ler (ör: harici CDN) doğrudan döner
     return url;
 }
+
+// Görsel dışındaki R2 dosyaları (PDF, video) için aynı proxy mantığı
+export const proxyR2Url = proxyImageUrl;

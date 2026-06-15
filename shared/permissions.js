@@ -40,6 +40,7 @@ const PERMISSIONS = {
     'users.view': ['admin', 'sube_sahibi'],
     'users.create': ['admin', 'sube_sahibi'],
     'users.assignRole': ['admin', 'sube_sahibi'],
+    'users.resetOnboarding': ['admin'],
 
     // ── Akademi ──
     'academy.view': ['admin', 'sube_sahibi', 'calisan'],

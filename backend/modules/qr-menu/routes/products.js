@@ -23,16 +23,27 @@ async function findProduct(id, subeSlug) {
     const mainDoc = await mainRef.get();
     if (mainDoc.exists) return { docRef: mainRef, doc: mainDoc, source: 'ortak' };
     
-    // subeSlug yoksa tüm şubelerde ara (fallback)
+    // subeSlug yoksa tüm şubelerde ara (fallback) — paralel
     if (!subeSlug) {
         const subeSnap = await db.collection('subeler').get();
-        for (const subeDoc of subeSnap.docs) {
+        const results = await Promise.all(subeSnap.docs.map(async (subeDoc) => {
             const ref = subeDoc.ref.collection('urunler').doc(id);
             const d = await ref.get();
-            if (d.exists) return { docRef: ref, doc: d, source: 'sube_ozel', subeSlug: subeDoc.id };
-        }
+            return d.exists ? { docRef: ref, doc: d, source: 'sube_ozel', subeSlug: subeDoc.id } : null;
+        }));
+        const hit = results.find(Boolean);
+        if (hit) return hit;
     }
     return null;
+}
+
+/**
+ * Şube sahibi yalnızca KENDİ şubesinin özel ürününü değiştirebilir.
+ * Ortak ürünler ve diğer şubelerin ürünleri yalnızca admin tarafından.
+ */
+function canMutateProduct(req, source, subeSlug) {
+    if (req.user.role === 'admin') return true;
+    return source === 'sube_ozel' && subeSlug === req.user.subeSlug;
 }
 
 /**
@@ -117,6 +128,17 @@ router.post(
         const katDoc = await db.collection('kategoriler').doc(kategori).get();
         const katTur = katDoc.exists ? (katDoc.data().tur || 'ortak') : 'ortak';
 
+        // Şube sahibi: yalnızca kendi şubesine özel ürün ekleyebilir.
+        // Ortak (tüm şubeleri etkileyen) ürün oluşturmak admin'e özeldir.
+        if (req.user.role !== 'admin') {
+            if (katTur !== 'sube_ozel') {
+                return res.status(403).json({ error: 'Ortak ürün ekleme yetkiniz yok' });
+            }
+            if (sube_slug && sube_slug !== req.user.subeSlug) {
+                return res.status(403).json({ error: 'Yalnızca kendi şubenize ürün ekleyebilirsiniz' });
+            }
+        }
+
         const productData = {
             ad: ad.trim(),
             fiyat: Number(fiyat),
@@ -152,13 +174,159 @@ router.post(
             urunSayisi: admin.firestore.FieldValue.increment(1)
         });
 
+        // Menü JSON cache'ini güvenilir şekilde yenile (yanıttan önce — serverless'te
+        // yanıt sonrası iş kesilebilir). Hata yutulur, yazma işlemi başarılı sayılır.
+        await regenerateAffectedMenuJsons(productData).catch(console.error);
+
         res.status(201).json({
             id: docRef.id,
             ...productData,
         });
+    })
+);
 
-        // Arka planda menü JSON'ını yenile
-        regenerateAffectedMenuJsons(productData).catch(console.error);
+// Toplu işlem sonrası etkilenen menü JSON'larını tek seferde yeniler (dedupe)
+async function regenerateForAffected(affected) {
+    const hasOrtak = affected.some((a) => a.tur !== 'sube_ozel');
+    if (hasOrtak) { await regenerateAllMenuJsons().catch(console.error); return; }
+    const slugs = [...new Set(affected.map((a) => a.sube_slug).filter(Boolean))];
+    await Promise.all(slugs.map((s) => regenerateMenuJson(s).catch(console.error)));
+}
+
+/**
+ * PUT /api/products/bulk-price
+ * Seçili ürünlerin fiyatını toplu güncelle.
+ * NOT: /:id'den ÖNCE tanımlı olmalı.
+ * Body: { items: [{id, sube_slug}], mode: 'set'|'inc_pct'|'dec_pct'|'inc_amt'|'dec_amt', value }
+ */
+router.put(
+    '/bulk-price',
+    verifyToken,
+    requirePermission('products.edit'),
+    asyncHandler(async (req, res) => {
+        const { items, mode, value } = req.body;
+        if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Ürün seçilmedi' });
+        const v = Number(value);
+        if (!['set', 'inc_pct', 'dec_pct', 'inc_amt', 'dec_amt'].includes(mode) || !Number.isFinite(v)) {
+            return res.status(400).json({ error: 'Geçersiz fiyat işlemi' });
+        }
+
+        const affected = [];
+        let updated = 0;
+        for (const it of items) {
+            const lookupSlug = req.user.role === 'admin' ? it.sube_slug : req.user.subeSlug;
+            const found = await findProduct(it.id, lookupSlug);
+            if (!found || !canMutateProduct(req, found.source, found.subeSlug)) continue;
+
+            const cur = Number(found.doc.data().fiyat) || 0;
+            let np = cur;
+            if (mode === 'set') np = v;
+            else if (mode === 'inc_pct') np = cur * (1 + v / 100);
+            else if (mode === 'dec_pct') np = cur * (1 - v / 100);
+            else if (mode === 'inc_amt') np = cur + v;
+            else if (mode === 'dec_amt') np = cur - v;
+            np = Math.max(0, Math.round(np * 100) / 100);
+
+            await found.docRef.update({ fiyat: np });
+            affected.push({ tur: found.source, sube_slug: found.subeSlug });
+            updated++;
+        }
+
+        await regenerateForAffected(affected);
+        res.json({ success: true, updated });
+    })
+);
+
+/**
+ * POST /api/products/bulk
+ * Birden çok ürünü tek seferde oluştur.
+ * Body: { products: [{ ad, fiyat, kategori, sube_slug?, aciklama?, etiket?, miktar?, birim?, gorsel? }] }
+ */
+router.post(
+    '/bulk',
+    verifyToken,
+    requirePermission('products.create'),
+    asyncHandler(async (req, res) => {
+        const { products } = req.body;
+        if (!Array.isArray(products) || products.length === 0) return res.status(400).json({ error: 'Ürün listesi boş' });
+
+        const katSnap = await db.collection('kategoriler').get();
+        const katMap = {};
+        katSnap.forEach((d) => { katMap[d.id] = d.data(); });
+
+        const affected = [];
+        const katInc = {};
+        let created = 0;
+        for (const p of products) {
+            if (!p.ad || !p.ad.trim() || p.fiyat === undefined || p.fiyat === null || p.fiyat === '' || !p.kategori) continue;
+            const katTur = katMap[p.kategori]?.tur || 'ortak';
+            if (req.user.role !== 'admin' && katTur !== 'sube_ozel') continue; // şube sahibi ortak ürün ekleyemez
+
+            const data = {
+                ad: p.ad.trim(),
+                fiyat: Number(p.fiyat),
+                kategori: p.kategori,
+                aciklama: (p.aciklama || '').trim(),
+                etiket: p.etiket || [],
+                gorsel: p.gorsel || '',
+                miktar: p.miktar ? Number(p.miktar) : null,
+                birim: p.birim || '',
+                createdAt: new Date().toISOString(),
+            };
+
+            if (katTur === 'sube_ozel') {
+                const slug = req.user.role === 'admin' ? (p.sube_slug || req.user.subeSlug) : req.user.subeSlug;
+                if (!slug) continue;
+                data.tur = 'sube_ozel'; data.sube_slug = slug;
+                await db.collection('subeler').doc(slug).collection('urunler').add(data);
+            } else {
+                data.tur = 'ortak'; data.mevcut_degil = [];
+                await db.collection('ortak_urunler').add(data);
+            }
+            katInc[p.kategori] = (katInc[p.kategori] || 0) + 1;
+            affected.push({ tur: data.tur, sube_slug: data.sube_slug });
+            created++;
+        }
+
+        await Promise.all(Object.entries(katInc).map(([k, n]) =>
+            db.collection('kategoriler').doc(k).update({ urunSayisi: admin.firestore.FieldValue.increment(n) }).catch(() => {})));
+        await regenerateForAffected(affected);
+        res.status(201).json({ success: true, created });
+    })
+);
+
+/**
+ * POST /api/products/bulk-delete
+ * Seçili ürünleri toplu çöp kutusuna taşı (soft delete).
+ * Body: { items: [{id, sube_slug}] }
+ */
+router.post(
+    '/bulk-delete',
+    verifyToken,
+    requirePermission('products.delete'),
+    asyncHandler(async (req, res) => {
+        const { items } = req.body;
+        if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Ürün seçilmedi' });
+
+        const affected = [];
+        const katDec = {};
+        let deleted = 0;
+        for (const it of items) {
+            const lookupSlug = req.user.role === 'admin' ? it.sube_slug : req.user.subeSlug;
+            const found = await findProduct(it.id, lookupSlug);
+            if (!found || !canMutateProduct(req, found.source, found.subeSlug)) continue;
+
+            await found.docRef.update({ deletedAt: new Date().toISOString() });
+            const kat = found.doc.data().kategori;
+            if (kat) katDec[kat] = (katDec[kat] || 0) + 1;
+            affected.push({ tur: found.source, sube_slug: found.subeSlug });
+            deleted++;
+        }
+
+        await Promise.all(Object.entries(katDec).map(([k, n]) =>
+            db.collection('kategoriler').doc(k).update({ urunSayisi: admin.firestore.FieldValue.increment(-n) }).catch(() => {})));
+        await regenerateForAffected(affected);
+        res.json({ success: true, deleted });
     })
 );
 
@@ -175,9 +343,14 @@ router.put(
         const { id } = req.params;
         const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim } = req.body;
 
-        const found = await findProduct(id, sube_slug || req.body._subeSlug);
+        // Şube sahibi yalnızca kendi şubesinde arar (başka şubeyi hedefleyemez)
+        const lookupSlug = req.user.role === 'admin' ? (sube_slug || req.body._subeSlug) : req.user.subeSlug;
+        const found = await findProduct(id, lookupSlug);
         if (!found) {
             return res.status(404).json({ error: 'Ürün bulunamadı' });
+        }
+        if (!canMutateProduct(req, found.source, found.subeSlug)) {
+            return res.status(403).json({ error: 'Bu ürünü değiştirme yetkiniz yok' });
         }
         const { docRef, doc } = found;
 
@@ -211,10 +384,9 @@ router.put(
         await docRef.update(updateData);
         const updated = await docRef.get();
         const updatedData = { ...updated.data(), tur: found.source, sube_slug: found.subeSlug };
-        res.json({ success: true, urun: { id, ...updatedData } });
 
-        // Arka planda menü JSON'ını yenile
-        regenerateAffectedMenuJsons(updatedData).catch(console.error);
+        await regenerateAffectedMenuJsons(updatedData).catch(console.error);
+        res.json({ success: true, urun: { id, ...updatedData } });
     })
 );
 
@@ -230,9 +402,13 @@ router.delete(
         const { id } = req.params;
         const { subeSlug } = req.query;
 
-        const found = await findProduct(id, subeSlug);
+        const lookupSlug = req.user.role === 'admin' ? subeSlug : req.user.subeSlug;
+        const found = await findProduct(id, lookupSlug);
         if (!found) {
             return res.status(404).json({ error: 'Ürün bulunamadı' });
+        }
+        if (!canMutateProduct(req, found.source, found.subeSlug)) {
+            return res.status(403).json({ error: 'Bu ürünü silme yetkiniz yok' });
         }
 
         await found.docRef.update({ deletedAt: new Date().toISOString() });
@@ -246,10 +422,8 @@ router.delete(
             });
         }
 
+        await regenerateAffectedMenuJsons(urunData).catch(console.error);
         res.json({ success: true });
-
-        // Arka planda menü JSON'ını yenile
-        regenerateAffectedMenuJsons(urunData).catch(console.error);
     })
 );
 
@@ -271,15 +445,24 @@ router.get(
             if (data.deletedAt) urunler.push({ id: d.id, tur: 'ortak', ...data });
         });
 
-        // Şube subcollection'lardan silinen ürünler
-        const subeSnap = await db.collection('subeler').get();
-        for (const subeDoc of subeSnap.docs) {
-            const urunSnap = await subeDoc.ref.collection('urunler').get();
+        // Şube subcollection'lardan silinen ürünler.
+        // Admin: tüm şubeler (paralel) | Şube sahibi: yalnızca kendi şubesi.
+        let hedefSubeIds;
+        if (req.user.role === 'admin') {
+            const subeSnap = await db.collection('subeler').get();
+            hedefSubeIds = subeSnap.docs.map(d => d.id);
+        } else {
+            hedefSubeIds = req.user.subeSlug ? [req.user.subeSlug] : [];
+        }
+        const subeUrunSnaps = await Promise.all(
+            hedefSubeIds.map(slug => db.collection('subeler').doc(slug).collection('urunler').get())
+        );
+        subeUrunSnaps.forEach((urunSnap, i) => {
             urunSnap.forEach((d) => {
                 const data = d.data();
-                if (data.deletedAt) urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: subeDoc.id, ...data });
+                if (data.deletedAt) urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: hedefSubeIds[i], ...data });
             });
-        }
+        });
 
         res.json({ urunler });
     })
@@ -297,8 +480,12 @@ router.put(
         const { id } = req.params;
         const { subeSlug } = req.query;
 
-        const found = await findProduct(id, subeSlug);
+        const lookupSlug = req.user.role === 'admin' ? subeSlug : req.user.subeSlug;
+        const found = await findProduct(id, lookupSlug);
         if (!found) return res.status(404).json({ error: 'Ürün bulunamadı' });
+        if (!canMutateProduct(req, found.source, found.subeSlug)) {
+            return res.status(403).json({ error: 'Bu ürünü geri alma yetkiniz yok' });
+        }
 
         await found.docRef.update({ deletedAt: admin.firestore.FieldValue.delete() });
 
@@ -310,11 +497,9 @@ router.put(
             });
         }
 
-        res.json({ success: true });
-
-        // Arka planda menü JSON'ını yenile
         const urunData = { ...found.doc.data(), tur: found.source, sube_slug: found.subeSlug };
-        regenerateAffectedMenuJsons(urunData).catch(console.error);
+        await regenerateAffectedMenuJsons(urunData).catch(console.error);
+        res.json({ success: true });
     })
 );
 
@@ -330,14 +515,18 @@ router.delete(
         const { id } = req.params;
         const { subeSlug } = req.query;
 
-        const found = await findProduct(id, subeSlug);
+        const lookupSlug = req.user.role === 'admin' ? subeSlug : req.user.subeSlug;
+        const found = await findProduct(id, lookupSlug);
         if (!found) return res.status(404).json({ error: 'Ürün bulunamadı' });
+        if (!canMutateProduct(req, found.source, found.subeSlug)) {
+            return res.status(403).json({ error: 'Bu ürünü silme yetkiniz yok' });
+        }
 
         const urunData = { ...found.doc.data(), tur: found.source, sube_slug: found.subeSlug };
         await found.docRef.delete();
-        res.json({ success: true });
 
-        regenerateAffectedMenuJsons(urunData).catch(console.error);
+        await regenerateAffectedMenuJsons(urunData).catch(console.error);
+        res.json({ success: true });
     })
 );
 
@@ -371,10 +560,9 @@ router.put(
             });
         }
 
+        // Sadece bu şubenin JSON'ını yenile (güvenilir — yanıttan önce)
+        await regenerateMenuJson(subeSlug).catch(console.error);
         res.json({ success: true, mevcut });
-
-        // Sadece bu şubenin JSON'ını yenile
-        regenerateMenuJson(subeSlug).catch(console.error);
     })
 );
 

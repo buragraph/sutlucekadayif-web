@@ -165,7 +165,7 @@ export default function AcademyAdmin() {
                         <ArrowLeft className="size-4" />
                     </Button>
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight text-foreground">Akademi Yönetimi</h1>
+                        <h1 className="text-3xl leading-none tracking-tight text-foreground">Akademi Yönetimi</h1>
                         <p className="text-xs text-muted-foreground mt-0.5">Eğitim içeriklerini ve kullanıcı istatistiklerini yönetin.</p>
                     </div>
                 </div>

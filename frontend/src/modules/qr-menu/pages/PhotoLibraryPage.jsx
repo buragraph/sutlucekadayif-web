@@ -14,7 +14,10 @@ export default function PhotoLibraryPage() {
     const confirm = useConfirm();
     const [medyalar, setMedyalar] = useState([]);
     const [klasorler, setKlasorler] = useState([]);
+    const [counts, setCounts] = useState({ genel: 0, total: 0, system: {} });
+    const [cursor, setCursor] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [editName, setEditName] = useState('');
@@ -27,37 +30,69 @@ export default function PhotoLibraryPage() {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [bulkMoveTarget, setBulkMoveTarget] = useState(null);
 
-    useEffect(() => {
-        loadAll();
-    }, []);
-
-    async function loadAll() {
-        setLoading(true);
+    async function loadKlasorler() {
         try {
-            const [medyaRes, klasorRes] = await Promise.all([
-                api.get('/media'),
-                api.get('/media/klasorler'),
-            ]);
-            setMedyalar(medyaRes.data.medyalar);
-            setKlasorler(klasorRes.data.klasorler);
-        } catch (err) {
-            console.error('Yükleme hatası:', err);
-        }
-        setLoading(false);
+            const { data } = await api.get('/media/klasorler');
+            setKlasorler(data.klasorler);
+            setCounts(data.counts || { genel: 0, total: 0, system: {} });
+        } catch (err) { console.error('Klasör yükleme hatası:', err); }
     }
+
+    // reset=true → ilk sayfa; reset=false → cursor ile sonraki sayfa (ekle).
+    // Arama aktifse sunucu tarafı substring araması (klasör/sayfa yok sayılır).
+    async function loadMedia(reset) {
+        if (reset) setLoading(true); else setLoadingMore(true);
+        try {
+            const params = { limit: 60 };
+            if (search && search.trim()) {
+                params.q = search.trim();
+            } else {
+                if (activeKlasor === '') params.genel = 1;
+                else if (activeKlasor) params.klasor = activeKlasor;
+                if (!reset && cursor) params.cursor = cursor;
+            }
+            const { data } = await api.get('/media', { params });
+            setMedyalar((prev) => (reset ? data.medyalar : [...prev, ...data.medyalar]));
+            setCursor(data.nextCursor);
+        } catch (err) { console.error('Medya yükleme hatası:', err); }
+        if (reset) setLoading(false); else setLoadingMore(false);
+    }
+
+    // Mutasyon sonrası: sayaçları + aktif klasörün ilk sayfasını tazele
+    async function refresh() {
+        await Promise.all([loadKlasorler(), loadMedia(true)]);
+    }
+
+    // Klasör sayaçlarını (server-side count) bir kez yükle
+    useEffect(() => { loadKlasorler(); }, []);
+    // Mevcut görseller için arama token'larını bir kez doldur
+    useEffect(() => {
+        if (localStorage.getItem('mediaSearchTokensBackfilled')) return;
+        api.post('/media/backfill-search')
+            .then(() => localStorage.setItem('mediaSearchTokensBackfilled', '1'))
+            .catch(() => {});
+    }, []);
+    // Klasör veya arama değişince ilk sayfayı yükle (arama debounce'lu)
+    useEffect(() => {
+        const t = setTimeout(() => loadMedia(true), 200);
+        return () => clearTimeout(t);
+    }, [activeKlasor, search]); // eslint-disable-line react-hooks/exhaustive-deps
 
     async function handleUpload(e) {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
         setUploading(true);
 
+        let basarili = 0;
         for (const file of files) {
+            let uploadedUrl = null;
             try {
                 const formData = new FormData();
                 formData.append('image', file);
                 const { data: uploadData } = await api.post('/upload/image', formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 });
+                uploadedUrl = uploadData.url;
 
                 const baseName = file.name.replace(/\.[^.]+$/, '');
                 await api.post('/media', {
@@ -66,13 +101,18 @@ export default function PhotoLibraryPage() {
                     klasor: activeKlasor === null ? '' : activeKlasor,
                     boyut: uploadData.optimizedSize || 0,
                 });
+                basarili++;
             } catch (err) {
+                // Kayıt başarısızsa R2'ye yüklenen dosyayı geri sil (yetim dosya kalmasın)
+                if (uploadedUrl) {
+                    api.delete('/upload/image', { data: { url: uploadedUrl } }).catch(() => {});
+                }
                 toast.error(`"${file.name}" yüklenemedi`);
             }
         }
 
-        toast.success(`${files.length} görsel yüklendi`);
-        await loadAll();
+        if (basarili > 0) toast.success(`${basarili} görsel yüklendi`);
+        await refresh();
         setUploading(false);
         e.target.value = '';
     }
@@ -82,7 +122,7 @@ export default function PhotoLibraryPage() {
         try {
             await api.put(`/media/${id}`, { ad: editName.trim(), klasor: editKlasor });
             setEditingId(null);
-            await loadAll();
+            await refresh();
             toast.success('Güncellendi');
         } catch (err) {
             toast.error('Güncelleme başarısız');
@@ -94,7 +134,7 @@ export default function PhotoLibraryPage() {
         if (!ok) return;
         try {
             await api.delete(`/media/${m.id}`);
-            await loadAll();
+            await refresh();
             toast.success('Görsel silindi');
         } catch (err) {
             toast.error('Silme başarısız');
@@ -107,7 +147,7 @@ export default function PhotoLibraryPage() {
             await api.post('/media/klasorler', { ad: newFolderName.trim() });
             setNewFolderName('');
             setShowNewFolder(false);
-            await loadAll();
+            await refresh();
             toast.success('Klasör oluşturuldu');
         } catch (err) {
             toast.error(err.response?.data?.error || 'Klasör oluşturulamadı');
@@ -120,7 +160,7 @@ export default function PhotoLibraryPage() {
         try {
             await api.delete(`/media/klasorler/${k.id}`);
             if (activeKlasor === k.ad) setActiveKlasor(null);
-            await loadAll();
+            await refresh();
             toast.success('Klasör silindi');
         } catch (err) {
             toast.error('Klasör silinemedi');
@@ -142,7 +182,7 @@ export default function PhotoLibraryPage() {
     async function handleMoveFolder(m, newKlasor) {
         try {
             await api.put(`/media/${m.id}`, { klasor: newKlasor });
-            await loadAll();
+            await refresh();
             toast.success(`"${m.ad}" taşındı`);
         } catch (err) {
             toast.error('Taşıma başarısız');
@@ -201,8 +241,8 @@ export default function PhotoLibraryPage() {
         if (bulkMoveTarget === null) return;
         const ids = [...selectedIds];
         try {
-            await Promise.all(ids.map(id => api.put(`/media/${id}`, { klasor: bulkMoveTarget })));
-            await loadAll();
+            await api.put('/media/bulk-move', { ids, klasor: bulkMoveTarget });
+            await refresh();
             clearSelection();
             toast.success(`${ids.length} görsel taşındı`);
         } catch { toast.error('Toplu taşıma başarısız'); }
@@ -213,33 +253,22 @@ export default function PhotoLibraryPage() {
         const ok = await confirm(`${ids.length} görseli silmek istediğinize emin misiniz?`);
         if (!ok) return;
         try {
-            await Promise.all(ids.map(id => api.delete(`/media/${id}`)));
-            await loadAll();
+            await api.post('/media/bulk-delete', { ids });
+            await refresh();
             clearSelection();
             toast.success(`${ids.length} görsel silindi`);
         } catch { toast.error('Toplu silme başarısız'); }
     }
 
-    // Filtreleme
-    let filtered = medyalar;
-    if (activeKlasor !== null) {
-        filtered = medyalar.filter((m) => (m.klasor || '') === activeKlasor);
-    }
-    if (search) {
-        filtered = filtered.filter((m) => m.ad.toLowerCase().includes(search.toLowerCase()));
-    }
+    // Klasör kapsaması ve arama artık server'da yapılıyor → doğrudan göster
+    const filtered = medyalar;
 
-    // Klasör başına medya sayısı
-    const genelCount = medyalar.filter((m) => !m.klasor).length;
+    // Klasör sayaçları server'dan (count aggregation) — tüm medyayı yüklemeden
+    const genelCount = counts.genel || 0;
     const SYSTEM_FOLDERS = ['Ürünler', 'Kategoriler'];
-    const systemFolderCounts = {};
-    SYSTEM_FOLDERS.forEach((name) => {
-        systemFolderCounts[name] = medyalar.filter((m) => m.klasor === name).length;
-    });
+    const systemFolderCounts = counts.system || {};
     const folderCounts = {};
-    klasorler.forEach((k) => {
-        folderCounts[k.ad] = medyalar.filter((m) => m.klasor === k.ad).length;
-    });
+    klasorler.forEach((k) => { folderCounts[k.ad] = k.count || 0; });
 
     const FolderButton = ({ name, count, active, isDragOver, onClick, onDragOver: dOver, onDragLeave: dLeave, onDrop: dDrop, children }) => (
         <button
@@ -385,7 +414,7 @@ export default function PhotoLibraryPage() {
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold tracking-tight">Medya</h1>
+                <h1 className="text-3xl leading-none tracking-tight">Medya</h1>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => setShowNewFolder(true)}>
                         <FolderPlus className="size-4" /> Klasör Ekle
@@ -436,7 +465,7 @@ export default function PhotoLibraryPage() {
             <div className="flex gap-5">
                 {/* Sol: Klasör Listesi */}
                 <div className="w-48 shrink-0 space-y-0.5">
-                    <FolderButton name="Tümü" count={medyalar.length} active={activeKlasor === null} onClick={() => setActiveKlasor(null)} />
+                    <FolderButton name="Tümü" count={counts.total || 0} active={activeKlasor === null} onClick={() => setActiveKlasor(null)} />
                     <FolderButton name="Genel" count={genelCount} active={activeKlasor === ''} isDragOver={dragOverFolder === ''} onClick={() => setActiveKlasor('')}
                         onDragOver={(e) => onFolderDragOver(e, '')} onDragLeave={onFolderDragLeave} onDrop={(e) => onFolderDrop(e, '')} />
 
@@ -524,6 +553,7 @@ export default function PhotoLibraryPage() {
                             <p className="text-xs">Yukarıdaki butona tıklayarak fotoğraf yükleyebilirsiniz</p>
                         </div>
                     ) : (
+                        <>
                         <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
                             {filtered.map((m) => (
                                 <div key={m.id} className={`group relative cursor-pointer overflow-hidden rounded-lg border transition-all ${selectedIds.has(m.id) ? 'ring-2 ring-primary' : 'hover:shadow-md'}`}
@@ -552,6 +582,14 @@ export default function PhotoLibraryPage() {
                                 </div>
                             ))}
                         </div>
+                        {cursor && (
+                            <div className="flex justify-center pt-4">
+                                <Button variant="outline" onClick={() => loadMedia(false)} disabled={loadingMore}>
+                                    {loadingMore ? 'Yükleniyor...' : 'Daha fazla yükle'}
+                                </Button>
+                            </div>
+                        )}
+                        </>
                     )}
                 </div>
             </div>

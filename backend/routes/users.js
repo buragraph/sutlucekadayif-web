@@ -35,6 +35,7 @@ router.get(
                 lastSignIn: user.metadata.lastSignInTime,
                 subeSlug: subeData.sube_slug || null,
                 role: subeData.role || null,
+                telefon: subeData.telefon || null,
             };
         });
 

@@ -68,7 +68,6 @@ export default function BranchMap({ branches = [], focusIl = null, focusCoord = 
             zoom: focusIl ? 8 : 4.4,
             attributionControl: { compact: true },
         });
-        map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
         map.scrollZoom.disable();
         map.on('load', () => setReady(true));
         mapRef.current = map;
@@ -125,6 +124,9 @@ export default function BranchMap({ branches = [], focusIl = null, focusCoord = 
         const ids = ['focus-outline', 'focus-mask'];
         const srcs = ['focus-il', 'focus-mask-src'];
         const temizle = () => {
+            // Harita unmount'ta kaldırıldıysa (mapRef sıfırlanır) layer'a dokunma —
+            // aksi halde kaldırılmış harita üzerinde getLayer çağrısı çöker (style undefined)
+            if (mapRef.current !== map) return;
             ids.forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
             srcs.forEach((id) => { if (map.getSource(id)) map.removeSource(id); });
         };

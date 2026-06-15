@@ -195,7 +195,7 @@ export default function CategoriesPage() {
             {/* Page Header */}
             <div className="flex items-center justify-between shrink-0">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground">Kategoriler</h1>
+                    <h1 className="text-3xl leading-none tracking-tight text-foreground">Kategoriler</h1>
                     <p className="text-xs text-muted-foreground mt-0.5">Menü kategorilerinizi düzenleyin ve yönetin.</p>
                 </div>
                 <Button size="sm" className="h-8 shadow-sm bg-primary hover:bg-primary/90 text-primary-foreground text-xs" onClick={openAdd}>

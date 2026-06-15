@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { db } from '../../../config/firebase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
+import { deleteFile, urlToKey } from '../../../config/r2.js';
+import { stripQuizAnswers } from '../utils.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 
 const router = Router();
@@ -14,17 +16,12 @@ router.get('/', verifyToken, asyncHandler(async (req, res) => {
         .orderBy('createdAt', 'desc')
         .get();
 
-    const courses = [];
-    for (const doc of snapshot.docs) {
-        const course = { id: doc.id, ...doc.data() };
-
-        // Ders sayısını al
-        const lessonsSnap = await db.collection('academy_courses').doc(doc.id)
-            .collection('lessons').get();
-        course.lessonCount = lessonsSnap.size;
-
-        courses.push(course);
-    }
+    // Ders sayılarını count() aggregation ile al — ders dokümanlarını okumadan,
+    // tümü paralel (N+1 tam okuma yerine N hafif sayım, eşzamanlı)
+    const courses = await Promise.all(snapshot.docs.map(async (doc) => {
+        const countSnap = await doc.ref.collection('lessons').count().get();
+        return { id: doc.id, ...doc.data(), lessonCount: countSnap.data().count };
+    }));
 
     res.json({ courses });
 }));
@@ -45,7 +42,8 @@ router.get('/:id', verifyToken, asyncHandler(async (req, res) => {
         .collection('lessons')
         .orderBy('orderIndex', 'asc')
         .get();
-    course.lessons = lessonsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const isAdmin = req.user.role === 'admin';
+    course.lessons = lessonsSnap.docs.map(d => stripQuizAnswers({ id: d.id, ...d.data() }, isAdmin));
 
     res.json({ course });
 }));
@@ -103,12 +101,37 @@ router.delete('/:id', verifyToken, requirePermission('academy.manage'), asyncHan
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ error: 'Kurs bulunamadı' });
 
-    // Dersleri sil
+    // Derslerin R2 dosyalarını (video/pdf) best-effort sil
     const lessonsSnap = await docRef.collection('lessons').get();
+    await Promise.all(lessonsSnap.docs.map(async (d) => {
+        const url = d.data().videoUrl || d.data().pdfUrl;
+        if (!url) return;
+        try {
+            const key = urlToKey(url);
+            if (key) await deleteFile(key);
+        } catch (e) { console.error('[Academy] R2 dosya silinemedi:', e.message); }
+    }));
+
+    // Dersleri + kursu sil
     const batch = db.batch();
     lessonsSnap.docs.forEach(d => batch.delete(d.ref));
     batch.delete(docRef);
     await batch.commit();
+
+    // Bu kursa ait kullanıcı ilerleme kayıtlarını temizle (yetim veri kalmasın).
+    // collectionGroup indexi yoksa best-effort: hata kursun silinmesini engellemez.
+    try {
+        const progressSnap = await db.collectionGroup('completedLessons')
+            .where('courseId', '==', id).get();
+        for (let i = 0; i < progressSnap.docs.length; i += 450) {
+            const chunk = progressSnap.docs.slice(i, i + 450);
+            const pBatch = db.batch();
+            chunk.forEach(d => pBatch.delete(d.ref));
+            await pBatch.commit();
+        }
+    } catch (e) {
+        console.error('[Academy] İlerleme temizliği atlandı (collectionGroup index gerekebilir):', e.message);
+    }
 
     res.json({ success: true });
 }));

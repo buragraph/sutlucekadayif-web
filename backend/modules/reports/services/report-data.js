@@ -28,11 +28,13 @@ function pctChange(current, previous) {
  * @param {string} donemBaslangic - Dönem başlangıç tarihi
  * @param {string} donemBitis - Dönem bitiş tarihi
  * @param {object} [subeData] - Opsiyonel: önceden yüklenmiş şube verisi (batch işlemlerinde gereksiz read önler)
+ * @param {number} [knownVersion] - Opsiyonel: önceden okunmuş veri versiyonu (toplu işlemlerde N kez getDataVersion okumasını önler)
  */
-export async function buildReportData(subeKod, donemBaslangic, donemBitis, subeData = null) {
+export async function buildReportData(subeKod, donemBaslangic, donemBitis, subeData = null, knownVersion = null) {
   // Cache kontrolü — anahtar veri versiyonunu içerir, böylece başka bir
-  // instance'ta yapılan güncelleme sonrası bayat rapor servis edilmez (1 read)
-  const version = await getDataVersion();
+  // instance'ta yapılan güncelleme sonrası bayat rapor servis edilmez (1 read).
+  // Toplu PDF gibi döngülerde versiyon dışarıdan geçilerek tekrar okuma önlenir.
+  const version = knownVersion != null ? knownVersion : await getDataVersion();
   const cacheKey = `report_${subeKod}_${donemBaslangic}_${donemBitis}_v${version}`;
   const cached = reportCache.get(cacheKey);
   if (cached) return cached;

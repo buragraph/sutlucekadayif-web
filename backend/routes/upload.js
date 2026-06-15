@@ -45,15 +45,28 @@ router.get(
         const key = req.params[0];
         if (!key) return res.status(400).json({ error: 'Key gerekli' });
 
+        // Helmet'in frame-ancestors 'self' / X-Frame-Options başlıkları PDF'in
+        // farklı origin'deki (Pages) sayfaya <object>/<iframe> ile gömülmesini
+        // engelliyor — bu public dosya proxy'si için gömmeye izin ver.
+        res.removeHeader('X-Frame-Options');
+        res.set('Content-Security-Policy', 'frame-ancestors *');
+        res.set('Access-Control-Allow-Origin', '*');
+
         try {
             const result = await r2.send(new GetObjectCommand({
                 Bucket: BUCKET,
                 Key: key,
             }));
 
-            res.set('Content-Type', result.ContentType || 'image/webp');
-            res.set('Cache-Control', 'public, max-age=31536000, immutable');
-            res.set('Access-Control-Allow-Origin', '*');
+            const contentType = result.ContentType || 'image/webp';
+            res.set('Content-Type', contentType);
+            // JSON (ör. menü cache) sabit isimli ve değişken → kısa cache, taze kalsın.
+            // Görsel/PDF içerik-adresli (uuid) → uzun süreli immutable cache.
+            if (contentType.includes('application/json')) {
+                res.set('Cache-Control', 'public, max-age=60');
+            } else {
+                res.set('Cache-Control', 'public, max-age=31536000, immutable');
+            }
 
             // Stream R2 response to client
             const stream = result.Body;

@@ -1,10 +1,27 @@
+import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { AppSidebar } from '../../components/layout/app-sidebar';
 import { AppHeader } from '../../components/layout/app-header';
+import { useAuth } from '../../context/AuthContext';
+import api from '../../services/api';
+import OnboardingWizard from './OnboardingWizard';
 
 export default function Layout() {
+    // İlk giriş onboarding'i — yalnızca gerçek şube sahipleri için (admin simülasyonu hariç)
+    const { realRole } = useAuth();
+    const [onboarding, setOnboarding] = useState(false); // false=gerekmiyor/bilinmiyor, {prefill}=göster
+
+    useEffect(() => {
+        if (realRole !== 'sube_sahibi') { setOnboarding(false); return; }
+        let aktif = true;
+        api.get('/onboarding/status')
+            .then(({ data }) => { if (aktif) setOnboarding(data.gerekli ? { prefill: data.prefill || {} } : false); })
+            .catch(() => { if (aktif) setOnboarding(false); });
+        return () => { aktif = false; };
+    }, [realRole]);
+
     return (
         <TooltipProvider>
             <SidebarProvider
@@ -15,11 +32,17 @@ export default function Layout() {
                 <AppSidebar variant="inset" />
                 <SidebarInset className="peer-data-[variant=inset]:border">
                     <AppHeader />
-                    <div className="h-full px-4 md:px-6 pt-3 md:pt-4 pb-4 md:pb-6 flex flex-col min-h-0 max-w-[1600px] mx-auto w-full">
+                    <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[1536px] flex-col overflow-x-hidden p-4 md:p-6">
                         <Outlet />
                     </div>
                 </SidebarInset>
             </SidebarProvider>
+            {onboarding && (
+                <OnboardingWizard
+                    prefill={onboarding.prefill}
+                    onComplete={() => setOnboarding(false)}
+                />
+            )}
         </TooltipProvider>
     );
 }

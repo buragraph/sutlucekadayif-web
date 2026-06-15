@@ -14,7 +14,7 @@ import { buildReportData, invalidateReportCache } from './services/report-data.j
 import budgetRouter from './budget-routes.js';
 import { generateReportHtml } from './services/report-template.js';
 import { generatePdf } from './services/generate-pdf.js';
-import { getAllSubeler, getSubeByKod, getDonemler, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleToplanlar, closeDb, getDb, clearAllData, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings, recalcSubeAggregates, getDataVersion, bumpDataVersion } from './db.js';
+import { getAllSubeler, getSubeByKod, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleToplanlar, closeDb, getDb, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings, recalcSubeAggregates, getDataVersion, bumpDataVersion } from './db.js';
 
 import os from 'os';
 
@@ -163,6 +163,26 @@ function getRaporDosyaAdi(subeAd, baslangic, bitis) {
     return `Rapor_${sube}_${baslangic}_${bitis}.pdf`;
 }
 
+/**
+ * Şubenin dönem özetlerini döner. Eski format şubelerde (donem_ozetleri dizisi yok)
+ * tek seferlik recalc ile diziyi kurar (lazy backfill) ve onu döndürür — sonraki
+ * okumalar 0/1 read ile çalışır.
+ */
+async function ensureOzetler(sube) {
+  if (Array.isArray(sube.donem_ozetleri)) return sube.donem_ozetleri;
+  return await recalcSubeAggregates(sube.kod);
+}
+
+/**
+ * Şube sahibi güncel (en yeni) dönemi görmez — yalnızca tamamlanmış eski dönemler.
+ * donem_ozetleri baslangic'e göre desc sıralı olduğundan [0] en güncel dönemdir.
+ * Admin tüm dönemleri görür.
+ */
+function eskiDonemlerSadece(ozetler, role) {
+  if (!Array.isArray(ozetler)) return ozetler;
+  return role === 'sube_sahibi' ? ozetler.slice(1) : ozetler;
+}
+
 // Rapor önizleme (HTML döndürür)
 router.post('/preview', verifyToken, requirePermission('reports.view'), async (req, res) => {
   try {
@@ -174,11 +194,11 @@ router.post('/preview', verifyToken, requirePermission('reports.view'), async (r
     let baslangic = donemBaslangic;
     let bitis = donemBitis;
     if (!baslangic || !bitis) {
-      const donemler = await getDonemler(sube.id);
-      const sonDonem = donemler.meta[0] || donemler.google[0];
+      const ozetler = await ensureOzetler(sube);
+      const sonDonem = ozetler[0];
       if (!sonDonem) return res.status(404).json({ error: 'Dönem verisi bulunamadı.' });
-      baslangic = sonDonem.donem_baslangic;
-      bitis = sonDonem.donem_bitis;
+      baslangic = sonDonem.baslangic;
+      bitis = sonDonem.bitis;
     }
 
     const reportData = await buildReportData(subeKod, baslangic, bitis);
@@ -203,11 +223,11 @@ router.post('/generate-pdf', verifyToken, requirePermission('reports.view'), asy
     let baslangic = donemBaslangic;
     let bitis = donemBitis;
     if (!baslangic || !bitis) {
-      const donemler = await getDonemler(sube.id);
-      const sonDonem = donemler.meta[0] || donemler.google[0];
+      const ozetler = await ensureOzetler(sube);
+      const sonDonem = ozetler[0];
       if (!sonDonem) return res.status(404).json({ error: 'Dönem verisi bulunamadı.' });
-      baslangic = sonDonem.donem_baslangic;
-      bitis = sonDonem.donem_bitis;
+      baslangic = sonDonem.baslangic;
+      bitis = sonDonem.bitis;
     }
 
     const reportData = await buildReportData(subeKod, baslangic, bitis);
@@ -252,12 +272,16 @@ router.post('/generate-pdf-bulk', verifyToken, requirePermission('reports.manage
     const allSubeler = await getAllSubeler();
     const subeMap = Object.fromEntries(allSubeler.map(s => [s.kod, s]));
 
+    // Versiyonu döngü başında bir kez oku — her buildReportData çağrısında
+    // tekrar okumak yerine (N şube = N gereksiz read önlenir)
+    const version = await getDataVersion();
+
     for (const subeKod of subeKodlari) {
       try {
         const sube = subeMap[subeKod];
         if (!sube) { hatalar.push({ subeKod, hata: 'Şube bulunamadı' }); continue; }
 
-        const reportData = await buildReportData(subeKod, donemBaslangic, donemBitis, sube);
+        const reportData = await buildReportData(subeKod, donemBaslangic, donemBitis, sube, version);
         if (!reportData.veriVar) { hatalar.push({ subeKod, hata: 'Veri bulunamadı' }); continue; }
 
         const html = generateReportHtml(reportData);
@@ -380,14 +404,18 @@ router.get('/dashboard', verifyToken, requirePermission('reports.view'), version
       const sube = req.user.subeSlug ? await getSubeByKod(req.user.subeSlug) : null;
       subeler = sube ? [sube] : [];
     }
-    const dashData = subeler.map(sube => ({
-      ...sube,
-      donemSayisi: sube.donem_sayisi || 0,
-      donemler: [], // frontend uyumluluğu — dönemler selectBranch'te lazy yüklenir
-      toplamHarcama: sube.toplam_harcama || 0,
-      toplamErisim: sube.toplam_erisim || 0,
-      toplamSonuc: sube.toplam_sonuc || 0,
-    }));
+    const dashData = subeler.map(sube => {
+      const ozetler = eskiDonemlerSadece(sube.donem_ozetleri, req.user.role);
+      return {
+        ...sube,
+        donem_ozetleri: ozetler,
+        donemSayisi: req.user.role === 'sube_sahibi' && Array.isArray(ozetler) ? ozetler.length : (sube.donem_sayisi || 0),
+        donemler: [], // frontend uyumluluğu — dönemler selectBranch'te lazy yüklenir
+        toplamHarcama: sube.toplam_harcama || 0,
+        toplamErisim: sube.toplam_erisim || 0,
+        toplamSonuc: sube.toplam_sonuc || 0,
+      };
+    });
     res.json({ subeler: dashData });
   } catch (err) {
     console.error('[Reports]', err);
@@ -404,14 +432,18 @@ router.get('/dashboard-bundle', verifyToken, requirePermission('reports.view'), 
     // Meta/Google eşleştirmeleri ve ayarlar admin yapılandırmasıdır — şube sahibine sızdırılmaz.
     if (!isAdmin) {
       const sube = req.user.subeSlug ? await getSubeByKod(req.user.subeSlug) : null;
-      const dashData = (sube ? [sube] : []).map(s => ({
-        ...s,
-        donemSayisi: s.donem_sayisi || 0,
-        donemler: [],
-        toplamHarcama: s.toplam_harcama || 0,
-        toplamErisim: s.toplam_erisim || 0,
-        toplamSonuc: s.toplam_sonuc || 0,
-      }));
+      const dashData = (sube ? [sube] : []).map(s => {
+        const ozetler = eskiDonemlerSadece(s.donem_ozetleri, req.user.role);
+        return {
+          ...s,
+          donem_ozetleri: ozetler,
+          donemSayisi: Array.isArray(ozetler) ? ozetler.length : (s.donem_sayisi || 0),
+          donemler: [],
+          toplamHarcama: s.toplam_harcama || 0,
+          toplamErisim: s.toplam_erisim || 0,
+          toplamSonuc: s.toplam_sonuc || 0,
+        };
+      });
 
       return res.json({
         subeler: dashData,
@@ -499,10 +531,12 @@ router.get('/sube/:kod', verifyToken, requirePermission('reports.view'), async (
     const sube = await getSubeByKod(kod);
     if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
 
+    const ozetler = eskiDonemlerSadece(sube.donem_ozetleri, req.user.role);
     res.json({
       sube: {
         ...sube,
-        donemSayisi: sube.donem_sayisi || 0,
+        donem_ozetleri: ozetler,
+        donemSayisi: req.user.role === 'sube_sahibi' && Array.isArray(ozetler) ? ozetler.length : (sube.donem_sayisi || 0),
         toplamHarcama: sube.toplam_harcama || 0,
         toplamErisim: sube.toplam_erisim || 0,
         toplamSonuc: sube.toplam_sonuc || 0,
@@ -515,19 +549,22 @@ router.get('/sube/:kod', verifyToken, requirePermission('reports.view'), async (
 });
 
 // Şubenin dönemlerini döner (şubeye tıklandığında çağrılır — sadece tarih + veri var/yok)
+// donem_ozetleri dizisi şube dokümanında zaten mevcut — subcollection'a gerek yok (0 ekstra read)
 router.get('/sube/:kod/donemler', verifyToken, requirePermission('reports.view'), async (req, res) => {
   try {
     const { kod } = req.params;
     if (!ensureBranchAccess(req, res, kod)) return;
-    const donemlerResult = await getDonemler(kod);
-    const donemler = donemlerResult.meta.map(veri => ({
-      baslangic: veri.donem_baslangic,
-      bitis: veri.donem_bitis,
-      meta: veri.harcama !== undefined ? { harcama: 1 } : null,
-      google: veri.google_arama !== undefined ? { gorunurluk: 1 } : null,
-      planlanan_butce: veri.planlanan_butce || 0,
-      devredilen_miktar: veri.devredilen_miktar || 0,
-      harcama: veri.harcama || 0,
+    const sube = await getSubeByKod(kod);
+    if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
+    const ozetler = eskiDonemlerSadece(await ensureOzetler(sube), req.user.role);
+    const donemler = ozetler.map(ozet => ({
+      baslangic: ozet.baslangic,
+      bitis: ozet.bitis,
+      meta: ozet.meta,
+      google: ozet.google,
+      planlanan_butce: ozet.planlanan_butce || 0,
+      devredilen_miktar: ozet.devredilen_miktar || 0,
+      harcama: ozet.harcama || 0,
     }));
     res.json({ donemler });
   } catch (err) {
@@ -893,12 +930,11 @@ router.post('/google-fetch', verifyToken, requirePermission('reports.manage'), a
           google_yol_tarifi: r.metrics.yol_tarifi || 0,
           google_web_tiklama: r.metrics.web_tiklama || 0,
           google_menu_tiklama: r.metrics.menu_tiklama || 0,
-        }, { skipRecalc: true });
+        }, { skipBump: true });
         updatedKods.add(sube.kod);
         savedCount++;
       }
-      // Aggregate'leri sonda bir kez, paralel hesapla; versiyon tek seferde artırılır
-      await Promise.all([...updatedKods].map(kod => recalcSubeAggregates(kod, { skipBump: true })));
+      // Aggregate'ler her upsert'te delta ile güncellendi; versiyonu sonda bir kez artır
       if (updatedKods.size > 0) await bumpDataVersion();
     }
     

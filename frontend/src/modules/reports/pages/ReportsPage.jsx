@@ -127,7 +127,7 @@ export default function ReportsPage() {
         <div className="flex flex-col gap-4 w-full h-[calc(100vh-88px)] overflow-hidden">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight text-foreground">Raporlar</h1>
+                    <h1 className="text-3xl leading-none tracking-tight text-foreground">Raporlar</h1>
                     <p className="text-sm text-muted-foreground mt-1">Şube performans raporlarını görüntüleyin ve yönetin.</p>
                 </div>
                 <div className="flex items-center gap-2">

@@ -42,7 +42,6 @@ export default function BranchReklamPage() {
     const selectBranch = useReportsStore((s) => s.selectBranch);
     const openModal = useReportsStore((s) => s.openModal);
     const storeLoading = useReportsStore((s) => s.loading);
-    const budgetStatus = useReportsStore((s) => s.budgetStatus);
 
     // Sorting and Pagination
     const [sortDir, setSortDir] = useState('desc');
@@ -70,18 +69,6 @@ export default function BranchReklamPage() {
             selectBranch(subeSlug);
         }
     }, [subeSlug, selectBranch, storeLoading, branches.length]);
-
-    // Bütçe durumunu otomatik çek (en güncel dönemin tarihlerini kullan)
-    useEffect(() => {
-        if (!subeSlug || !donemCache[subeSlug]) return;
-        const donemler = donemCache[subeSlug];
-        if (donemler.length === 0) return;
-        const sorted = [...donemler].sort((a, b) => b.baslangic.localeCompare(a.baslangic));
-        const latest = sorted[0];
-        if (latest?.baslangic && latest?.bitis) {
-            reportsApi.fetchBudgetStatus(latest.baslangic, latest.bitis).catch(() => {});
-        }
-    }, [subeSlug, donemCache]);
 
     // Fetch pending campaign
     const fetchPendingBudget = async () => {
@@ -219,7 +206,7 @@ export default function BranchReklamPage() {
         <div className="flex flex-col gap-4 md:gap-6 w-full pb-8">
             {/* ─── Page Header ─── */}
             <div>
-                <h1 className="text-2xl font-bold tracking-tight">Reklam Paneli</h1>
+                <h1 className="text-3xl leading-none tracking-tight">Reklam Paneli</h1>
                 <p className="text-muted-foreground text-sm">
                     {branch
                         ? `${branch.ad} şubesi için reklam performansı ve bütçe yönetimi.`
@@ -480,70 +467,7 @@ export default function BranchReklamPage() {
                                 ))}
                             </div>
 
-                            {/* ── Bütçe Durumu Kartı (Şube Sahibi) ── */}
-                            {(() => {
-                                const bs = budgetStatus?.subeler?.find(b => b.kod === activeBranchCode);
-                                if (!bs || !bs.toplamButce) return null;
-                                const pct = Math.min(bs.kullanimOrani, 100);
-                                const barColor = bs.durum === 'asim' ? 'bg-red-500' : bs.durum === 'uyari' ? 'bg-amber-500' : 'bg-emerald-500';
-                                return (
-                                    <Card className={cn(
-                                        bs.durum === 'asim' ? 'border-red-500/50' : bs.durum === 'uyari' ? 'border-amber-500/50' : ''
-                                    )}>
-                                        <CardHeader>
-                                            <div className="flex items-center gap-3">
-                                                <div className={cn(
-                                                    "flex size-9 items-center justify-center rounded-lg border",
-                                                    bs.durum === 'asim' ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800'
-                                                        : bs.durum === 'uyari' ? 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800'
-                                                        : 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800'
-                                                )}>
-                                                    <Wallet className="size-4" />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <CardTitle className="leading-none text-base">Bütçe Durumu</CardTitle>
-                                                    <CardDescription className="mt-1">Dönem bütçenizin kullanım durumu</CardDescription>
-                                                </div>
-                                                {bs.durum === 'asim' && (
-                                                    <Badge variant="outline" className="text-red-600 border-red-200 dark:text-red-400 dark:border-red-800">
-                                                        <AlertTriangle className="size-3 mr-1" /> Bütçe Aşıldı
-                                                    </Badge>
-                                                )}
-                                                {bs.durum === 'uyari' && (
-                                                    <Badge variant="outline" className="text-amber-600 border-amber-200 dark:text-amber-400 dark:border-amber-800">
-                                                        Sınıra Yakın
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="grid grid-cols-3 gap-4 mb-4">
-                                                <div>
-                                                    <div className="text-xs text-muted-foreground mb-1">Planlanan Bütçe</div>
-                                                    <div className="text-xl font-semibold">{fmtC(bs.toplamButce)}</div>
-                                                    {bs.devredilen > 0 && <div className="text-[10px] text-muted-foreground mt-0.5">{fmtC(bs.planlananButce)} + {fmtC(bs.devredilen)} devir</div>}
-                                                </div>
-                                                <div>
-                                                    <div className="text-xs text-muted-foreground mb-1">Harcanan</div>
-                                                    <div className={`text-xl font-semibold ${bs.durum === 'asim' ? 'text-red-500' : ''}`}>{fmtC(bs.harcama)}</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-xs text-muted-foreground mb-1">Kalan</div>
-                                                    <div className={`text-xl font-semibold ${bs.kalan < 0 ? 'text-red-500' : 'text-emerald-600'}`}>{fmtC(bs.kalan)}</div>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
-                                                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
-                                                </div>
-                                                <span className={`text-sm font-semibold ${bs.durum === 'asim' ? 'text-red-500' : bs.durum === 'uyari' ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                                                    %{Math.round(bs.kullanimOrani)}
-                                                </span>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                );
-                            })()}
+                            {/* Bütçe Durumu kartı kaldırıldı — şube sahibi güncel dönemi görmemeli */}
 
                             {/* ── Rapor Dönemleri Tablosu ── */}
                             <Card>

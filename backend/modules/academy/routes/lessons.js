@@ -1,9 +1,23 @@
 import { Router } from 'express';
 import { db } from '../../../config/firebase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
+import { deleteFile, urlToKey } from '../../../config/r2.js';
+import { stripQuizAnswers } from '../utils.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 
 const router = Router();
+
+// Dersin R2 dosyasını (video/pdf) best-effort siler
+async function deleteLessonFile(data) {
+    const url = data?.videoUrl || data?.pdfUrl;
+    if (!url) return;
+    try {
+        const key = urlToKey(url);
+        if (key) await deleteFile(key);
+    } catch (e) {
+        console.error('[Academy] R2 dosya silinemedi:', e.message);
+    }
+}
 
 /**
  * GET /api/academy/lessons/:courseId
@@ -17,7 +31,8 @@ router.get('/:courseId', verifyToken, asyncHandler(async (req, res) => {
         .orderBy('orderIndex', 'asc')
         .get();
 
-    const lessons = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const isAdmin = req.user.role === 'admin';
+    const lessons = snapshot.docs.map(d => stripQuizAnswers({ id: d.id, ...d.data() }, isAdmin));
     res.json({ lessons });
 }));
 
@@ -57,6 +72,29 @@ router.post('/:courseId', verifyToken, requirePermission('academy.manage'), asyn
         .collection('lessons').add(lessonData);
 
     res.status(201).json({ lesson: { id: ref.id, ...lessonData } });
+}));
+
+/**
+ * PUT /api/academy/lessons/:courseId/reorder
+ * Ders sıralamasını güncelle.
+ * NOT: Bu route, /:courseId/:lessonId'den ÖNCE tanımlanmalı — aksi halde
+ * "reorder" bir lessonId sanılır ve istek yanlış handler'a düşer.
+ */
+router.put('/:courseId/reorder', verifyToken, requirePermission('academy.manage'), asyncHandler(async (req, res) => {
+    const { courseId } = req.params;
+    const { order } = req.body; // [{ id, orderIndex }]
+
+    if (!Array.isArray(order)) return res.status(400).json({ error: 'Sıralama verisi gerekli' });
+
+    const batch = db.batch();
+    order.forEach(({ id, orderIndex }) => {
+        const ref = db.collection('academy_courses').doc(courseId)
+            .collection('lessons').doc(id);
+        batch.update(ref, { orderIndex });
+    });
+    await batch.commit();
+
+    res.json({ success: true });
 }));
 
 /**
@@ -114,27 +152,6 @@ router.put('/:courseId/:lessonId', verifyToken, requirePermission('academy.manag
 }));
 
 /**
- * PUT /api/academy/lessons/:courseId/reorder
- * Ders sıralamasını güncelle
- */
-router.put('/:courseId/reorder', verifyToken, requirePermission('academy.manage'), asyncHandler(async (req, res) => {
-    const { courseId } = req.params;
-    const { order } = req.body; // [{ id, orderIndex }]
-
-    if (!Array.isArray(order)) return res.status(400).json({ error: 'Sıralama verisi gerekli' });
-
-    const batch = db.batch();
-    order.forEach(({ id, orderIndex }) => {
-        const ref = db.collection('academy_courses').doc(courseId)
-            .collection('lessons').doc(id);
-        batch.update(ref, { orderIndex });
-    });
-    await batch.commit();
-
-    res.json({ success: true });
-}));
-
-/**
  * DELETE /api/academy/lessons/:courseId/:lessonId
  * Ders sil
  */
@@ -146,6 +163,7 @@ router.delete('/:courseId/:lessonId', verifyToken, requirePermission('academy.ma
     const doc = await docRef.get();
     if (!doc.exists) return res.status(404).json({ error: 'Ders bulunamadı' });
 
+    await deleteLessonFile(doc.data()); // R2'deki video/pdf'i de sil
     await docRef.delete();
     res.json({ success: true });
 }));

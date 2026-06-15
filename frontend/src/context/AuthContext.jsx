@@ -25,9 +25,10 @@ export function AuthProvider({ children }) {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
                 setUser(firebaseUser);
-                // Custom claims'ten bilgileri al (Backend /auth/me isteği iptal edildi)
+                // Custom claims'ten bilgileri al. force=true: rol/şube değişiklikleri
+                // en geç sayfa yenilemesinde yansısın (token cache'i ~1 saat eskimesin).
                 try {
-                    const idTokenResult = await firebaseUser.getIdTokenResult();
+                    const idTokenResult = await firebaseUser.getIdTokenResult(true);
                     setSubeSlug(idTokenResult.claims.subeSlug || null);
                     setRole(idTokenResult.claims.role || 'sube_sahibi');
                 } catch (err) {
@@ -57,6 +58,19 @@ export function AuthProvider({ children }) {
         return signOut(auth);
     }
 
+    // Token'ı zorla yenileyip güncel rol/şube claims'ini state'e yansıtır.
+    // Kullanıcı kendi rol/şubesini değiştirdiğinde anında (yeniden giriş gerekmeden) güncellemek için.
+    async function refreshClaims() {
+        if (!auth.currentUser) return;
+        try {
+            const res = await auth.currentUser.getIdTokenResult(true);
+            setSubeSlug(res.claims.subeSlug || null);
+            setRole(res.claims.role || 'sube_sahibi');
+        } catch (err) {
+            console.error('Claims yenilenemedi:', err);
+        }
+    }
+
     // Effective role: simulatedRole overrides actual role (admin only)
     const effectiveRole = (role === 'admin' && simulatedRole) ? simulatedRole : role;
 
@@ -80,6 +94,7 @@ export function AuthProvider({ children }) {
         loading,
         login,
         logout,
+        refreshClaims,
         can,
     };
 

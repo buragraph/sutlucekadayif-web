@@ -5,6 +5,11 @@ import asyncHandler from '../../../utils/asyncHandler.js';
 
 const router = Router();
 
+// Admin istatistikleri için kısa ömürlü cache (kullanıcı sayısı arttıkça pahalı sorgu)
+let statsCache = null; // { ts, data }
+const STATS_TTL = 60 * 1000;
+function invalidateStatsCache() { statsCache = null; }
+
 // Helper: İlgili kullanıcının tamamlanan derslerini okuyup parent doc'a (academy_progress) yazar
 async function syncUserProgressStats(userId) {
     const lessonsSnap = await db.collection('academy_progress')
@@ -72,6 +77,11 @@ router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
         return res.status(403).json({ error: 'Yetkisiz' });
     }
 
+    // Kısa ömürlü cache — sık yenilemede pahalı sorguyu tekrarlama
+    if (statsCache && Date.now() - statsCache.ts < STATS_TTL) {
+        return res.json(statsCache.data);
+    }
+
     // Şube eşleştirmelerini al
     const subeSnap = await db.collection('kullanici_sube').get();
     const subeMap = {};
@@ -127,6 +137,7 @@ router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
     // Son aktiviteye göre sırala
     stats.sort((a, b) => (b.lastActivity || '').localeCompare(a.lastActivity || ''));
 
+    statsCache = { ts: Date.now(), data: { stats } };
     res.json({ stats });
 }));
 
@@ -183,6 +194,7 @@ router.post('/quiz/:courseId/:lessonId/submit', verifyToken, asyncHandler(async 
 
             // Sync user stats
             await syncUserProgressStats(userId);
+            invalidateStatsCache();
         } else {
             // İsterseniz daha yüksek skor alındığında güncelleyebilirsiniz (şimdilik sadece ilk geçişte kaydediyoruz veya skor yüksekse güncelleyelim)
             const oldScore = alreadyCompletedSnap.data().score || 0;
@@ -230,18 +242,24 @@ router.post('/:courseId/:lessonId', verifyToken, asyncHandler(async (req, res) =
     const { courseId, lessonId } = req.params;
     const userId = req.user.uid;
 
-    // Subcollection'a yaz
-    await db.collection('academy_progress')
-        .doc(userId)
-        .collection('completedLessons')
-        .doc(lessonId)
-        .set({
-            courseId,
-            completedAt: new Date().toISOString(),
-        });
+    // Quiz dersleri yalnızca sınavı geçerek (/quiz/.../submit) tamamlanabilir —
+    // bu genel endpoint ile quiz'i atlayıp tamamlandı işaretlemeyi engelle
+    const lessonSnap = await db.collection('academy_courses').doc(courseId)
+        .collection('lessons').doc(lessonId).get();
+    if (lessonSnap.exists && lessonSnap.data().lessonType === 'quiz') {
+        return res.status(400).json({ error: 'Sınavlar yalnızca sınavı geçerek tamamlanır.' });
+    }
 
-    // Ana belge istatistiklerini senkronize et
+    const ref = db.collection('academy_progress')
+        .doc(userId).collection('completedLessons').doc(lessonId);
+
+    // Zaten tamamlıysa gereksiz yeniden senkronizasyon yapma (idempotent)
+    const existing = await ref.get();
+    if (existing.exists) return res.json({ success: true });
+
+    await ref.set({ courseId, completedAt: new Date().toISOString() });
     await syncUserProgressStats(userId);
+    invalidateStatsCache();
 
     res.json({ success: true });
 }));
@@ -254,15 +272,16 @@ router.delete('/:courseId/:lessonId', verifyToken, asyncHandler(async (req, res)
     const { courseId, lessonId } = req.params;
     const userId = req.user.uid;
 
-    // Subcollection'dan sil
-    await db.collection('academy_progress')
-        .doc(userId)
-        .collection('completedLessons')
-        .doc(lessonId)
-        .delete();
+    const ref = db.collection('academy_progress')
+        .doc(userId).collection('completedLessons').doc(lessonId);
 
-    // Ana belge istatistiklerini senkronize et
+    // Zaten yoksa gereksiz yeniden senkronizasyon yapma (idempotent)
+    const existing = await ref.get();
+    if (!existing.exists) return res.json({ success: true });
+
+    await ref.delete();
     await syncUserProgressStats(userId);
+    invalidateStatsCache();
 
     res.json({ success: true });
 }));

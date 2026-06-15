@@ -84,14 +84,14 @@ router.post(
 
         const docRef = await db.collection('kategoriler').add(docData);
 
+        // Kategori eklendi — tüm şubelerin JSON'ını güvenilir şekilde yenile
+        await regenerateAllMenuJsons().catch(console.error);
+
         res.status(201).json({
             id: docRef.id,
             ad: ad.trim(),
             sira: siraDeger,
         });
-
-        // Kategori eklendi — tüm şubelerin JSON'ını yenile
-        regenerateAllMenuJsons().catch(console.error);
     })
 );
 
@@ -123,10 +123,10 @@ router.put(
         if (gorsel !== undefined) updateData.gorsel = gorsel;
 
         await docRef.update(updateData);
-        res.json({ success: true });
 
-        // Kategori güncellendi — tüm şubelerin JSON'ını yenile
-        regenerateAllMenuJsons().catch(console.error);
+        // Kategori güncellendi — tüm şubelerin JSON'ını güvenilir şekilde yenile
+        await regenerateAllMenuJsons().catch(console.error);
+        res.json({ success: true });
     })
 );
 
@@ -148,35 +148,44 @@ router.delete(
             return res.status(404).json({ error: 'Kategori bulunamadı' });
         }
 
-        // Kategoriye ait ürün var mı kontrol et
-        const urunSnap = await db.collection('ortak_urunler').where('kategori', '==', id).get();
-        
-        if (!urunSnap.empty && !yeniKategori) {
+        // Kategoriye ait ürünleri topla: ortak (ana koleksiyon) + şubeye özel
+        // (subcollection 'urunler' — collectionGroup ile). collectionGroup için
+        // index gerekebilir; yoksa best-effort olarak ortak ürünlerle devam edilir.
+        const productRefs = [];
+        const ortakSnap = await db.collection('ortak_urunler').where('kategori', '==', id).get();
+        ortakSnap.docs.forEach((d) => productRefs.push(d.ref));
+        try {
+            const subeSnap = await db.collectionGroup('urunler').where('kategori', '==', id).get();
+            subeSnap.docs.forEach((d) => productRefs.push(d.ref));
+        } catch (e) {
+            console.error('[Categories] sube_ozel ürün taraması atlandı (collectionGroup index gerekebilir):', e.message);
+        }
+
+        if (productRefs.length > 0 && !yeniKategori) {
             return res.status(409).json({
                 error: 'Bu kategoriye ait ürünler var.',
-                urunSayisi: urunSnap.size,
+                urunSayisi: productRefs.length,
                 requiresReplacement: true,
             });
         }
 
-        // Ürünleri yeni kategoriye taşı
-        if (!urunSnap.empty && yeniKategori) {
-            const batch = db.batch();
-            urunSnap.docs.forEach((urunDoc) => {
-                batch.update(urunDoc.ref, { kategori: yeniKategori });
+        // Ürünleri yeni kategoriye taşı (500'lük batch sınırına göre parçala)
+        if (productRefs.length > 0 && yeniKategori) {
+            for (let i = 0; i < productRefs.length; i += 450) {
+                const batch = db.batch();
+                productRefs.slice(i, i + 450).forEach((ref) => batch.update(ref, { kategori: yeniKategori }));
+                await batch.commit();
+            }
+            await db.collection('kategoriler').doc(yeniKategori).update({
+                urunSayisi: admin.firestore.FieldValue.increment(productRefs.length)
             });
-            // Yeni kategorinin sayacını artır
-            batch.update(db.collection('kategoriler').doc(yeniKategori), {
-                urunSayisi: admin.firestore.FieldValue.increment(urunSnap.size)
-            });
-            await batch.commit();
         }
 
         await docRef.delete();
-        res.json({ success: true, tasinanUrun: urunSnap.size });
 
-        // Kategori silindi — tüm şubelerin JSON'ını yenile
-        regenerateAllMenuJsons().catch(console.error);
+        // Kategori silindi — tüm şubelerin JSON'ını güvenilir şekilde yenile
+        await regenerateAllMenuJsons().catch(console.error);
+        res.json({ success: true, tasinanUrun: productRefs.length });
     })
 );
 

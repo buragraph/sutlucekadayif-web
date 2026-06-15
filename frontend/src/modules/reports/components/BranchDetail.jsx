@@ -161,7 +161,7 @@ export function BranchDetail() {
                                 let durum = 'normal';
                                 if (oran >= 100) durum = 'asim';
                                 else if (oran >= 80) durum = 'uyari';
-                                bs = { kod: activeBranchCode, planlananButce: pb, devredilen: dev, merkezDestegi: merk, toplamButce: tb, harcama: harc, kalan, kullanimOrani: oran, durum, donem: `${latestBudget.baslangic} - ${latestBudget.bitis}`, baslangic: latestBudget.baslangic, bitis: latestBudget.bitis };
+                                bs = { kod: activeBranchCode, planlananButce: pb, devredilen: dev, merkezDestegi: merk, toplamButce: tb, harcama: harc, kalan, kullanimOrani: oran, durum, donem: `${latestBudget.baslangic} - ${latestBudget.bitis}`, baslangic: latestBudget.baslangic, bitis: latestBudget.bitis, updatedAt: latestBudget.updatedAt || null };
                             }
                         }
                     }
@@ -173,9 +173,13 @@ export function BranchDetail() {
                     let projectedOverage = 0;
                     let currentDailySpend = 0;
 
+                    // Verinin kaç gün önce güncellendiğini hesapla
+                    const lastUpdate = bs.updatedAt ? new Date(bs.updatedAt) : null;
+                    const today = new Date();
+                    today.setHours(0,0,0,0);
+                    const staleDays = lastUpdate ? Math.floor((today - new Date(lastUpdate.toISOString().split('T')[0])) / (1000 * 60 * 60 * 24)) : null;
+
                     if (bs.baslangic && bs.bitis && bs.kalan > 0) {
-                        const today = new Date();
-                        today.setHours(0,0,0,0);
                         const startDate = new Date(bs.baslangic);
                         startDate.setHours(0,0,0,0);
                         const endDate = new Date(bs.bitis);
@@ -189,8 +193,12 @@ export function BranchDetail() {
                             dailyBudget = bs.kalan / remainingDays;
                         }
 
-                        if (today > startDate && today <= endDate && bs.harcama > 0) {
-                            const passedDays = Math.ceil((today - startDate) / (1000 * 60 * 60 * 24));
+                        // Geçen gün hesabını updatedAt'e göre yap (harcama verisiyle tutarlı olsun)
+                        const spendRefDate = lastUpdate && lastUpdate > startDate ? lastUpdate : today;
+                        const spendRef = new Date(spendRefDate);
+                        spendRef.setHours(0,0,0,0);
+                        if (spendRef > startDate && today <= endDate && bs.harcama > 0) {
+                            const passedDays = Math.ceil((spendRef - startDate) / (1000 * 60 * 60 * 24));
                             if (passedDays > 0) {
                                 currentDailySpend = bs.harcama / passedDays;
                                 const projectedTotal = bs.harcama + (currentDailySpend * remainingDays);
@@ -221,6 +229,12 @@ export function BranchDetail() {
                                 >
                                     {isRefreshing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
                                 </Button>
+
+                                {staleDays >= 1 && (
+                                    <span className="text-[10px] font-medium text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded-full" title={lastUpdate ? lastUpdate.toLocaleString('tr-TR') : ''}>
+                                        ⚠ Veri {staleDays} gün önce güncellendi
+                                    </span>
+                                )}
 
                                 {bs.durum === 'asim' && (
                                     <span className="ml-auto text-xs font-medium text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full flex items-center gap-1">

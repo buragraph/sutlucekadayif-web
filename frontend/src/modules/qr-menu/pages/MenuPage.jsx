@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../../../services/api';
 import { Search, ChevronRight, ChevronUp, Instagram, MessageCircle } from 'lucide-react';
-import { proxyImageUrl } from '../../../utils/imageProxy';
+import { proxyImageUrl, proxyR2Url } from '../../../utils/imageProxy';
 
 /* ─── Skeleton Loading ─── */
 function SkeletonLoading() {
@@ -119,7 +119,8 @@ export default function MenuPage() {
 
             // 1. R2 JSON cache'ten dene (CDN — hızlı)
             try {
-                const r2Res = await fetch(`https://pub-99104fd4f6324895b46545c23e61887f.r2.dev/menu/${subeSlug}.json`);
+                // r2.dev doğrudan erişilemediği için proxy üzerinden (görsellerle aynı yol)
+                const r2Res = await fetch(proxyR2Url(`https://pub-99104fd4f6324895b46545c23e61887f.r2.dev/menu/${subeSlug}.json`));
                 if (r2Res.ok) {
                     data = await r2Res.json();
                 }

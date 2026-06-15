@@ -285,7 +285,7 @@ router.post(
             try {
               await campaignBasedImport(settings.metaApiToken, donem_baslangic, donem_bitis, subeKod);
               console.log(`[Budget] ${subeKod} için Meta verisi otomatik çekildi.`);
-              // Not: campaignBasedImport içinde recalcSubeAggregates zaten çağrılıyor
+              // Not: campaignBasedImport aggregate'leri delta ile günceller
             } catch (e) {
               console.error(`[Budget] ${subeKod} Meta otomatik çekim hatası:`, e.message);
             }
@@ -362,7 +362,7 @@ router.post(
           try {
             await campaignBasedImport(settings.metaApiToken, donem_baslangic, donem_bitis, subeKod);
             console.log(`[Budget] ${subeKod} için Meta verisi otomatik çekildi.`);
-            // Not: campaignBasedImport içinde recalcSubeAggregates zaten çağrılıyor
+            // Not: campaignBasedImport aggregate'leri delta ile günceller
             invalidateReportCache();
             invalidateCache('/reports');
           } catch (e) {
@@ -480,6 +480,7 @@ router.get(
           baslangic: since,
           bitis: until,
           donem: `${since} - ${until}`,
+          updatedAt: donemOzet?.updatedAt || null,
         });
       }
 
@@ -525,8 +526,13 @@ router.get(
       const doc = await getButceDoc();
       const kampanyalar = doc.kampanyalar || {};
 
+      // Bugünün tarihi (YYYY-MM-DD) — son_tarih'i geçmiş kampanyalar gösterilmez
+      const bugun = new Date().toISOString().slice(0, 10);
+
       const bekleyenler = Object.entries(kampanyalar)
         .filter(([, k]) => {
+          // Toplama süresi geçtiyse (son_tarih < bugün) şube sahibine gösterme
+          if (k.son_tarih && k.son_tarih < bugun) return false;
           return k.durum === 'aktif' && k.yanitlar?.[subeSlug]?.durum === 'bekliyor';
         })
         .sort((a, b) => new Date(b[1].createdAt) - new Date(a[1].createdAt))
@@ -542,7 +548,30 @@ router.get(
           yanit: data.yanitlar[subeSlug],
         }));
 
-      res.json({ kampanyalar: bekleyenler });
+      // Katıldığı kampanyalar — dönem sonuna (donem_bitis) kadar özet olarak görünür
+      const katildiklarim = Object.entries(kampanyalar)
+        .filter(([, k]) => {
+          const y = k.yanitlar?.[subeSlug];
+          if (!y || (y.durum !== 'gonderildi' && y.durum !== 'onaylandi')) return false;
+          if (k.donem_bitis && k.donem_bitis < bugun) return false; // dönem bittiyse gösterme
+          return true;
+        })
+        .sort((a, b) => new Date(b[1].createdAt) - new Date(a[1].createdAt))
+        .map(([id, k]) => {
+          const y = k.yanitlar[subeSlug];
+          return {
+            id,
+            baslik: k.baslik,
+            donem_baslangic: k.donem_baslangic,
+            donem_bitis: k.donem_bitis,
+            secilen_bakiye: y.secilen_bakiye,
+            kdv_dahil_tutar: y.kdv_dahil_tutar,
+            durum: y.durum,
+            gonderim_tarihi: y.gonderim_tarihi,
+          };
+        });
+
+      res.json({ kampanyalar: bekleyenler, katildiklarim });
     } catch (err) {
       console.error('[Budget] Bekleyen kampanyalar hatası:', err);
       res.status(500).json({ error: err.message });

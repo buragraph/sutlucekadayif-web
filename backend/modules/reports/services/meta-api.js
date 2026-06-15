@@ -1,10 +1,9 @@
-import { upsertSube, upsertMetaToplanlar, upsertToplamErisim, getAllSubeler, getSubeByKod, getMetaMappings, saveMetaMappings as dbSaveMetaMappings, getCampaignMappings, saveCampaignMappings as dbSaveCampaignMappings, getAdsetMappings, saveAdsetMappings as dbSaveAdsetMappings, getAdsetsCache, saveAdsetsCache, recalcSubeAggregates, bumpDataVersion } from '../db.js';
+import { upsertSube, upsertMetaToplanlar, upsertToplamErisim, getAllSubeler, getSubeByKod, getMetaMappings, saveMetaMappings as dbSaveMetaMappings, getCampaignMappings, saveCampaignMappings as dbSaveCampaignMappings, getAdsetMappings, saveAdsetMappings as dbSaveAdsetMappings, getAdsetsCache, saveAdsetsCache, bumpDataVersion } from '../db.js';
 
-// Batch sonunda şube aggregate'lerini paralel hesaplar, versiyonu tek seferde artırır
-async function recalcAll(kodlar) {
-  const list = [...kodlar];
-  await Promise.all(list.map(kod => recalcSubeAggregates(kod, { skipBump: true })));
-  if (list.length > 0) await bumpDataVersion();
+// Batch sonunda versiyonu tek seferde artırır. Aggregate'ler her upsert'te delta ile
+// güncellendiği için ayrıca recalc gerekmez (skipBump:true ile yazılıp burada 1 bump).
+async function bumpAfterBatch(kodlar) {
+  if ([...kodlar].length > 0) await bumpDataVersion();
 }
 
 const GRAPH_API_VERSION = 'v21.0';
@@ -163,13 +162,13 @@ export async function importFromMetaApi(accessToken, since, until) {
   const sonuclar = [];
   for (const [kod, grup] of Object.entries(subeGruplari)) {
     const toplamlar = aggregateApiRows(grup.rows);
-    await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipRecalc: true });
+    await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipBump: true });
     sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length });
     console.log(`   ✅ ${grup.sube.ad}: ${grup.rows.length} reklam seti → toplamlar yazıldı`);
   }
 
   // Aggregate'leri sonda bir kez hesapla (N yerine 1 recalc per şube)
-  await recalcAll(Object.keys(subeGruplari));
+  await bumpAfterBatch(Object.keys(subeGruplari));
 
   console.log(`\n✅ Toplam: ${sonuclar.length} şube, ${rawData.length} reklam seti\n`);
   return { count: rawData.length, subeSayisi: sonuclar.length, subeler: sonuclar, hatalar };
@@ -219,7 +218,7 @@ export async function confirmMetaImport(accessToken, since, until, eslesmeleri) 
   const sonuclar = [];
   for (const [kod, grup] of Object.entries(subeGruplari)) {
     const toplamlar = aggregateApiRows(grup.rows);
-    await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipRecalc: true });
+    await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipBump: true });
     sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length });
   }
 
@@ -229,7 +228,7 @@ export async function confirmMetaImport(accessToken, since, until, eslesmeleri) 
     for (const [kod, grup] of Object.entries(subeGruplari)) {
       const match = campaignReach[kod];
       if (match && match.reach > 0) {
-        await upsertToplamErisim(grup.sube.kod, since, until, match.reach, { skipRecalc: true });
+        await upsertToplamErisim(grup.sube.kod, since, until, match.reach, { skipBump: true });
         console.log(`   📊 ${grup.sube.ad}: tekil erişim = ${match.reach}`);
         const s = sonuclar.find(x => x.kod === kod);
         if (s) s.tekilErisim = match.reach;
@@ -240,7 +239,7 @@ export async function confirmMetaImport(accessToken, since, until, eslesmeleri) 
   }
 
   // Aggregate'leri sonda bir kez hesapla (2×N yerine 1×N recalc)
-  await recalcAll(Object.keys(subeGruplari));
+  await bumpAfterBatch(Object.keys(subeGruplari));
 
   return { count: rawData.length, subeSayisi: sonuclar.length, subeler: sonuclar, atlanan: atlanan.length };
 }
@@ -432,7 +431,7 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
   const sonuclar = [];
   for (const [kod, grup] of Object.entries(subeGruplari)) {
     const toplamlar = aggregateApiRows(grup.rows);
-    await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipRecalc: true });
+    await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipBump: true });
 
     // Kampanya seviyesinde tekil erişim yaz
     let toplamTekilErisim = 0;
@@ -441,14 +440,14 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
       if (cData) toplamTekilErisim += parseInt(cData.reach) || 0;
     }
     if (toplamTekilErisim > 0) {
-      await upsertToplamErisim(grup.sube.kod, since, until, toplamTekilErisim, { skipRecalc: true });
+      await upsertToplamErisim(grup.sube.kod, since, until, toplamTekilErisim, { skipBump: true });
       console.log(`   📊 ${grup.sube.ad}: tekil erişim = ${toplamTekilErisim.toLocaleString('tr-TR')}`);
     }
     sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length, tekilErisim: toplamTekilErisim });
   }
 
   // Aggregate'leri sonda bir kez hesapla (2×N yerine 1×N recalc)
-  await recalcAll(Object.keys(subeGruplari));
+  await bumpAfterBatch(Object.keys(subeGruplari));
 
   return { count: adsetCampaignMap.length, subeSayisi: sonuclar.length, subeler: sonuclar, atlanan: atlanan.length };
 }

@@ -148,7 +148,7 @@ export default function BudgetCampaignsPage() {
         <>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight text-foreground">Bütçe Toplama</h1>
+                    <h1 className="text-3xl leading-none tracking-tight text-foreground">Bütçe Toplama</h1>
                     <p className="text-sm text-muted-foreground mt-1">
                         Şube bütçe kampanyalarını oluşturun ve takip edin.
                     </p>
@@ -332,7 +332,7 @@ export default function BudgetCampaignsPage() {
                         </Button>
                         <div>
                             <div className="flex items-center gap-3">
-                                <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                                <h1 className="text-3xl leading-none tracking-tight text-foreground">
                                     {kampanya.baslik}
                                 </h1>
                                 <Badge className={cn('text-xs', cfg.className)}>{cfg.label}</Badge>

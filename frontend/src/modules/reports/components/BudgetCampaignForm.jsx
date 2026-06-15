@@ -134,7 +134,7 @@ export default function BudgetCampaignForm({ onCancel, onSuccess }) {
                     <ArrowLeft className="w-5 h-5" />
                 </Button>
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                    <h1 className="text-3xl leading-none tracking-tight text-foreground">
                         Yeni Kampanya
                     </h1>
                     <p className="text-sm text-muted-foreground mt-0.5">

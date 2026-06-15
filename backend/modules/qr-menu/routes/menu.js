@@ -12,10 +12,15 @@ const router = Router();
  */
 router.get(
     '/subeler',
+    verifyToken, // yalnızca giriş yapmış kullanıcılar (admin paneli dropdown'ları)
     asyncHandler(async (req, res) => {
         const snap = await db.collection('subeler').get();
-        const subeler = [];
-        snap.forEach((d) => subeler.push({ slug: d.id, ...d.data() }));
+        // Yalnızca güvenli alanlar — VKN, fatura adresi, yetkili adı gibi
+        // hassas bilgiler bu public-ish listeye dahil edilmez.
+        const subeler = snap.docs.map((d) => {
+            const data = d.data();
+            return { slug: d.id, ad: data.ad || d.id, il: data.il || null, ilce: data.ilce || null };
+        });
         res.json({ subeler });
     })
 );

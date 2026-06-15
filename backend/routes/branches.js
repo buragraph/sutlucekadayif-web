@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { db } from '../config/firebase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import { bumpDataVersion } from '../modules/reports/db.js';
+import { getKonumListe, syncAllKonumlar, upsertKonum, removeKonum } from '../shared/konum-store.js';
 
 const router = Router();
 
@@ -10,7 +12,7 @@ const router = Router();
  * Harita işaretçisini ilçe seviyesinde konumlandırmak için kullanılır.
  * Best-effort: başarısız olursa null döner (harita il merkezine düşer).
  */
-async function geocodeIlce(il, ilce) {
+export async function geocodeIlce(il, ilce) {
     if (!il || !ilce) return null;
     try {
         const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&country=Turkey&state=${encodeURIComponent(il)}&county=${encodeURIComponent(ilce)}`;
@@ -51,29 +53,25 @@ router.get(
 
 /**
  * GET /api/branches/konumlar
- * Harita için hafif şube konum listesi — sadece ad + il + ilçe.
- * Ürün sayım sorguları (N ek read) yapılmaz. Cache yok: şube/il-ilçe
- * güncellemesi sonrası multi-instance bayatlık olmasın diye hep taze okunur
- * (admin'e özel, seyrek çağrı — N read kabul edilebilir).
+ * Harita için hafif şube konum listesi. Tek bir denormalize dokümandan okunur →
+ * admin'de bile 73 ayrı şube okuması yerine **1 read**. Liste şube yazımlarında
+ * incremental güncellenir (shared/konum-store.js). İlk çağrıda doküman yoksa
+ * tek seferlik subeler'den kurulur (lazy init).
  */
 router.get(
     '/konumlar',
     verifyToken,
     requirePermission('branches.view'),
     asyncHandler(async (req, res) => {
-        const toKonum = (id, data) => ({
-            slug: id, ad: data.ad || id, il: data.il || null, ilce: data.ilce || null,
-            lat: data.lat ?? null, lng: data.lng ?? null,
-        });
+        let liste = await getKonumListe();        // 1 read
+        if (liste === null) liste = await syncAllKonumlar(); // ilk kez: tek seferlik kur
 
-        // Admin tüm şubeleri görür; sube_sahibi yalnızca kendi şubesini (1 read)
+        // Admin tüm şubeleri görür; sube_sahibi yalnızca kendi şubesini
         let konumlar;
         if (req.user.role === 'admin') {
-            const snap = await db.collection('subeler').get();
-            konumlar = snap.docs.map((d) => toKonum(d.id, d.data()));
+            konumlar = liste;
         } else if (req.user.subeSlug) {
-            const doc = await db.collection('subeler').doc(req.user.subeSlug).get();
-            konumlar = doc.exists ? [toKonum(doc.id, doc.data())] : [];
+            konumlar = liste.filter((k) => k.slug === req.user.subeSlug);
         } else {
             konumlar = [];
         }
@@ -122,6 +120,8 @@ router.post(
         const konum = await geocodeIlce(data.il, data.ilce);
         if (konum) { data.lat = konum.lat; data.lng = konum.lng; }
         await db.collection('subeler').doc(slugVal).set(data);
+        await bumpDataVersion();        // rapor cache'leri (şube adı raporlarda görünür)
+        await upsertKonum(slugVal, data); // harita konum dokümanı
 
         res.status(201).json({ slug: slugVal, ad: ad.trim() });
     })
@@ -166,6 +166,9 @@ router.put(
         }
 
         await docRef.update(updateData);
+        await bumpDataVersion(); // rapor cache'leri (şube adı değişebilir)
+        // Harita konum dokümanını güncel şube durumuyla (eski + değişiklikler) güncelle
+        await upsertKonum(slug, { ...doc.data(), ...updateData });
         res.json({ success: true });
     })
 );
@@ -194,6 +197,8 @@ router.delete(
         }
 
         await docRef.delete();
+        await bumpDataVersion();   // rapor cache'leri
+        await removeKonum(slug);   // harita konum dokümanından çıkar
         res.json({ success: true });
     })
 );

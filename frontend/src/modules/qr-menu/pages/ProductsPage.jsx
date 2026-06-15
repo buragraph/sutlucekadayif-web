@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ChevronsUpDown } from 'lucide-react';
+import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ChevronsUpDown, Tag, ListPlus } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -65,6 +66,13 @@ export default function ProductsPage() {
     const [kategoriler, setKategoriler] = useState([]);
     const [subeler, setSubeler] = useState([]);
     const [ortakUrunSayisi, setOrtakUrunSayisi] = useState(0);
+
+    // ── Toplu işlemler ──
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [showBulkPrice, setShowBulkPrice] = useState(false);
+    const [bulkPriceForm, setBulkPriceForm] = useState({ mode: 'set', value: '' });
+    const [bulkBusy, setBulkBusy] = useState(false);
+    const [bulkAddRows, setBulkAddRows] = useState([]);
 
     useEffect(() => { loadKategoriler(); }, []);
     useEffect(() => { if (role === 'admin' || subeSlug) loadUrunler(); }, [subeSlug, role, selectedSube]);
@@ -120,15 +128,24 @@ export default function ProductsPage() {
         setShowMediaLibrary(false);
     }
 
-    async function loadMediaImages() {
+    async function loadMediaImages(q = '') {
         setLoadingMedia(true);
-        setMediaSearch('');
         try {
-            const { data } = await api.get('/media');
+            // Arama varsa sunucu tarafı substring araması (tüm kütüphane);
+            // yoksa son yüklenenler (ilk sayfa)
+            const params = q && q.trim() ? { q: q.trim() } : {};
+            const { data } = await api.get('/media', { params });
             setMediaImages((data.medyalar || []).map(m => ({ key: m.id, url: m.url, ad: m.ad })));
         } catch { toast.error('Görseller yüklenemedi'); }
         setLoadingMedia(false);
     }
+
+    // Görsel kütüphanesi açıkken aramayı (debounce) sunucuya gönder
+    useEffect(() => {
+        if (!showMediaLibrary) return;
+        const t = setTimeout(() => loadMediaImages(mediaSearch), 300);
+        return () => clearTimeout(t);
+    }, [mediaSearch, showMediaLibrary]); // eslint-disable-line react-hooks/exhaustive-deps
 
     function selectFromLibrary(url) {
         setImageFile(null);
@@ -224,8 +241,155 @@ export default function ProductsPage() {
     const paginatedUrunler = sortedUrunler.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
     const totalPages = Math.ceil(sortedUrunler.length / ITEMS_PER_PAGE);
 
+    // ── Toplu işlem yardımcıları ──
+    // Düzenlenebilir (kilitli olmayan) ürünler — şube sahibi ortak ürünleri seçemez
+    const seciliebilir = (u) => !(role !== 'admin' && (kategoriler.find(k => k.id === u.kategori)?.kilitli || u.tur !== 'sube_ozel'));
+    const secilebilirSayfa = paginatedUrunler.filter(seciliebilir);
+    const tumuSeciliMi = secilebilirSayfa.length > 0 && secilebilirSayfa.every(u => selectedIds.has(u.id));
+    const selectedItems = () => urunler.filter(u => selectedIds.has(u.id)).map(u => ({ id: u.id, sube_slug: u.sube_slug }));
+
+    function toggleSelect(id) {
+        setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    }
+    function toggleSelectAllPage() {
+        setSelectedIds(prev => {
+            const n = new Set(prev);
+            if (tumuSeciliMi) secilebilirSayfa.forEach(u => n.delete(u.id));
+            else secilebilirSayfa.forEach(u => n.add(u.id));
+            return n;
+        });
+    }
+    function clearSelection() { setSelectedIds(new Set()); }
+
+    async function handleBulkPrice() {
+        const value = Number(bulkPriceForm.value);
+        if (!Number.isFinite(value)) { toast.error('Geçerli bir değer girin'); return; }
+        setBulkBusy(true);
+        try {
+            const { data } = await api.put('/products/bulk-price', { items: selectedItems(), mode: bulkPriceForm.mode, value });
+            toast.success(`${data.updated} ürünün fiyatı güncellendi`);
+            setShowBulkPrice(false); setBulkPriceForm({ mode: 'set', value: '' });
+            clearSelection(); await loadUrunler(true);
+        } catch (err) { toast.error(err.response?.data?.error || 'Toplu fiyat güncellenemedi'); }
+        setBulkBusy(false);
+    }
+
+    async function handleBulkDelete() {
+        const ok = await confirm(`${selectedIds.size} ürünü silmek istediğinize emin misiniz?`);
+        if (!ok) return;
+        setBulkBusy(true);
+        try {
+            const { data } = await api.post('/products/bulk-delete', { items: selectedItems() });
+            toast.success(`${data.deleted} ürün silindi`);
+            clearSelection(); await loadUrunler(true); loadKategoriler();
+        } catch (err) { toast.error(err.response?.data?.error || 'Toplu silme başarısız'); }
+        setBulkBusy(false);
+    }
+
+    // ── Toplu ekleme ──
+    const yeniBulkRow = () => ({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', miktar: '', birim: 'gr', gorsel: '' });
+    function openBulkAdd() { setBulkAddRows([yeniBulkRow(), yeniBulkRow(), yeniBulkRow()]); setViewMode('bulkAdd'); }
+    function addBulkRow() { setBulkAddRows(r => [...r, yeniBulkRow()]); }
+    function removeBulkRow(i) { setBulkAddRows(r => r.filter((_, idx) => idx !== i)); }
+    function updateBulkRow(i, field, val) { setBulkAddRows(r => r.map((row, idx) => idx === i ? { ...row, [field]: val } : row)); }
+    async function uploadBulkRowImage(i, file) {
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) { toast.error('Görsel 10MB\'dan küçük olmalı'); return; }
+        updateBulkRow(i, 'gorsel', 'loading');
+        try {
+            const fd = new FormData(); fd.append('image', file);
+            const { data } = await api.post('/upload/image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+            updateBulkRow(i, 'gorsel', data.url);
+        } catch { updateBulkRow(i, 'gorsel', ''); toast.error('Görsel yüklenemedi'); }
+    }
+    async function handleBulkAddSubmit() {
+        const gecerli = bulkAddRows.filter(r => r.ad.trim() && r.fiyat !== '' && r.kategori);
+        if (gecerli.length === 0) { toast.error('En az bir geçerli ürün satırı girin (ad, fiyat, kategori)'); return; }
+        setBulkBusy(true);
+        try {
+            const products = gecerli.map(r => ({
+                ad: r.ad.trim(), fiyat: Number(r.fiyat), kategori: r.kategori,
+                sube_slug: role === 'admin' ? (selectedSube !== 'all' && selectedSube !== 'ortak' ? selectedSube : undefined) : subeSlug,
+                miktar: r.miktar ? Number(r.miktar) : null, birim: r.birim || '',
+                gorsel: r.gorsel && r.gorsel !== 'loading' ? r.gorsel : '',
+            }));
+            const { data } = await api.post('/products/bulk', { products });
+            toast.success(`${data.created} ürün eklendi`);
+            setViewMode('list'); await loadUrunler(true); loadKategoriler();
+        } catch (err) { toast.error(err.response?.data?.error || 'Toplu ekleme başarısız'); }
+        setBulkBusy(false);
+    }
+
     // ---------- DETAIL / FORM VIEW ----------
-    if (viewMode !== 'list') {
+    // ---------- BULK ADD VIEW (tam sayfa) ----------
+    if (viewMode === 'bulkAdd') {
+        const gecerliSayi = bulkAddRows.filter(r => r.ad.trim() && r.fiyat !== '' && r.kategori).length;
+        const katSecenek = role === 'admin' ? kategoriler : kategoriler.filter(k => k.tur === 'sube_ozel');
+        return (
+            <div className="flex flex-1 flex-col gap-4 w-full h-full min-h-0">
+                {/* Header */}
+                <div className="flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-3">
+                        <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={() => setViewMode('list')}>
+                            <ChevronLeft className="size-4" />
+                        </Button>
+                        <div>
+                            <p className="text-xs text-muted-foreground">Ürünler</p>
+                            <h1 className="text-lg font-semibold tracking-tight text-foreground leading-tight">Toplu Ürün Ekle</h1>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button variant="ghost" onClick={() => setViewMode('list')}>İptal</Button>
+                        <Button onClick={handleBulkAddSubmit} disabled={bulkBusy || gecerliSayi === 0}>
+                            {bulkBusy ? 'Ekleniyor...' : `${gecerliSayi > 0 ? gecerliSayi + ' ' : ''}Ürünü Ekle`}
+                        </Button>
+                    </div>
+                </div>
+
+                <Card className="flex flex-1 min-h-0 flex-col rounded-2xl">
+                    <CardContent className="flex flex-1 min-h-0 flex-col gap-2 pt-5">
+                        {/* Sütun başlıkları */}
+                        <div className="hidden md:grid grid-cols-[56px_1fr_110px_1fr_80px_70px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground shrink-0">
+                            <span>Görsel</span><span>Ürün Adı</span><span>Fiyat ₺</span><span>Kategori</span><span>Miktar</span><span>Birim</span><span></span>
+                        </div>
+                        {/* Satırlar */}
+                        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 pr-1">
+                            {bulkAddRows.map((row, i) => (
+                                <div key={i} className="grid grid-cols-2 md:grid-cols-[56px_1fr_110px_1fr_80px_70px_36px] gap-2 items-center rounded-lg border p-2 md:border-0 md:p-0">
+                                    {/* Görsel */}
+                                    <label className="relative flex size-14 md:size-12 cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-muted/40 hover:bg-muted">
+                                        {row.gorsel === 'loading' ? (
+                                            <Spinner className="size-4" />
+                                        ) : row.gorsel ? (
+                                            <img src={proxyImageUrl(row.gorsel)} alt="" className="size-full object-cover" />
+                                        ) : (
+                                            <ImagePlus className="size-4 text-muted-foreground" />
+                                        )}
+                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => { uploadBulkRowImage(i, e.target.files[0]); e.target.value = ''; }} />
+                                    </label>
+                                    <Input value={row.ad} onChange={(e) => updateBulkRow(i, 'ad', e.target.value)} placeholder="Ürün adı" className="h-9 text-sm" />
+                                    <Input type="number" min="0" value={row.fiyat} onChange={(e) => updateBulkRow(i, 'fiyat', e.target.value)} placeholder="0" className="h-9 text-sm" />
+                                    <Select value={row.kategori} onValueChange={(v) => updateBulkRow(i, 'kategori', v)}>
+                                        <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Kategori" /></SelectTrigger>
+                                        <SelectContent>
+                                            {katSecenek.map(k => <SelectItem key={k.id} value={k.id}>{k.ad}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                    <Input type="number" min="0" value={row.miktar} onChange={(e) => updateBulkRow(i, 'miktar', e.target.value)} placeholder="-" className="h-9 text-sm" />
+                                    <Input value={row.birim} onChange={(e) => updateBulkRow(i, 'birim', e.target.value)} placeholder="gr" className="h-9 text-sm" />
+                                    <Button variant="ghost" size="icon" className="size-9 text-muted-foreground hover:text-destructive justify-self-end" onClick={() => removeBulkRow(i)}><X className="size-4" /></Button>
+                                </div>
+                            ))}
+                        </div>
+                        <Button variant="outline" size="sm" className="w-full shrink-0" onClick={addBulkRow}><Plus className="size-4 mr-1.5" /> Satır Ekle</Button>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
+    // ---------- ADD / EDIT VIEW (tam sayfa) ----------
+    if (viewMode === 'add' || viewMode === 'edit') {
         return (
             <div className="flex flex-1 flex-col gap-4 w-full h-full min-h-0">
                 {/* Header */}
@@ -276,7 +440,7 @@ export default function ProductsPage() {
                                                 <span className="text-[11px] font-medium">Görsel Ekle</span>
                                             </button>
                                         )}
-                                        <Button type="button" variant="ghost" size="sm" className="w-full text-xs h-7 text-muted-foreground" onClick={() => { setShowMediaLibrary(true); loadMediaImages(); }}>
+                                        <Button type="button" variant="ghost" size="sm" className="w-full text-xs h-7 text-muted-foreground" onClick={() => { setMediaSearch(''); setShowMediaLibrary(true); }}>
                                             <Images className="size-3" /> Kütüphaneden seç
                                         </Button>
                                         <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageSelect} className="hidden" />
@@ -407,12 +571,11 @@ export default function ProductsPage() {
                                 {loadingMedia ? (
                                     <div className="flex items-center justify-center py-8"><Spinner className="size-5" /></div>
                                 ) : (() => {
-                                    const filteredMedia = mediaImages.filter(img => !mediaSearch || img.ad?.toLowerCase().includes(mediaSearch.toLowerCase()));
-                                    return filteredMedia.length === 0 ? (
+                                    return mediaImages.length === 0 ? (
                                         <p className="text-center text-xs text-muted-foreground py-6">{mediaSearch ? 'Sonuç bulunamadı' : 'Henüz görsel yok.'}</p>
                                     ) : (
                                         <div className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-2 max-h-56 overflow-y-auto">
-                                            {filteredMedia.map((img) => (
+                                            {mediaImages.map((img) => (
                                                 <img key={img.key} src={proxyImageUrl(img.url)} alt=""
                                                     onClick={() => selectFromLibrary(img.url)}
                                                     className={`w-full aspect-square object-cover rounded-lg border cursor-pointer transition-all ring-2 hover:opacity-100 ${imagePreview === img.url ? 'ring-primary opacity-100 scale-95' : 'ring-transparent opacity-75 hover:ring-muted-foreground/30'}`} />
@@ -431,31 +594,40 @@ export default function ProductsPage() {
     // ---------- LIST VIEW ----------
     return (
         <div className="flex flex-1 flex-col gap-4 w-full h-full min-h-0">
-            {/* Page Header */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground">Ürünler</h1>
-                    <p className="text-xs text-muted-foreground mt-0.5">Menünüzdeki ürünleri görüntüleyin ve yönetin.</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                    <Button variant="outline" size="sm" className="h-8 shadow-sm text-xs" onClick={async () => {
-                        try { const { data } = await api.get('/products/trash'); setTrashUrunler(data.urunler); setShowTrash(true); }
-                        catch (err) { toast.error('Çöp kutusu yüklenemedi'); }
-                    }}>
-                        <Trash className="size-3.5 mr-1.5" /> Silinenler
-                    </Button>
-                    <Button size="sm" className="h-8 shadow-sm bg-primary hover:bg-primary/90 text-primary-foreground text-xs" onClick={openAddUrun}>
-                        <Plus className="size-3.5 mr-1.5" /> Yeni Ürün Ekle
-                    </Button>
-                </div>
+            {/* Sayfa Başlığı */}
+            <div className="shrink-0">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">QR Menü</p>
+                <h1 className="text-3xl leading-none tracking-tight text-foreground">Ürünler</h1>
             </div>
 
             {role !== 'admin' && !subeSlug && (
-                <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
+                <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive shrink-0">
                     Şube bilginiz tanımlanmamış. Yönetici ile iletişime geçin.
                 </div>
             )}
 
+            <Card className="flex flex-1 min-h-0 flex-col rounded-2xl">
+                <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 border-b pb-4">
+                    <div className="space-y-0.5">
+                        <CardTitle className="text-base">Ürün Listesi</CardTitle>
+                        <CardDescription className="text-xs">Menünüzdeki ürünleri görüntüleyin ve yönetin.</CardDescription>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={async () => {
+                            try { const { data } = await api.get('/products/trash'); setTrashUrunler(data.urunler); setShowTrash(true); }
+                            catch (err) { toast.error('Çöp kutusu yüklenemedi'); }
+                        }}>
+                            <Trash className="size-3.5 mr-1.5" /> Silinenler
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openBulkAdd}>
+                            <ListPlus className="size-3.5 mr-1.5" /> Toplu Ekle
+                        </Button>
+                        <Button size="sm" className="h-8 text-xs" onClick={openAddUrun}>
+                            <Plus className="size-3.5 mr-1.5" /> Yeni Ürün Ekle
+                        </Button>
+                    </div>
+                </CardHeader>
+                <CardContent className="flex flex-1 min-h-0 flex-col gap-3 pt-4">
             {loadingUrunler ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-16">
                     <Spinner className="size-8" />
@@ -520,12 +692,30 @@ export default function ProductsPage() {
                         </TabsList>
                     </Tabs>
 
+                    {/* Toplu işlem çubuğu */}
+                    {selectedIds.size > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 shrink-0">
+                            <span className="text-sm font-medium text-foreground">{selectedIds.size} ürün seçili</span>
+                            <div className="flex-1" />
+                            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setBulkPriceForm({ mode: 'set', value: '' }); setShowBulkPrice(true); }}>
+                                <Tag className="size-3.5 mr-1.5" /> Toplu Fiyat
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-8 text-xs text-destructive hover:text-destructive" onClick={handleBulkDelete} disabled={bulkBusy}>
+                                <Trash2 className="size-3.5 mr-1.5" /> Toplu Sil
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={clearSelection}>Temizle</Button>
+                        </div>
+                    )}
+
                     {/* Table */}
-                    <div className="rounded-lg border overflow-auto">
+                    <div className="flex-1 min-h-0 overflow-auto rounded-lg border">
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="w-30"></TableHead>
+                                    <TableHead className="w-10">
+                                        <Checkbox checked={tumuSeciliMi} onCheckedChange={toggleSelectAllPage} aria-label="Tümünü seç" disabled={secilebilirSayfa.length === 0} />
+                                    </TableHead>
+                                    <TableHead className="w-16"></TableHead>
                                     <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('ad')}>
                                         <span className="inline-flex items-center">Ürün <SortIcon col="ad" /></span>
                                     </TableHead>
@@ -558,10 +748,15 @@ export default function ProductsPage() {
                                                 if (!isKilitli) openEditUrun(urun);
                                             }}
                                         >
-                                            <TableCell className="py-3">
+                                            <TableCell onClick={(e) => e.stopPropagation()}>
+                                                {!isKilitli && (
+                                                    <Checkbox checked={selectedIds.has(urun.id)} onCheckedChange={() => toggleSelect(urun.id)} aria-label={`${urun.ad} seç`} />
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="py-2.5">
                                                 {urun.gorsel
-                                                    ? <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad} className="w-45 h-20 rounded-lg object-cover ring-1 ring-border" />
-                                                    : <span className="text-3xl">🍮</span>}
+                                                    ? <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad} className="size-12 rounded-lg object-cover ring-1 ring-border" />
+                                                    : <div className="flex size-12 items-center justify-center rounded-lg bg-muted text-xl">🍮</div>}
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col gap-0.5">
@@ -609,7 +804,7 @@ export default function ProductsPage() {
                                                 {urun.createdAt ? new Date(urun.createdAt).toLocaleDateString('tr-TR') : '—'}
                                             </TableCell>
                                             <TableCell>
-                                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="flex gap-1">
                                                     {!isKilitli && (
                                                         <Button variant="ghost" size="icon" className="size-7 text-destructive hover:text-destructive hover:bg-destructive/10" title="Sil" onClick={() => handleUrunDelete(urun)}>
                                                             <Trash2 className="size-3.5" />
@@ -672,6 +867,8 @@ export default function ProductsPage() {
                     )}
                 </div>
             )}
+                </CardContent>
+            </Card>
 
             {/* Trash Dialog */}
             <Dialog open={showTrash} onOpenChange={(open) => !open && setShowTrash(false)}>
@@ -733,6 +930,41 @@ export default function ProductsPage() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* Toplu Fiyat Dialog */}
+            <Dialog open={showBulkPrice} onOpenChange={(o) => !o && setShowBulkPrice(false)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2"><Tag className="size-4" /> Toplu Fiyat Güncelle</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <p className="text-sm text-muted-foreground">{selectedIds.size} seçili ürün için işlem:</p>
+                        <div className="grid grid-cols-1 gap-2">
+                            {[
+                                { v: 'set', l: 'Yeni fiyat (hepsini eşitle)' },
+                                { v: 'inc_pct', l: 'Yüzde artır (%)' },
+                                { v: 'dec_pct', l: 'Yüzde azalt (%)' },
+                                { v: 'inc_amt', l: 'Tutar ekle (₺)' },
+                                { v: 'dec_amt', l: 'Tutar düş (₺)' },
+                            ].map((o) => (
+                                <label key={o.v} className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors ${bulkPriceForm.mode === o.v ? 'border-primary bg-primary/5 text-primary' : 'hover:bg-muted'}`}>
+                                    <input type="radio" name="bulkmode" checked={bulkPriceForm.mode === o.v} onChange={() => setBulkPriceForm(f => ({ ...f, mode: o.v }))} className="size-4" />
+                                    {o.l}
+                                </label>
+                            ))}
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label>{bulkPriceForm.mode.includes('pct') ? 'Yüzde' : bulkPriceForm.mode === 'set' ? 'Yeni Fiyat (₺)' : 'Tutar (₺)'}</Label>
+                            <Input type="number" min="0" value={bulkPriceForm.value} onChange={(e) => setBulkPriceForm(f => ({ ...f, value: e.target.value }))} placeholder={bulkPriceForm.mode.includes('pct') ? 'örn: 10' : 'örn: 150'} autoFocus />
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                        <Button variant="outline" onClick={() => setShowBulkPrice(false)}>İptal</Button>
+                        <Button onClick={handleBulkPrice} disabled={bulkBusy || bulkPriceForm.value === ''}>{bulkBusy ? 'Uygulanıyor...' : 'Uygula'}</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
         </div>
     );
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, UserPlus } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Spinner } from '@/components/ui/spinner';
 
 export default function UsersPage() {
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, refreshClaims } = useAuth();
     const toast = useToast();
     const confirm = useConfirm();
     const [users, setUsers] = useState([]);
@@ -89,6 +89,8 @@ export default function UsersPage() {
                     subeSlug: form.subeSlug,
                     role: form.role,
                 });
+                // Kullanıcı kendi rol/şubesini değiştirdiyse token'ı tazele (yeniden giriş gerekmesin)
+                if (editingUser.uid === currentUser?.uid) await refreshClaims();
             } else {
                 if (!form.password) {
                     toast.error('Şifre zorunludur');
@@ -125,6 +127,18 @@ export default function UsersPage() {
         }
     }
 
+    async function handleResetOnboarding(u) {
+        const ok = await confirm(`${u.displayName || u.email} kullanıcısının ilk giriş formu sıfırlansın mı? Bir sonraki girişinde wizard tekrar çıkar.`);
+        if (!ok) return;
+        try {
+            await api.post(`/onboarding/reset/${u.uid}`);
+            toast.success('İlk giriş formu sıfırlandı');
+        } catch (err) {
+            console.error('Sıfırlama hatası:', err);
+            toast.error(err.response?.data?.error || 'Sıfırlama başarısız');
+        }
+    }
+
     const rolLabel = (role) => {
         switch (role) {
             case 'admin': return 'Yönetici';
@@ -139,7 +153,7 @@ export default function UsersPage() {
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold tracking-tight">{isSubeSahibi ? 'Çalışanlar' : 'Kullanıcılar'}</h1>
+                <h1 className="text-3xl leading-none tracking-tight">{isSubeSahibi ? 'Çalışanlar' : 'Kullanıcılar'}</h1>
                 <Button onClick={openAddModal}>
                     <UserPlus className="size-4" />
                     {isSubeSahibi ? 'Çalışan Ekle' : 'Kullanıcı Ekle'}
@@ -163,6 +177,7 @@ export default function UsersPage() {
                             <TableRow>
                                 <TableHead>E-posta</TableHead>
                                 <TableHead>Ad</TableHead>
+                                <TableHead>Telefon</TableHead>
                                 <TableHead>Şube</TableHead>
                                 <TableHead>Rol</TableHead>
                                 <TableHead>Son Giriş</TableHead>
@@ -174,6 +189,7 @@ export default function UsersPage() {
                                 <TableRow key={u.uid}>
                                     <TableCell className="font-medium">{u.email}</TableCell>
                                     <TableCell>{u.displayName || '—'}</TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">{u.telefon || '—'}</TableCell>
                                     <TableCell>
                                         {u.subeSlug ? (
                                             <Badge variant="outline" className="border-purple-200 bg-purple-50 text-purple-700">{u.subeSlug}</Badge>
@@ -196,6 +212,11 @@ export default function UsersPage() {
                                             <Button variant="ghost" size="icon" className="size-8" onClick={() => openEditModal(u)} title="Düzenle">
                                                 <Pencil className="size-3.5" />
                                             </Button>
+                                            {!isSubeSahibi && u.role === 'sube_sahibi' && (
+                                                <Button variant="ghost" size="icon" className="size-8" onClick={() => handleResetOnboarding(u)} title="İlk giriş formunu sıfırla">
+                                                    <RotateCcw className="size-3.5" />
+                                                </Button>
+                                            )}
                                             {u.uid !== currentUser?.uid && (
                                                 <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => handleDelete(u)} title="Sil">
                                                     <Trash2 className="size-3.5" />

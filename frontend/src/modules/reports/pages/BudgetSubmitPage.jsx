@@ -25,46 +25,72 @@ const fmtDate = (dateStr) => {
     }
 };
 
+// Katıldığı kampanya özeti — dönem sonuna kadar görünür
+function KatilimKarti({ k }) {
+    const onaylandi = k.durum === 'onaylandi';
+    return (
+        <Card>
+            <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-base">{k.baslik}</CardTitle>
+                    <Badge className={onaylandi
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs'
+                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs'}>
+                        {onaylandi ? 'Onaylandı' : 'Onay bekliyor'}
+                    </Badge>
+                </div>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                    <span className="text-muted-foreground">Dönem</span>
+                    <span className="font-medium">{fmtDate(k.donem_baslangic)} – {fmtDate(k.donem_bitis)}</span>
+                </div>
+                <div className="flex justify-between">
+                    <span className="text-muted-foreground">Katıldığınız Bakiye</span>
+                    <span className="font-medium">{fmtCurrency(k.secilen_bakiye)}</span>
+                </div>
+                <div className="flex justify-between">
+                    <span className="text-muted-foreground">KDV Dahil Ödenen</span>
+                    <span className="font-medium">{fmtCurrency(k.kdv_dahil_tutar)}</span>
+                </div>
+                <p className="pt-1 text-xs text-muted-foreground">
+                    Bu özet dönem sonuna ({fmtDate(k.donem_bitis)}) kadar görünür.
+                </p>
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function BudgetSubmitPage() {
     const [loading, setLoading] = useState(true);
     const [kampanya, setKampanya] = useState(null);
-    const [mevcutBildirim, setMevcutBildirim] = useState(null);
+    const [katildiklarim, setKatildiklarim] = useState([]);
 
     const [selectedBakiye, setSelectedBakiye] = useState(null);
     const [dekontFile, setDekontFile] = useState(null);
     const [notlar, setNotlar] = useState('');
     const [submitting, setSubmitting] = useState(false);
-    const [submitted, setSubmitted] = useState(false);
 
-    const fetchPending = async () => {
+    const fetchData = async () => {
         setLoading(true);
         try {
             const { data } = await api.get('/reports/butce-bekleyen');
             const kampanyalar = data.kampanyalar || [];
-            if (kampanyalar.length > 0) {
-                const first = kampanyalar[0];
-                setKampanya(first);
-                const yanit = first.yanit || null;
-                setMevcutBildirim(yanit);
-                if (yanit && yanit.durum !== 'bekliyor') {
-                    setSubmitted(true);
-                }
-            } else {
-                setKampanya(null);
-            }
+            setKampanya(kampanyalar[0] || null);
+            setKatildiklarim(data.katildiklarim || []);
         } catch (err) {
-            // 404 = no pending campaign
             if (err.response?.status !== 404) {
                 toast.error('Bilgi yüklenemedi.');
             }
             setKampanya(null);
+            setKatildiklarim([]);
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchPending();
+        fetchData();
     }, []);
 
     const handleFileChange = (e) => {
@@ -117,12 +143,11 @@ export default function BudgetSubmitPage() {
             });
 
             toast.success('Bütçe bildirimi gönderildi.');
-            setMevcutBildirim({
-                secilen_bakiye: option.bakiye,
-                kdv_dahil_tutar: option.kdv_dahil,
-                durum: 'gonderildi',
-            });
-            setSubmitted(true);
+            // Formu sıfırla ve yeniden çek — kampanya "katıldıklarım" özetine geçer
+            setSelectedBakiye(null);
+            setDekontFile(null);
+            setNotlar('');
+            await fetchData();
         } catch (err) {
             toast.error(err.response?.data?.error || 'Bildirim gönderilemedi.');
         } finally {
@@ -138,47 +163,38 @@ export default function BudgetSubmitPage() {
         );
     }
 
+    const header = (
+        <div>
+            <h1 className="text-3xl leading-none tracking-tight text-foreground">Bütçe Bildirim</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+                Aktif kampanya için bütçe bildirimi yapın.
+            </p>
+        </div>
+    );
+
+    const katilimBolumu = katildiklarim.length > 0 && (
+        <div className="space-y-3">
+            <h2 className="text-sm font-medium text-muted-foreground">Katıldığınız Kampanyalar</h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+                {katildiklarim.map((k) => <KatilimKarti key={k.id} k={k} />)}
+            </div>
+        </div>
+    );
+
+    // Bekleyen kampanya yoksa: katıldıklarım varsa onları, yoksa boş durum
     if (!kampanya) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground max-w-md mx-auto text-center">
-                <Wallet className="w-12 h-12 mb-4 opacity-30" />
-                <p className="text-lg font-medium">Bekleyen bütçe bildirimi yok</p>
-                <p className="text-sm mt-1">
-                    Şu anda aktif bir bütçe kampanyası bulunmuyor. Yeni bir kampanya açıldığında burada görüntülenecektir.
-                </p>
-            </div>
-        );
-    }
-
-    if (submitted) {
-        return (
-            <div className="flex flex-col items-center justify-center py-20 max-w-md mx-auto text-center">
-                <div className="rounded-full bg-green-100 dark:bg-green-900/30 p-4 mb-4">
-                    <CheckCircle2 className="w-10 h-10 text-green-600" />
-                </div>
-                <h2 className="text-xl font-semibold">Bildiriminiz Alındı</h2>
-                <p className="text-sm text-muted-foreground mt-2">
-                    Bütçe bildirimi başarıyla gönderildi. Onaylandığında bilgilendirileceksiniz.
-                </p>
-                {mevcutBildirim && (
-                    <Card className="mt-6 w-full text-left">
-                        <CardContent className="pt-5 space-y-2 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Seçilen Bakiye</span>
-                                <span className="font-medium">{fmtCurrency(mevcutBildirim.secilen_bakiye)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">KDV Dahil</span>
-                                <span className="font-medium">{fmtCurrency(mevcutBildirim.kdv_dahil_tutar)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-muted-foreground">Durum</span>
-                                <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-xs">
-                                    Gönderildi
-                                </Badge>
-                            </div>
-                        </CardContent>
-                    </Card>
+            <div className="flex flex-col gap-6 w-full">
+                {header}
+                {katilimBolumu}
+                {katildiklarim.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-20 text-muted-foreground max-w-md mx-auto text-center">
+                        <Wallet className="w-12 h-12 mb-4 opacity-30" />
+                        <p className="text-lg font-medium">Bekleyen bütçe bildirimi yok</p>
+                        <p className="text-sm mt-1">
+                            Şu anda aktif bir bütçe kampanyası bulunmuyor. Yeni bir kampanya açıldığında burada görüntülenecektir.
+                        </p>
+                    </div>
                 )}
             </div>
         );
@@ -186,13 +202,8 @@ export default function BudgetSubmitPage() {
 
     return (
         <div className="flex flex-col gap-6 w-full">
-            {/* Header */}
-            <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-foreground">Bütçe Bildirim</h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                    Aktif kampanya için bütçe bildirimi yapın.
-                </p>
-            </div>
+            {header}
+            {katilimBolumu}
 
             {/* Campaign Info */}
             <Card>

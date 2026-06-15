@@ -94,7 +94,7 @@ export default function BranchesPage() {
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold tracking-tight">Şubeler</h1>
+                <h1 className="text-3xl leading-none tracking-tight">Şubeler</h1>
                 <Button onClick={openAdd}><Plus className="size-4" /> Şube Ekle</Button>
             </div>
 
