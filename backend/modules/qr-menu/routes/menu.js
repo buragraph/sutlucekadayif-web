@@ -47,7 +47,17 @@ router.get(
         if (!subeDoc.exists) {
             return res.status(404).json({ error: 'Şube bulunamadı' });
         }
-        const sube = { id: subeDoc.id, ...subeDoc.data() };
+        // PUBLIC endpoint — yalnızca menüde gösterilen GÜVENLİ alanlar döner.
+        // VKN, fatura_adresi, yetkili_adi, telefon (PII) ve donem_ozetleri/toplam_*
+        // (reklam harcaması/performans) gibi hassas alanlar müşteriye SIZDIRILMAZ.
+        const sd = subeDoc.data();
+        const sube = {
+            id: subeDoc.id,
+            slug: subeDoc.id,
+            ad: sd.ad || subeDoc.id,
+            il: sd.il || null,
+            ilce: sd.ilce || null,
+        };
 
         const kategoriler = [];
         katSnap.forEach((d) => kategoriler.push({ id: d.id, ...d.data() }));

@@ -45,6 +45,12 @@ router.get(
         const key = req.params[0];
         if (!key) return res.status(400).json({ error: 'Key gerekli' });
 
+        // Hassas prefix'ler public proxy'den ASLA servis edilmez — dekontlar
+        // (banka makbuzları) yetki gerektirir, /dekont/* endpoint'inden gider.
+        if (key.startsWith('dekontlar/')) {
+            return res.status(403).json({ error: 'Bu kaynağa erişim yetkiniz yok' });
+        }
+
         // Helmet'in frame-ancestors 'self' / X-Frame-Options başlıkları PDF'in
         // farklı origin'deki (Pages) sayfaya <object>/<iframe> ile gömülmesini
         // engelliyor — bu public dosya proxy'si için gömmeye izin ver.
@@ -81,6 +87,41 @@ router.get(
 );
 
 
+
+/**
+ * GET /api/upload/dekont/*
+ * Dekont (banka makbuzu) — kimlik doğrulamalı erişim. Yalnızca admin veya
+ * dekontun ait olduğu şubenin sahibi görebilir. Anahtar: dekontlar/{kampanyaId}/{subeKod}.{ext}
+ */
+router.get(
+    '/dekont/*',
+    verifyToken,
+    asyncHandler(async (req, res) => {
+        const key = req.params[0] || '';
+        if (!key.startsWith('dekontlar/')) {
+            return res.status(400).json({ error: 'Geçersiz dekont yolu' });
+        }
+
+        // Erişim kontrolü: admin tümünü, şube sahibi yalnızca kendi şubesinin dekontunu
+        const dosya = key.split('/')[2] || '';
+        const subeKod = dosya.replace(/\.[^.]+$/, '');
+        if (req.user.role !== 'admin' && req.user.subeSlug !== subeKod) {
+            return res.status(403).json({ error: 'Bu dekonta erişim yetkiniz yok' });
+        }
+
+        try {
+            const result = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+            res.set('Content-Type', result.ContentType || 'application/octet-stream');
+            res.set('Cache-Control', 'private, no-store');
+            result.Body.pipe(res);
+        } catch (err) {
+            if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
+                return res.status(404).json({ error: 'Dekont bulunamadı' });
+            }
+            throw err;
+        }
+    })
+);
 
 /**
  * POST /api/upload/image
@@ -123,6 +164,10 @@ router.delete(
         if (!url) return res.status(400).json({ error: 'URL gerekli' });
 
         const key = urlToKey(url);
+        // Hassas dosyalar (dekontlar) ürün-görseli silme yolundan silinemez
+        if (key && key.startsWith('dekontlar/')) {
+            return res.status(403).json({ error: 'Bu dosya bu işlemle silinemez' });
+        }
         if (key) await deleteFile(key);
 
         res.json({ success: true });

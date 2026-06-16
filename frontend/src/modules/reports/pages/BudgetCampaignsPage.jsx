@@ -40,6 +40,21 @@ const bildirimDurumConfig = {
     onaylandi: { label: 'Onaylandı', className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
 };
 
+// Dekontu kimlik doğrulamalı endpoint'ten (blob) açar — public URL ifşasını önler.
+async function viewDekont(dekontUrl) {
+    try {
+        const i = (dekontUrl || '').indexOf('dekontlar/');
+        if (i === -1) return; // beklenmeyen format
+        const key = dekontUrl.substring(i);
+        const res = await api.get(`/upload/dekont/${key}`, { responseType: 'blob' });
+        const blobUrl = URL.createObjectURL(res.data);
+        window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch {
+        toast.error('Dekont açılamadı.');
+    }
+}
+
 export default function BudgetCampaignsPage() {
     const [campaigns, setCampaigns] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -516,15 +531,14 @@ export default function BudgetCampaignsPage() {
                                                 </TableCell>
                                                 <TableCell>
                                                     {b.dekont_url ? (
-                                                        <a
-                                                            href={b.dekont_url}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => viewDekont(b.dekont_url)}
                                                             className="inline-flex items-center gap-1.5 text-primary hover:underline text-xs font-medium"
                                                         >
                                                             <FileText className="w-3.5 h-3.5" />
                                                             Görüntüle
-                                                        </a>
+                                                        </button>
                                                     ) : (
                                                         <span className="text-muted-foreground/40">—</span>
                                                     )}
