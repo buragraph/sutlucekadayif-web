@@ -14,7 +14,8 @@ import { buildReportData, invalidateReportCache } from './services/report-data.j
 import budgetRouter from './budget-routes.js';
 import { generateReportHtml } from './services/report-template.js';
 import { generatePdf } from './services/generate-pdf.js';
-import { getAllSubeler, getSubeByKod, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, getButce, updateOverrides, upsertGoogleToplanlar, closeDb, getDb, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings, recalcSubeAggregates, getDataVersion, bumpDataVersion } from './db.js';
+import { getAllSubeler, getSubeByKod, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, updateOverrides, upsertGoogleToplanlar, closeDb, getDb, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings, recalcSubeAggregates, getDataVersion, bumpDataVersion } from './db.js';
+import { getKonumListe, syncAllKonumlar, upsertKonum, removeKonum } from '../../shared/konum-store.js';
 
 import os from 'os';
 
@@ -376,15 +377,18 @@ router.post('/upload', verifyToken, requirePermission('reports.manage'), upload.
     }
 
     const count = typeof result === 'number' ? result : (result.count || 0);
+    const eslesmeyenler = (result && result.eslesmeyenler) || [];
 
     // Cache temizle — yeni veriler hemen görünsün
     invalidateReportCache();
     invalidateCache('/reports');
 
+    const temelMesaj = autoMatched ? `${result.subeAd} için ${count} kayıt otomatik eşleşti.` : `${count} satır başarıyla kaydedildi.`;
     res.json({
        success: true,
-       message: autoMatched ? `${result.subeAd} için ${count} kayıt otomatik eşleşti.` : `${count} satır başarıyla kaydedildi.`,
+       message: temelMesaj + (eslesmeyenler.length ? ` ${eslesmeyenler.length} satır eşleşen şube bulunamadığı için atlandı (yeni şube açılmadı).` : ''),
        count,
+       eslesmeyenler,
        autoMatchDetail: autoMatched ? result : null
     });
   } catch (err) {
@@ -456,23 +460,26 @@ router.get('/dashboard-bundle', verifyToken, requirePermission('reports.view'), 
       });
     }
 
-    const [subeler, mappingsRaw, campaignMappingsRaw, adsetMappingsRaw, settingsRaw, googleMappingsRaw] = await Promise.all([
-      getAllSubeler(),
+    // Sidebar için yalnızca {kod, ad} gerekiyor → N şube dokümanı yerine TEK konum
+    // dokümanını oku (read: N → 1). Aggregate'ler + donem_ozetleri şubeye tıklanınca
+    // /sube/:kod ile lazy yüklenir. (Doküman hiç kurulmamışsa bir kez tam sync.)
+    let konumListe = await getKonumListe();
+    if (!konumListe) konumListe = await syncAllKonumlar();
+
+    const [mappingsRaw, campaignMappingsRaw, adsetMappingsRaw, settingsRaw, googleMappingsRaw, onayliKodlar] = await Promise.all([
       import('./services/meta-api.js').then(m => m.loadMappings()).catch(() => ({})),
       getCampaignMappings().catch(() => ({})),
       getAdsetMappings().catch(() => ({})),
       getSettings().catch(() => ({})),
       import('./services/google-business.js').then(m => m.loadGoogleMappings()).catch(() => ({})),
+      import('./budget-routes.js').then(m => m.getOnayliSubeKodlari()).catch(() => []),
     ]);
 
-    const dashData = subeler.map(sube => ({
-      ...sube,
-      donemSayisi: sube.donem_sayisi || 0,
-      donemler: [],
-      toplamHarcama: sube.toplam_harcama || 0,
-      toplamErisim: sube.toplam_erisim || 0,
-      toplamSonuc: sube.toplam_sonuc || 0,
-    }));
+    // Hafif "stub" şubeler — sadece kimlik + isim/konum. Aggregate'ler bilinçli olarak
+    // yok (lazy yükleme tetiklensin diye). İsme göre sıralı (sidebar düzeni).
+    const dashData = konumListe
+      .map((e) => ({ kod: e.slug, ad: e.ad || e.slug, il: e.il || null, ilce: e.ilce || null, donemSayisi: 0, donemler: [] }))
+      .sort((a, b) => (a.ad || '').localeCompare(b.ad || '', 'tr'));
 
     // Meta mappings reverse hesapla
     const mappings = mappingsRaw || {};
@@ -515,6 +522,7 @@ router.get('/dashboard-bundle', verifyToken, requirePermission('reports.view'), 
       hasMappings: Object.keys(campaignMappings).length > 0 || Object.keys(mappings).length > 0,
       settings,
       googleMappings: googleMappingsRaw || {},
+      onayliKodlar: onayliKodlar || [],
     });
   } catch (err) {
     console.error('[Reports]', err);
@@ -578,6 +586,7 @@ router.post('/sube', verifyToken, requirePermission('reports.manage'), async (re
     const { kod, ad, link } = req.body;
     if (!kod) return res.status(400).json({ error: 'Şube kodu zorunludur' });
     await upsertSube(kod, ad, null, link);
+    await upsertKonum(kod, { ad: ad || kod }); // sidebar/harita konum dokümanını senkron tut
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
@@ -590,6 +599,7 @@ router.put('/sube/:kod', verifyToken, requirePermission('reports.manage'), async
   try {
     const { ad, adres, link } = req.body;
     await updateSube(req.params.kod, ad, adres, link);
+    if (ad !== undefined) await upsertKonum(req.params.kod, { ad }); // isim değişikliğini konuma yansıt
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
@@ -601,6 +611,7 @@ router.put('/sube/:kod', verifyToken, requirePermission('reports.manage'), async
 router.delete('/sube/:kod', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     await deleteSube(req.params.kod);
+    await removeKonum(req.params.kod); // konum dokümanından da çıkar
     invalidateReportCache();
     invalidateCache('/reports');
     res.json({ success: true });
@@ -678,13 +689,26 @@ router.put('/sube/:kod/donem/overrides', verifyToken, requirePermission('reports
     const sube = await getSubeByKod(kod);
     if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
 
-    await updateOverrides(sube.kod, baslangic, bitis, overrides);
+    // YALNIZCA bütçe alanları override'lanır. Otomatik çekilen metrikler (harcama,
+    // erişim, gösterim, sonuç, google...) override'a YAZILMAZ — böylece yeniden Meta/
+    // Google çekimi bu değerleri her zaman tazeler (donmuş override sorunu çözülür).
+    const BUTCE_OVERRIDE_ALANLARI = ['planlananButce', 'devredilenMiktar', 'merkezDestegi'];
+    const mevcutVeri = await getDonemVeri(sube.kod, baslangic, bitis) || {};
+    const mevcutOverrides = (mevcutVeri.veri_overrides && typeof mevcutVeri.veri_overrides === 'object')
+      ? mevcutVeri.veri_overrides : {};
+    // Eksik gönderilen bütçe alanı mevcut override'ından korunur (kısmi istek diğer
+    // alanları silmesin); bütçe dışı eski override anahtarları bilinçli olarak atılır.
+    const butceOverrides = {};
+    for (const k of BUTCE_OVERRIDE_ALANLARI) {
+      if (overrides?.[k] !== undefined) butceOverrides[k] = overrides[k];
+      else if (mevcutOverrides[k] !== undefined) butceOverrides[k] = mevcutOverrides[k];
+    }
+    await updateOverrides(sube.kod, baslangic, bitis, butceOverrides);
 
-    if (overrides.planlananButce !== undefined || overrides.devredilenMiktar !== undefined || overrides.merkezDestegi !== undefined) {
-      const bRow = await getButce(sube.kod, baslangic, bitis) || {};
-      const plan = overrides.planlananButce !== undefined ? overrides.planlananButce : (bRow.planlanan_butce || 0);
-      const devr = overrides.devredilenMiktar !== undefined ? overrides.devredilenMiktar : (bRow.devredilen_miktar || 0);
-      const merk = overrides.merkezDestegi !== undefined ? overrides.merkezDestegi : (bRow.merkez_destegi || 0);
+    if (Object.keys(butceOverrides).length > 0) {
+      const plan = butceOverrides.planlananButce !== undefined ? butceOverrides.planlananButce : (mevcutVeri.planlanan_butce || 0);
+      const devr = butceOverrides.devredilenMiktar !== undefined ? butceOverrides.devredilenMiktar : (mevcutVeri.devredilen_miktar || 0);
+      const merk = butceOverrides.merkezDestegi !== undefined ? butceOverrides.merkezDestegi : (mevcutVeri.merkez_destegi || 0);
       // upsertButce donem_ozetleri'ni kendisi günceller; overrides aggregate'leri
       // etkilemediği için ayrıca tam recalc gerekmez
       await upsertButce(sube.kod, baslangic, bitis, plan, devr, merk);

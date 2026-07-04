@@ -1,20 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Check, ChevronsUpDown, Tag, ListPlus } from 'lucide-react';
+import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -27,6 +25,145 @@ const ETIKETLER = [
     { key: 'vegan', label: 'Vegan', emoji: '🌱', color: '#22c55e' },
     { key: 'acili', label: 'Acılı', emoji: '🌶️', color: '#dc2626' },
 ];
+
+// Referans e-ticaret tablosu tarzı noktalı durum rozeti
+const DOT_TONE = {
+    green: 'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400',
+    red: 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400',
+    violet: 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-400',
+    neutral: 'bg-muted text-muted-foreground',
+};
+const DOT_FILL = {
+    green: 'bg-green-500',
+    red: 'bg-red-500',
+    violet: 'bg-violet-500',
+    neutral: 'bg-muted-foreground/50',
+};
+function DotBadge({ tone = 'neutral', children }) {
+    return (
+        <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium ${DOT_TONE[tone]}`}>
+            <span className={`size-1.5 rounded-full ${DOT_FILL[tone]}`} />
+            {children}
+        </span>
+    );
+}
+
+// Medya kütüphanesinden ("Ürünler" klasörü) görsel seçtiren popover.
+// Yükleme yok — görseller yalnızca Medya bölümünden eklenir.
+const MEDIA_PAGE = 24;
+
+function MediaPicker({ value, onSelect, children }) {
+    const [open, setOpen] = useState(false);
+    const [imgs, setImgs] = useState([]);
+    const [cursor, setCursor] = useState(null);      // sonraki sayfa imleci (klasör modu)
+    const [yedekMod, setYedekMod] = useState(false); // indeks yoksa indekssiz yedek (sayfalama kapalı)
+    const [loaded, setLoaded] = useState(false);
+    const [loading, setLoading] = useState(false);   // ilk sayfa / arama
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [q, setQ] = useState('');
+    const [aramaSonuc, setAramaSonuc] = useState(null); // arama modunda sonuçlar (null=arama yok)
+
+    // "Ürünler" klasörü — cursor tabanlı sayfalama. İlk sayfa popover açılışta.
+    async function sayfaYukle(reset) {
+        if (reset) setLoading(true); else setLoadingMore(true);
+        try {
+            const params = { klasor: 'Ürünler', limit: MEDIA_PAGE };
+            if (!reset && cursor) params.cursor = cursor;
+            const { data } = await api.get('/media', { params });
+            setImgs((prev) => (reset ? (data.medyalar || []) : [...prev, ...(data.medyalar || [])]));
+            setCursor(data.nextCursor);
+            setLoaded(true);
+        } catch {
+            // İndeks (klasor+createdAt) yoksa → indekssiz yedek: son medyayı çekip süz.
+            if (reset) {
+                try {
+                    const { data } = await api.get('/media', { params: { limit: 200 } });
+                    setImgs((data.medyalar || []).filter((m) => (m.klasor || '') === 'Ürünler'));
+                    setCursor(null);
+                    setYedekMod(true);
+                    setLoaded(true);
+                } catch { /* sessiz */ }
+            }
+        }
+        if (reset) setLoading(false); else setLoadingMore(false);
+    }
+
+    // İlk açılışta klasör listesini yükle (bir kez)
+    useEffect(() => {
+        if (open && !loaded && !q.trim()) sayfaYukle(true);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
+
+    // Arama (debounce, sunucu tarafı isim araması → "Ürünler" klasörüne süz)
+    useEffect(() => {
+        if (!open) return;
+        const ql = q.trim();
+        if (!ql) { setAramaSonuc(null); return; }
+        const t = setTimeout(async () => {
+            setLoading(true);
+            try {
+                const { data } = await api.get('/media', { params: { q: ql } });
+                setAramaSonuc((data.medyalar || []).filter((m) => (m.klasor || '') === 'Ürünler'));
+            } catch { setAramaSonuc([]); }
+            setLoading(false);
+        }, 300);
+        return () => clearTimeout(t);
+    }, [q, open]);
+
+    function onScroll(e) {
+        if (yedekMod || aramaSonuc !== null || !cursor || loadingMore) return;
+        const el = e.currentTarget;
+        if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) sayfaYukle(false);
+    }
+
+    const aramaModu = aramaSonuc !== null;
+    const gosterilen = aramaModu ? aramaSonuc : imgs;
+    const ilkYukleme = loading && gosterilen.length === 0;
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>{children}</PopoverTrigger>
+            <PopoverContent className="w-72 p-2" align="start">
+                <div className="relative mb-2">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                    <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Görsel ara..." className="h-8 pl-8 text-xs" />
+                </div>
+                {ilkYukleme ? (
+                    <div className="flex items-center justify-center py-8"><Spinner className="size-5" /></div>
+                ) : gosterilen.length === 0 ? (
+                    <p className="px-2 py-6 text-center text-xs text-muted-foreground">
+                        {aramaModu ? 'Sonuç bulunamadı' : 'Ürünler klasöründe görsel yok. Medya bölümünden ekleyin.'}
+                    </p>
+                ) : (
+                    <div className="grid grid-cols-3 gap-2 max-h-56 overflow-y-auto p-0.5" onScroll={onScroll}>
+                        {gosterilen.map((img) => {
+                            const secili = value === img.url;
+                            return (
+                                <button
+                                    key={img.id}
+                                    type="button"
+                                    onClick={() => { onSelect(img.url); setOpen(false); }}
+                                    className={`relative aspect-square overflow-hidden rounded-lg border transition-all ${secili ? 'border-primary ring-2 ring-primary' : 'border-border hover:border-muted-foreground/40'}`}
+                                    title={img.ad}
+                                >
+                                    <img src={proxyImageUrl(img.url)} alt={img.ad} className="size-full object-cover" loading="lazy" />
+                                    {secili && (
+                                        <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-primary text-primary-foreground shadow ring-1 ring-background">
+                                            <Check className="size-2.5" strokeWidth={3} />
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                        {loadingMore && (
+                            <div className="col-span-3 flex items-center justify-center py-2"><Spinner className="size-4" /></div>
+                        )}
+                    </div>
+                )}
+            </PopoverContent>
+        </Popover>
+    );
+}
 
 export default function ProductsPage() {
     const { subeSlug, role } = useAuth();
@@ -54,10 +191,6 @@ export default function ProductsPage() {
     const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr' });
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
-    const [showMediaLibrary, setShowMediaLibrary] = useState(false);
-    const [mediaImages, setMediaImages] = useState([]);
-    const [loadingMedia, setLoadingMedia] = useState(false);
-    const [mediaSearch, setMediaSearch] = useState('');
     const [aiLoading, setAiLoading] = useState(false);
 
     const [showTrash, setShowTrash] = useState(false);
@@ -118,41 +251,6 @@ export default function ProductsPage() {
     }
 
     function closeUrunView() { setViewMode('list'); setEditingUrun(null); setImageFile(null); setImagePreview(null); }
-
-    function handleImageSelect(e) {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        if (file.size > 10 * 1024 * 1024) { toast.error('Dosya 10MB\'dan küçük olmalı'); return; }
-        setImageFile(file);
-        setImagePreview(URL.createObjectURL(file));
-        setShowMediaLibrary(false);
-    }
-
-    async function loadMediaImages(q = '') {
-        setLoadingMedia(true);
-        try {
-            // Arama varsa sunucu tarafı substring araması (tüm kütüphane);
-            // yoksa son yüklenenler (ilk sayfa)
-            const params = q && q.trim() ? { q: q.trim() } : {};
-            const { data } = await api.get('/media', { params });
-            setMediaImages((data.medyalar || []).map(m => ({ key: m.id, url: m.url, ad: m.ad })));
-        } catch { toast.error('Görseller yüklenemedi'); }
-        setLoadingMedia(false);
-    }
-
-    // Görsel kütüphanesi açıkken aramayı (debounce) sunucuya gönder
-    useEffect(() => {
-        if (!showMediaLibrary) return;
-        const t = setTimeout(() => loadMediaImages(mediaSearch), 300);
-        return () => clearTimeout(t);
-    }, [mediaSearch, showMediaLibrary]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    function selectFromLibrary(url) {
-        setImageFile(null);
-        setImagePreview(url);
-        setUrunForm(prev => ({ ...prev, gorsel: url }));
-        setShowMediaLibrary(false);
-    }
 
     async function handleUrunSubmit(e) {
         e.preventDefault();
@@ -292,16 +390,6 @@ export default function ProductsPage() {
     function addBulkRow() { setBulkAddRows(r => [...r, yeniBulkRow()]); }
     function removeBulkRow(i) { setBulkAddRows(r => r.filter((_, idx) => idx !== i)); }
     function updateBulkRow(i, field, val) { setBulkAddRows(r => r.map((row, idx) => idx === i ? { ...row, [field]: val } : row)); }
-    async function uploadBulkRowImage(i, file) {
-        if (!file) return;
-        if (file.size > 10 * 1024 * 1024) { toast.error('Görsel 10MB\'dan küçük olmalı'); return; }
-        updateBulkRow(i, 'gorsel', 'loading');
-        try {
-            const fd = new FormData(); fd.append('image', file);
-            const { data } = await api.post('/upload/image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-            updateBulkRow(i, 'gorsel', data.url);
-        } catch { updateBulkRow(i, 'gorsel', ''); toast.error('Görsel yüklenemedi'); }
-    }
     async function handleBulkAddSubmit() {
         const gecerli = bulkAddRows.filter(r => r.ad.trim() && r.fiyat !== '' && r.kategori);
         if (gecerli.length === 0) { toast.error('En az bir geçerli ürün satırı girin (ad, fiyat, kategori)'); return; }
@@ -349,24 +437,23 @@ export default function ProductsPage() {
                 <Card className="flex flex-1 min-h-0 flex-col rounded-2xl">
                     <CardContent className="flex flex-1 min-h-0 flex-col gap-2 pt-5">
                         {/* Sütun başlıkları */}
-                        <div className="hidden md:grid grid-cols-[56px_1fr_110px_1fr_80px_70px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground shrink-0">
+                        <div className="hidden md:grid grid-cols-[56px_1fr_110px_1fr_80px_88px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground shrink-0">
                             <span>Görsel</span><span>Ürün Adı</span><span>Fiyat ₺</span><span>Kategori</span><span>Miktar</span><span>Birim</span><span></span>
                         </div>
                         {/* Satırlar */}
                         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 pr-1">
                             {bulkAddRows.map((row, i) => (
-                                <div key={i} className="grid grid-cols-2 md:grid-cols-[56px_1fr_110px_1fr_80px_70px_36px] gap-2 items-center rounded-lg border p-2 md:border-0 md:p-0">
-                                    {/* Görsel */}
-                                    <label className="relative flex size-14 md:size-12 cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-muted/40 hover:bg-muted">
-                                        {row.gorsel === 'loading' ? (
-                                            <Spinner className="size-4" />
-                                        ) : row.gorsel ? (
-                                            <img src={proxyImageUrl(row.gorsel)} alt="" className="size-full object-cover" />
-                                        ) : (
-                                            <ImagePlus className="size-4 text-muted-foreground" />
-                                        )}
-                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => { uploadBulkRowImage(i, e.target.files[0]); e.target.value = ''; }} />
-                                    </label>
+                                <div key={i} className="grid grid-cols-2 md:grid-cols-[56px_1fr_110px_1fr_80px_88px_36px] gap-2 items-center rounded-lg border p-2 md:border-0 md:p-0">
+                                    {/* Görsel — medyadaki "Ürünler" klasöründen seçilir */}
+                                    <MediaPicker value={row.gorsel} onSelect={(url) => updateBulkRow(i, 'gorsel', url)}>
+                                        <button type="button" className="relative flex size-14 md:size-12 cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-muted/40 hover:bg-muted">
+                                            {row.gorsel ? (
+                                                <img src={proxyImageUrl(row.gorsel)} alt="" className="size-full object-cover" />
+                                            ) : (
+                                                <ImagePlus className="size-4 text-muted-foreground" />
+                                            )}
+                                        </button>
+                                    </MediaPicker>
                                     <Input value={row.ad} onChange={(e) => updateBulkRow(i, 'ad', e.target.value)} placeholder="Ürün adı" className="h-9 text-sm" />
                                     <Input type="number" min="0" value={row.fiyat} onChange={(e) => updateBulkRow(i, 'fiyat', e.target.value)} placeholder="0" className="h-9 text-sm" />
                                     <Select value={row.kategori} onValueChange={(v) => updateBulkRow(i, 'kategori', v)}>
@@ -376,7 +463,16 @@ export default function ProductsPage() {
                                         </SelectContent>
                                     </Select>
                                     <Input type="number" min="0" value={row.miktar} onChange={(e) => updateBulkRow(i, 'miktar', e.target.value)} placeholder="-" className="h-9 text-sm" />
-                                    <Input value={row.birim} onChange={(e) => updateBulkRow(i, 'birim', e.target.value)} placeholder="gr" className="h-9 text-sm" />
+                                    <Select value={row.birim} onValueChange={(v) => updateBulkRow(i, 'birim', v)}>
+                                        <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="gr">gr</SelectItem>
+                                            <SelectItem value="ml">ml</SelectItem>
+                                            <SelectItem value="cl">cl</SelectItem>
+                                            <SelectItem value="lt">lt</SelectItem>
+                                            <SelectItem value="adet">adet</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                     <Button variant="ghost" size="icon" className="size-9 text-muted-foreground hover:text-destructive justify-self-end" onClick={() => removeBulkRow(i)}><X className="size-4" /></Button>
                                 </div>
                             ))}
@@ -418,32 +514,30 @@ export default function ProductsPage() {
                             {/* Section 1: Image + Name + Price */}
                             <div className="p-6">
                                 <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6">
-                                    {/* Image */}
+                                    {/* Image — yalnızca "Ürünler" klasöründen seçilir */}
                                     <div className="space-y-2">
                                         <Label className="text-xs text-muted-foreground font-medium">Görsel</Label>
-                                        {imagePreview ? (
-                                            <div className="relative group/img">
-                                                <img src={proxyImageUrl(imagePreview)} alt="Önizleme" className="w-full aspect-square rounded-xl object-cover ring-1 ring-border" />
-                                                <div className="absolute inset-0 rounded-xl bg-black/0 group-hover/img:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover/img:opacity-100">
-                                                    <Button type="button" variant="secondary" size="sm" className="h-7 text-xs shadow-lg" onClick={() => document.getElementById('imageInput').click()}>
-                                                        <ImagePlus className="size-3" /> Değiştir
-                                                    </Button>
-                                                    <Button type="button" variant="secondary" size="sm" className="h-7 text-xs shadow-lg text-destructive hover:text-destructive" onClick={() => { setImageFile(null); setImagePreview(null); setUrunForm({ ...urunForm, gorsel: '' }); }}>
-                                                        <X className="size-3" /> Kaldır
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <button type="button" onClick={() => document.getElementById('imageInput').click()}
-                                                className="w-full aspect-square rounded-xl border-2 border-dashed border-muted-foreground/20 bg-muted/20 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:border-primary/30 hover:bg-muted/40 transition-colors cursor-pointer">
-                                                <ImagePlus className="size-8 opacity-40" />
-                                                <span className="text-[11px] font-medium">Görsel Ekle</span>
-                                            </button>
+                                        <MediaPicker value={urunForm.gorsel} onSelect={(url) => { setImageFile(null); setImagePreview(url); setUrunForm((prev) => ({ ...prev, gorsel: url })); }}>
+                                            {imagePreview ? (
+                                                <button type="button" className="group/img relative block w-full aspect-square overflow-hidden rounded-xl ring-1 ring-border">
+                                                    <img src={proxyImageUrl(imagePreview)} alt="Önizleme" className="size-full object-cover" />
+                                                    <span className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/0 text-xs font-medium text-white opacity-0 transition-colors group-hover/img:bg-black/40 group-hover/img:opacity-100">
+                                                        <ImagePlus className="size-3.5" /> Değiştir
+                                                    </span>
+                                                </button>
+                                            ) : (
+                                                <button type="button"
+                                                    className="flex w-full aspect-square cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-muted-foreground/20 bg-muted/20 text-muted-foreground transition-colors hover:border-primary/30 hover:bg-muted/40">
+                                                    <Images className="size-8 opacity-40" />
+                                                    <span className="text-[11px] font-medium">Görsel Seç</span>
+                                                </button>
+                                            )}
+                                        </MediaPicker>
+                                        {imagePreview && (
+                                            <Button type="button" variant="ghost" size="sm" className="w-full text-xs h-7 text-muted-foreground hover:text-destructive" onClick={() => { setImageFile(null); setImagePreview(null); setUrunForm({ ...urunForm, gorsel: '' }); }}>
+                                                <X className="size-3" /> Kaldır
+                                            </Button>
                                         )}
-                                        <Button type="button" variant="ghost" size="sm" className="w-full text-xs h-7 text-muted-foreground" onClick={() => { setMediaSearch(''); setShowMediaLibrary(true); }}>
-                                            <Images className="size-3" /> Kütüphaneden seç
-                                        </Button>
-                                        <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageSelect} className="hidden" />
                                     </div>
 
                                     {/* Core Fields */}
@@ -548,44 +642,6 @@ export default function ProductsPage() {
                         </div>
                         <button id="urunFormSubmitBtn" type="submit" className="hidden" />
                     </form>
-
-                    {/* Media Library Dialog */}
-                    {showMediaLibrary && (
-                        <div className="mt-4 rounded-xl border bg-card overflow-hidden">
-                            <div className="p-4 space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-semibold">Görsel Kütüphanesi</span>
-                                    <div className="flex gap-1.5">
-                                        <Button type="button" size="sm" className="h-7 text-xs" onClick={() => document.getElementById('imageInput').click()}>
-                                            <ImagePlus className="size-3" /> Yeni Yükle
-                                        </Button>
-                                        <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setShowMediaLibrary(false)}>
-                                            <X className="size-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                                <div className="relative">
-                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-                                    <Input type="text" placeholder="Görsel ara..." value={mediaSearch} onChange={(e) => setMediaSearch(e.target.value)} className="h-8 pl-8 text-xs" />
-                                </div>
-                                {loadingMedia ? (
-                                    <div className="flex items-center justify-center py-8"><Spinner className="size-5" /></div>
-                                ) : (() => {
-                                    return mediaImages.length === 0 ? (
-                                        <p className="text-center text-xs text-muted-foreground py-6">{mediaSearch ? 'Sonuç bulunamadı' : 'Henüz görsel yok.'}</p>
-                                    ) : (
-                                        <div className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-2 max-h-56 overflow-y-auto">
-                                            {mediaImages.map((img) => (
-                                                <img key={img.key} src={proxyImageUrl(img.url)} alt=""
-                                                    onClick={() => selectFromLibrary(img.url)}
-                                                    className={`w-full aspect-square object-cover rounded-lg border cursor-pointer transition-all ring-2 hover:opacity-100 ${imagePreview === img.url ? 'ring-primary opacity-100 scale-95' : 'ring-transparent opacity-75 hover:ring-muted-foreground/30'}`} />
-                                            ))}
-                                        </div>
-                                    );
-                                })()}
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
         );
@@ -594,12 +650,6 @@ export default function ProductsPage() {
     // ---------- LIST VIEW ----------
     return (
         <div className="flex flex-1 flex-col gap-4 w-full h-full min-h-0">
-            {/* Sayfa Başlığı */}
-            <div className="shrink-0">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">QR Menü</p>
-                <h1 className="text-3xl leading-none tracking-tight text-foreground">Ürünler</h1>
-            </div>
-
             {role !== 'admin' && !subeSlug && (
                 <div className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive shrink-0">
                     Şube bilginiz tanımlanmamış. Yönetici ile iletişime geçin.
@@ -607,12 +657,24 @@ export default function ProductsPage() {
             )}
 
             <Card className="flex flex-1 min-h-0 flex-col rounded-2xl">
-                <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0 border-b pb-4">
-                    <div className="space-y-0.5">
-                        <CardTitle className="text-base">Ürün Listesi</CardTitle>
-                        <CardDescription className="text-xs">Menünüzdeki ürünleri görüntüleyin ve yönetin.</CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                <CardHeader className="flex flex-col items-start gap-3 space-y-0 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+                    <CardTitle className="flex items-baseline gap-2.5 text-foreground text-2xl font-semibold tracking-tight leading-none">
+                        Ürünler
+                        <span className="text-sm font-normal text-muted-foreground tabular-nums">{sortedUrunler.length} ürün</span>
+                    </CardTitle>
+                    <CardAction className="flex flex-wrap items-center gap-1.5 self-center max-sm:w-full">
+                        {selectedIds.size > 0 && (
+                            <div className="flex items-center gap-1.5 mr-1.5 pr-2.5 border-r">
+                                <span className="text-xs font-medium text-foreground whitespace-nowrap">{selectedIds.size} seçili</span>
+                                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setBulkPriceForm({ mode: 'set', value: '' }); setShowBulkPrice(true); }}>
+                                    <Tag className="size-3.5 mr-1.5" /> Toplu Fiyat
+                                </Button>
+                                <Button size="sm" variant="outline" className="h-8 text-xs text-destructive hover:text-destructive" onClick={handleBulkDelete} disabled={bulkBusy}>
+                                    <Trash2 className="size-3.5 mr-1.5" /> Toplu Sil
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={clearSelection}>Temizle</Button>
+                            </div>
+                        )}
                         <Button variant="outline" size="sm" className="h-8 text-xs" onClick={async () => {
                             try { const { data } = await api.get('/products/trash'); setTrashUrunler(data.urunler); setShowTrash(true); }
                             catch (err) { toast.error('Çöp kutusu yüklenemedi'); }
@@ -623,11 +685,11 @@ export default function ProductsPage() {
                             <ListPlus className="size-3.5 mr-1.5" /> Toplu Ekle
                         </Button>
                         <Button size="sm" className="h-8 text-xs" onClick={openAddUrun}>
-                            <Plus className="size-3.5 mr-1.5" /> Yeni Ürün Ekle
+                            <Plus className="size-3.5 mr-1.5" /> Yeni Ürün
                         </Button>
-                    </div>
+                    </CardAction>
                 </CardHeader>
-                <CardContent className="flex flex-1 min-h-0 flex-col gap-3 pt-4">
+                <CardContent className="flex flex-1 min-h-0 flex-col gap-4 px-0">
             {loadingUrunler ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-16">
                     <Spinner className="size-8" />
@@ -640,100 +702,91 @@ export default function ProductsPage() {
                 </div>
             ) : (
                 <div className="flex flex-col gap-4 flex-1 min-h-0">
-                    {/* Filters Bar */}
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 shrink-0">
-                        <div className="relative w-full sm:w-64">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-                            <Input
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder="Ürün ara..."
-                                className="h-8 pl-8 text-xs"
-                            />
+                    {/* Toolbar: kategori segment toggle + arama + şube */}
+                    <div className="flex flex-col gap-3 px-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="max-w-full overflow-x-auto">
+                            <div className="inline-flex w-max items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
+                                {[{ id: 'all', ad: 'Tümü' }, ...kategoriler].map((k) => {
+                                    const active = selectedKategori === k.id;
+                                    return (
+                                        <button
+                                            key={k.id}
+                                            onClick={() => setSelectedKategori(k.id)}
+                                            className={`rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
+                                        >
+                                            {k.ad}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
-                        {role === 'admin' && subeler.length > 0 && (
-                            <Popover open={subeComboOpen} onOpenChange={setSubeComboOpen}>
-                                <PopoverTrigger asChild>
-                                    <Button variant="outline" role="combobox" aria-expanded={subeComboOpen} className="w-fit min-w-[180px] justify-between font-normal text-sm h-8">
-                                        {selectedSube === 'all' ? 'Tüm Şubeler' : selectedSube === 'ortak' ? `Ortak Ürünler (${ortakUrunSayisi})` : (() => { const s = subeler.find(s => s.slug === selectedSube); return s ? `${s.ad} (${s.urunSayisi || 0})` : selectedSube; })()}
-                                        <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
-                                    </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[260px] p-0" align="start">
-                                    <Command>
-                                        <CommandInput placeholder="Şube ara..." />
-                                        <CommandList>
-                                            <CommandEmpty>Şube bulunamadı.</CommandEmpty>
-                                            <CommandGroup>
-                                                <CommandItem value="ortak" data-checked={selectedSube === 'ortak'} onSelect={() => { setSelectedSube('ortak'); setSubeComboOpen(false); }}>
-                                                    Ortak Ürünler ({ortakUrunSayisi})
-                                                </CommandItem>
-                                                {subeler.map((s) => (
-                                                    <CommandItem key={s.id} value={s.ad || s.slug} data-checked={selectedSube === s.slug} onSelect={() => { setSelectedSube(s.slug); setSubeComboOpen(false); }}>
-                                                        {s.ad} ({s.urunSayisi || 0})
+                        <div className="flex items-center gap-2 shrink-0">
+                            <div className="relative w-full sm:w-56">
+                                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                                <Input
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    placeholder="Ürün ara..."
+                                    className="h-8 pl-8 text-xs"
+                                />
+                            </div>
+                            {role === 'admin' && subeler.length > 0 && (
+                                <Popover open={subeComboOpen} onOpenChange={setSubeComboOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="outline" role="combobox" aria-expanded={subeComboOpen} className="w-fit min-w-[180px] justify-between font-normal text-sm h-8">
+                                            {selectedSube === 'all' ? 'Tüm Şubeler' : selectedSube === 'ortak' ? `Ortak Ürünler (${ortakUrunSayisi})` : (() => { const s = subeler.find(s => s.slug === selectedSube); return s ? `${s.ad} (${s.urunSayisi || 0})` : selectedSube; })()}
+                                            <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[260px] p-0" align="end">
+                                        <Command>
+                                            <CommandInput placeholder="Şube ara..." />
+                                            <CommandList>
+                                                <CommandEmpty>Şube bulunamadı.</CommandEmpty>
+                                                <CommandGroup>
+                                                    <CommandItem value="ortak" data-checked={selectedSube === 'ortak'} onSelect={() => { setSelectedSube('ortak'); setSubeComboOpen(false); }}>
+                                                        Ortak Ürünler ({ortakUrunSayisi})
                                                     </CommandItem>
-                                                ))}
-                                            </CommandGroup>
-                                        </CommandList>
-                                    </Command>
-                                </PopoverContent>
-                            </Popover>
-                        )}
-                        <span className="hidden text-muted-foreground text-xs lg:flex items-center">{sortedUrunler.length} ürün</span>
+                                                    {subeler.map((s) => (
+                                                        <CommandItem key={s.id} value={s.ad || s.slug} data-checked={selectedSube === s.slug} onSelect={() => { setSelectedSube(s.slug); setSubeComboOpen(false); }}>
+                                                            {s.ad} ({s.urunSayisi || 0})
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            )}
+                        </div>
                     </div>
 
-                    {/* Category Tabs */}
-                    <Tabs value={selectedKategori} onValueChange={setSelectedKategori} className="shrink-0">
-                        <TabsList variant="line" className="flex-wrap h-auto gap-0">
-                            <TabsTrigger value="all" className="text-xs">Tümü</TabsTrigger>
-                            {kategoriler.map((k) => (
-                                <TabsTrigger key={k.id} value={k.id} className="text-xs">{k.ad}</TabsTrigger>
-                            ))}
-                        </TabsList>
-                    </Tabs>
-
-                    {/* Toplu işlem çubuğu */}
-                    {selectedIds.size > 0 && (
-                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 shrink-0">
-                            <span className="text-sm font-medium text-foreground">{selectedIds.size} ürün seçili</span>
-                            <div className="flex-1" />
-                            <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setBulkPriceForm({ mode: 'set', value: '' }); setShowBulkPrice(true); }}>
-                                <Tag className="size-3.5 mr-1.5" /> Toplu Fiyat
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-8 text-xs text-destructive hover:text-destructive" onClick={handleBulkDelete} disabled={bulkBusy}>
-                                <Trash2 className="size-3.5 mr-1.5" /> Toplu Sil
-                            </Button>
-                            <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={clearSelection}>Temizle</Button>
-                        </div>
-                    )}
-
-                    {/* Table */}
-                    <div className="flex-1 min-h-0 overflow-auto rounded-lg border">
-                        <Table>
-                            <TableHeader>
+                    {/* Tablo */}
+                    <div className="flex-1 min-h-0 overflow-auto">
+                        <Table className="**:data-[slot=table-cell]:px-4 **:data-[slot=table-head]:px-4">
+                            <TableHeader className="border-t **:data-[slot=table-head]:h-11 **:data-[slot=table-head]:font-normal **:data-[slot=table-head]:text-foreground **:data-[slot=table-head]:text-sm">
                                 <TableRow>
                                     <TableHead className="w-10">
                                         <Checkbox checked={tumuSeciliMi} onCheckedChange={toggleSelectAllPage} aria-label="Tümünü seç" disabled={secilebilirSayfa.length === 0} />
                                     </TableHead>
-                                    <TableHead className="w-16"></TableHead>
                                     <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('ad')}>
                                         <span className="inline-flex items-center">Ürün <SortIcon col="ad" /></span>
                                     </TableHead>
-                                    <TableHead className="text-center cursor-pointer select-none" onClick={() => toggleSort('fiyat')}>
+                                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('fiyat')}>
                                         <span className="inline-flex items-center">Fiyat <SortIcon col="fiyat" /></span>
                                     </TableHead>
                                     <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('kategori')}>
                                         <span className="inline-flex items-center">Kategori <SortIcon col="kategori" /></span>
                                     </TableHead>
                                     {role === 'admin' && <TableHead>Şube</TableHead>}
-                                    {role !== 'admin' && subeSlug && <TableHead className="text-center">Durum</TableHead>}
+                                    {role !== 'admin' && subeSlug && <TableHead>Durum</TableHead>}
                                     <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('tarih')}>
                                         <span className="inline-flex items-center">Tarih <SortIcon col="tarih" /></span>
                                     </TableHead>
-                                    <TableHead className="w-20">İşlemler</TableHead>
+                                    <TableHead className="w-20 text-right">İşlemler</TableHead>
                                 </TableRow>
                             </TableHeader>
-                            <TableBody>
+                            <TableBody className="**:data-[slot=table-row]:border-border/50 **:data-[slot=table-cell]:py-3">
                                 {paginatedUrunler.map((urun) => {
                                     const mevcutDegil = urun.mevcut_degil || [];
                                     const buSubedeMevcut = !mevcutDegil.includes(subeSlug);
@@ -742,7 +795,7 @@ export default function ProductsPage() {
                                     return (
                                         <TableRow
                                             key={urun.id}
-                                            className={`group transition-colors ${!buSubedeMevcut ? 'opacity-50' : ''} ${!isKilitli ? 'cursor-pointer hover:bg-muted/50' : ''}`}
+                                            className={`group transition-colors ${!buSubedeMevcut ? 'opacity-50' : ''} ${!isKilitli ? 'cursor-pointer hover:bg-muted/40' : ''}`}
                                             onClick={(e) => {
                                                 if (e.target.closest('button')) return;
                                                 if (!isKilitli) openEditUrun(urun);
@@ -753,58 +806,54 @@ export default function ProductsPage() {
                                                     <Checkbox checked={selectedIds.has(urun.id)} onCheckedChange={() => toggleSelect(urun.id)} aria-label={`${urun.ad} seç`} />
                                                 )}
                                             </TableCell>
-                                            <TableCell className="py-2.5">
-                                                {urun.gorsel
-                                                    ? <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad} className="size-12 rounded-lg object-cover ring-1 ring-border" />
-                                                    : <div className="flex size-12 items-center justify-center rounded-lg bg-muted text-xl">🍮</div>}
-                                            </TableCell>
                                             <TableCell>
-                                                <div className="flex flex-col gap-0.5">
-                                                    <span className="font-semibold text-base">{urun.ad}</span>
-                                                    {urun.etiket?.length > 0 && (
-                                                        <div className="flex gap-1 flex-wrap">
-                                                            {urun.etiket.map(key => {
-                                                                const tag = ETIKETLER.find(t => t.key === key);
-                                                                return tag ? (
-                                                                    <span key={key} className="text-[10px] px-1.5 py-px rounded-full font-semibold" style={{ background: tag.color + '18', color: tag.color }}>
-                                                                        {tag.emoji} {tag.label}
-                                                                    </span>
-                                                                ) : null;
-                                                            })}
-                                                        </div>
-                                                    )}
+                                                <div className="flex items-center gap-3">
+                                                    {urun.gorsel
+                                                        ? <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad} className="size-11 shrink-0 rounded-lg object-cover ring-1 ring-border" />
+                                                        : <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted text-xl">🍮</div>}
+                                                    <div className="flex flex-col gap-1 min-w-0">
+                                                        <span className="font-medium text-foreground truncate">{urun.ad}</span>
+                                                        {urun.etiket?.length > 0 && (
+                                                            <div className="flex gap-1 flex-wrap">
+                                                                {urun.etiket.map(key => {
+                                                                    const tag = ETIKETLER.find(t => t.key === key);
+                                                                    return tag ? (
+                                                                        <span key={key} className="text-[10px] px-1.5 py-px rounded-full font-semibold" style={{ background: tag.color + '18', color: tag.color }}>
+                                                                            {tag.emoji} {tag.label}
+                                                                        </span>
+                                                                    ) : null;
+                                                                })}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </TableCell>
-                                            <TableCell className="text-center">
-                                                <Badge variant="secondary" className="font-bold tabular-nums">
-                                                    {Math.round(urun.fiyat)} ₺
-                                                    {urun.miktar && <span className="font-normal text-muted-foreground ml-1">/ {urun.miktar}{urun.birim}</span>}
-                                                </Badge>
+                                            <TableCell>
+                                                <span className="font-medium tabular-nums text-foreground">{Math.round(urun.fiyat)} ₺</span>
+                                                {urun.miktar ? <span className="text-xs text-muted-foreground ml-1">/ {urun.miktar}{urun.birim}</span> : null}
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant="outline" className="font-medium text-xs">
-                                                    {katMap[urun.kategori] || '—'}
-                                                </Badge>
+                                                <span className="text-sm text-muted-foreground">{katMap[urun.kategori] || '—'}</span>
                                             </TableCell>
                                             {role === 'admin' && (
                                                 <TableCell>
                                                     {urun.tur === 'sube_ozel' && urun.sube_slug
-                                                        ? <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 border-0">{urun.sube_slug}</Badge>
-                                                        : <span className="text-xs text-muted-foreground">Ortak</span>}
+                                                        ? <DotBadge tone="violet">{urun.sube_slug}</DotBadge>
+                                                        : <DotBadge tone="neutral">Ortak</DotBadge>}
                                                 </TableCell>
                                             )}
                                             {role !== 'admin' && subeSlug && (
-                                                <TableCell className="text-center">
-                                                    <Badge variant={buSubedeMevcut ? 'default' : 'destructive'} className={`text-[10px] ${buSubedeMevcut ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0' : ''}`}>
-                                                        {buSubedeMevcut ? '✓ Mevcut' : '✗ Mevcut Değil'}
-                                                    </Badge>
+                                                <TableCell>
+                                                    <DotBadge tone={buSubedeMevcut ? 'green' : 'red'}>
+                                                        {buSubedeMevcut ? 'Mevcut' : 'Mevcut Değil'}
+                                                    </DotBadge>
                                                 </TableCell>
                                             )}
-                                            <TableCell className="text-xs text-muted-foreground">
+                                            <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                                                 {urun.createdAt ? new Date(urun.createdAt).toLocaleDateString('tr-TR') : '—'}
                                             </TableCell>
                                             <TableCell>
-                                                <div className="flex gap-1">
+                                                <div className="flex justify-end gap-1">
                                                     {!isKilitli && (
                                                         <Button variant="ghost" size="icon" className="size-7 text-destructive hover:text-destructive hover:bg-destructive/10" title="Sil" onClick={() => handleUrunDelete(urun)}>
                                                             <Trash2 className="size-3.5" />
@@ -834,37 +883,38 @@ export default function ProductsPage() {
                         </Table>
                     </div>
 
-                    {/* Pagination */}
-                    {totalPages > 1 && (
-                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-1 shrink-0 pb-2">
-                            <div className="hidden flex-1 text-muted-foreground text-sm lg:flex">
-                                Toplam {sortedUrunler.length} üründen {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, sortedUrunler.length)} arası gösteriliyor.
-                            </div>
-                            <div className="flex w-full items-center gap-4 lg:w-fit sm:justify-end">
-                                <div className="flex w-fit items-center justify-center font-medium text-sm text-muted-foreground">
-                                    Sayfa {currentPage} / {totalPages}
+                    {/* Alt bilgi + sayfalama */}
+                    <div className="flex flex-col gap-3 px-4 pb-1 shrink-0 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-muted-foreground text-sm">
+                            {sortedUrunler.length} üründen {sortedUrunler.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, sortedUrunler.length)} arası gösteriliyor
+                        </p>
+                        {totalPages > 1 && (() => {
+                            const pageNumbers = totalPages <= 3
+                                ? Array.from({ length: totalPages }, (_, i) => i + 1)
+                                : currentPage <= 2
+                                    ? [1, 2, 3]
+                                    : currentPage >= totalPages - 1
+                                        ? [totalPages - 2, totalPages - 1, totalPages]
+                                        : [currentPage - 1, currentPage, currentPage + 1];
+                            return (
+                                <div className="flex items-center justify-end gap-1.5">
+                                    <Button variant="ghost" size="sm" className="h-8 gap-1 text-sm" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>
+                                        <ChevronLeft className="size-4" /> Önceki
+                                    </Button>
+                                    {pageNumbers[0] > 1 && <span className="px-1 text-sm text-muted-foreground">…</span>}
+                                    {pageNumbers.map((n) => (
+                                        <Button key={n} variant={n === currentPage ? 'outline' : 'ghost'} size="icon" className="size-8 text-sm tabular-nums" onClick={() => setCurrentPage(n)}>
+                                            {n}
+                                        </Button>
+                                    ))}
+                                    {pageNumbers[pageNumbers.length - 1] < totalPages && <span className="px-1 text-sm text-muted-foreground">…</span>}
+                                    <Button variant="ghost" size="sm" className="h-8 gap-1 text-sm" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(p => p + 1)}>
+                                        Sonraki <ChevronRight className="size-4" />
+                                    </Button>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <Button variant="outline" className="hidden size-8 lg:flex" size="icon" disabled={currentPage === 1} onClick={() => setCurrentPage(1)}>
-                                        <span className="sr-only">İlk sayfa</span>
-                                        <ChevronsLeft className="size-4" />
-                                    </Button>
-                                    <Button variant="outline" className="size-8" size="icon" disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)}>
-                                        <span className="sr-only">Önceki sayfa</span>
-                                        <ChevronLeft className="size-4" />
-                                    </Button>
-                                    <Button variant="outline" className="size-8" size="icon" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(p => p + 1)}>
-                                        <span className="sr-only">Sonraki sayfa</span>
-                                        <ChevronRight className="size-4" />
-                                    </Button>
-                                    <Button variant="outline" className="hidden size-8 lg:flex" size="icon" disabled={currentPage >= totalPages} onClick={() => setCurrentPage(totalPages)}>
-                                        <span className="sr-only">Son sayfa</span>
-                                        <ChevronsRight className="size-4" />
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                            );
+                        })()}
+                    </div>
                 </div>
             )}
                 </CardContent>

@@ -4,6 +4,7 @@ import {
     onAuthStateChanged,
     signInWithEmailAndPassword,
     signOut,
+    sendPasswordResetEmail,
 } from 'firebase/auth';
 import api from '../services/api';
 import { hasPermission } from '@shared/permissions.js';
@@ -58,6 +59,16 @@ export function AuthProvider({ children }) {
         return signOut(auth);
     }
 
+    // Şifre belirleme/sıfırlama bağlantısı gönderir. E-posta verilmezse giriş
+    // yapan kullanıcının kendi adresine gönderir (profil sayfası); admin yeni
+    // kullanıcı oluştururken hedef e-postayı parametre olarak geçer.
+    async function resetPassword(hedefEmail) {
+        const email = hedefEmail || auth.currentUser?.email;
+        if (!email) throw new Error('Hesaba ait e-posta bulunamadı');
+        await sendPasswordResetEmail(auth, email);
+        return email;
+    }
+
     // Token'ı zorla yenileyip güncel rol/şube claims'ini state'e yansıtır.
     // Kullanıcı kendi rol/şubesini değiştirdiğinde anında (yeniden giriş gerekmeden) güncellemek için.
     async function refreshClaims() {
@@ -94,6 +105,7 @@ export function AuthProvider({ children }) {
         loading,
         login,
         logout,
+        resetPassword,
         refreshClaims,
         can,
     };

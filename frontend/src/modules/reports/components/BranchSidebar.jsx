@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useReportsStore, fmtC } from '../hooks/useReports';
-import { Search, MapPin, AlertTriangle, Filter, CheckSquare } from 'lucide-react';
+import { useReportsStore } from '../hooks/useReports';
+import { Search, Filter } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -9,15 +9,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 export function BranchSidebar() {
     const [search, setSearch] = useState('');
     const branches = useReportsStore((s) => s.branches);
+    const onayliKodlar = useReportsStore((s) => s.onayliKodlar);
     const activeBranch = useReportsStore((s) => s.activeBranch);
     const selectBranch = useReportsStore((s) => s.selectBranch);
     const loading = useReportsStore((s) => s.loading);
-    const reverseCampaigns = useReportsStore((s) => s.reverseCampaigns);
-    const reverseAdsets = useReportsStore((s) => s.reverseAdsets);
-    const metaPrefixMappings = useReportsStore((s) => s.metaPrefixMappings);
-    const googleMappings = useReportsStore((s) => s.googleMappings);
-    const budgetStatus = useReportsStore((s) => s.budgetStatus);
-    
+    const onayliSet = React.useMemo(() => new Set(onayliKodlar || []), [onayliKodlar]);
+
     // Filter states
     const selectedFilterBranches = useReportsStore((s) => s.selectedFilterBranches);
     const toggleFilterBranch = useReportsStore((s) => s.toggleFilterBranch);
@@ -45,7 +42,7 @@ export function BranchSidebar() {
     );
 
     return (
-        <div className="w-[300px] shrink-0 border-r bg-card flex flex-col h-full z-10 overflow-hidden">
+        <div className={`${activeBranch ? 'hidden lg:flex' : 'flex'} w-full lg:w-[300px] shrink-0 lg:border-r bg-card flex-col h-full z-10 overflow-hidden`}>
             <div className="px-4 py-3 border-b flex items-center justify-between shrink-0">
                 <span className="text-sm font-semibold text-foreground">Şubeler</span>
                 <div className="flex items-center gap-2">
@@ -109,50 +106,46 @@ export function BranchSidebar() {
             <div className="flex-1 overflow-y-auto p-2 scrollbar-thin min-h-0">
                 {loading ? renderSkeletons() : filtered.length === 0 ? (
                     <div className="py-8 text-center text-xs text-muted-foreground">Eşleşen şube bulunamadı.</div>
-                ) : filtered.map((s) => {
-                    const tS = s.toplamHarcama || 0;
-                    const isMetaMapped = 
-                        (reverseCampaigns[s.kod]?.length > 0) || 
-                        (reverseAdsets[s.kod]?.length > 0) || 
-                        Object.values(metaPrefixMappings).some(v => (typeof v === 'object' ? v.sube : v) === s.kod);
-                    const isGoogleMapped = Object.values(googleMappings).includes(s.kod);
-                    const isActive = activeBranch === s.kod;
-
-                    return (
-                        <div 
-                            key={s.kod}
-                            onClick={() => selectBranch(s.kod)}
-                            className={`p-2.5 mb-0.5 cursor-pointer rounded-md text-sm transition-colors relative flex flex-col gap-1 ${
-                                isActive 
-                                ? 'bg-muted text-foreground' 
-                                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                            }`}
-                        >
-                            {isActive && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-2/3 bg-primary rounded-r-md" />}
-                            
-                            <div className="flex justify-between items-center px-1">
-                                <span className={`font-medium truncate pr-2 text-[13px] ${isActive ? 'text-foreground' : ''}`}>
+                ) : (() => {
+                    const renderItem = (s) => {
+                        const isActive = activeBranch === s.kod;
+                        return (
+                            <div
+                                key={s.kod}
+                                onClick={() => selectBranch(s.kod)}
+                                className={`relative flex items-center px-3 py-2.5 mb-0.5 cursor-pointer rounded-md text-sm transition-colors ${
+                                    isActive
+                                    ? 'bg-accent text-accent-foreground hover:bg-accent/80'
+                                    : 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'
+                                }`}
+                            >
+                                <span className={`font-medium truncate text-[13px] ${isActive ? 'text-foreground' : ''}`}>
                                     {s.ad}
                                 </span>
-                                {(isMetaMapped || isGoogleMapped) && (
-                                    <div className="flex gap-1.5 items-center shrink-0">
-                                        {isMetaMapped && (
-                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-blue-500" title="Meta ile eşleşti">
-                                                <path d="M12 10.2c-.9-1.3-2.1-2.2-3.5-2.7-1.4-.5-2.8-.3-4 .5C3.3 8.8 2.4 10 2 11.5c-.3 1.2-.2 2.4.3 3.5.5 1.1 1.3 2 2.3 2.6.7.4 1.5.6 2.3.6.6 0 1.2-.1 1.7-.3 1.1-.4 2-1.2 2.8-2.2l.6-.8.6.8c.8 1 1.7 1.8 2.8 2.2.5.2 1.1.3 1.7.3.8 0 1.6-.2 2.3-.6 1-.6 1.8-1.5 2.3-2.6.5-1.1.6-2.3.3-3.5-.4-1.5-1.3-2.7-2.5-3.5-1.2-.8-2.6-1-4-.5-1.4.5-2.6 1.4-3.5 2.7z"/>
-                                            </svg>
-                                        )}
-                                        {isGoogleMapped && <MapPin className="w-3 h-3 text-orange-500" title="Google ile eşleşti" />}
-                                    </div>
-                                )}
                             </div>
-                            <div className="flex justify-between items-center px-1 text-[11px] opacity-80">
-                                <span>{s.kod}</span>
-                                <span>{fmtC(tS)}</span>
-                            </div>
+                        );
+                    };
 
-                        </div>
+                    // Güncel dönemde bütçesi onaylı olanlar üstte, sonra çizgi, sonra diğerleri
+                    const onayli = filtered.filter((b) => onayliSet.has(b.kod));
+                    const digerleri = filtered.filter((b) => !onayliSet.has(b.kod));
+
+                    if (onayli.length === 0 || digerleri.length === 0) {
+                        return filtered.map(renderItem);
+                    }
+
+                    return (
+                        <>
+                            {onayli.map(renderItem)}
+                            <div className="my-2 flex items-center gap-2 px-1">
+                                <div className="h-px flex-1 bg-border" />
+                                <span className="text-[10px] uppercase tracking-wider text-muted-foreground whitespace-nowrap">Bütçe Bekleyen</span>
+                                <div className="h-px flex-1 bg-border" />
+                            </div>
+                            {digerleri.map(renderItem)}
+                        </>
                     );
-                })}
+                })()}
             </div>
         </div>
     );

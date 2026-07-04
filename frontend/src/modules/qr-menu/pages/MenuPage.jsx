@@ -1,8 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../../../services/api';
-import { Search, ChevronRight, ChevronUp, Instagram, MessageCircle } from 'lucide-react';
+import { Search, ChevronUp, Instagram, MessageCircle, X } from 'lucide-react';
 import { proxyImageUrl, proxyR2Url } from '../../../utils/imageProxy';
+
+// Etiket etiketleri (kod → görünen ad)
+const TAG_LABELS = {
+    en_cok_satan: 'Çok Satan',
+    yeni: 'Yeni',
+    onerilen: 'Önerilen',
+    vegan: 'Vegan',
+    acili: 'Acılı',
+};
 
 /* ─── Skeleton Loading ─── */
 function SkeletonLoading() {
@@ -31,7 +40,7 @@ function SkeletonLoading() {
 }
 
 /* ─── Product Card ─── */
-function ProductCard({ urun, index }) {
+function ProductCard({ urun, index, onClick }) {
     const ref = useRef(null);
     const [visible, setVisible] = useState(false);
 
@@ -51,6 +60,10 @@ function ProductCard({ urun, index }) {
             ref={ref}
             className={`pm-card ${visible ? 'pm-card--visible' : ''}`}
             style={{ animationDelay: `${index * 0.06}s` }}
+            onClick={onClick}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
         >
             <div className="pm-card__img-wrap">
                 {urun.gorsel ? (
@@ -69,21 +82,56 @@ function ProductCard({ urun, index }) {
                     </span>
                     {urun.etiket?.length > 0 && (
                         <span className="pm-card__tag pm-card__tag--inline">
-                            {(() => {
-                                const tagMap = {
-                                    en_cok_satan: 'Çok Satan',
-                                    yeni: 'Yeni',
-                                    onerilen: 'Önerilen',
-                                    vegan: 'Vegan',
-                                    acili: 'Acılı',
-                                };
-                                return tagMap[urun.etiket[0]] || urun.etiket[0];
-                            })()}
+                            {TAG_LABELS[urun.etiket[0]] || urun.etiket[0]}
                         </span>
                     )}
                 </div>
             </div>
         </article>
+    );
+}
+
+/* ─── Product Detail Modal ─── */
+function ProductModal({ urun, onClose }) {
+    useEffect(() => {
+        const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+        document.addEventListener('keydown', onKey);
+        document.body.style.overflow = 'hidden';
+        return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
+    }, [onClose]);
+
+    if (!urun) return null;
+
+    return (
+        <div className="pm-modal__overlay" onClick={onClose}>
+            <div className="pm-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+                <button className="pm-modal__close" onClick={onClose} aria-label="Kapat">
+                    <X size={18} />
+                </button>
+                <div className="pm-modal__img-wrap">
+                    {urun.gorsel ? (
+                        <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad} className="pm-modal__img" />
+                    ) : (
+                        <div className="pm-modal__img-placeholder">🍮</div>
+                    )}
+                </div>
+                <div className="pm-modal__body">
+                    {urun.etiket?.length > 0 && (
+                        <div className="pm-modal__tags">
+                            {urun.etiket.map((e) => (
+                                <span key={e} className="pm-modal__tag">{TAG_LABELS[e] || e}</span>
+                            ))}
+                        </div>
+                    )}
+                    <h3 className="pm-modal__name">{urun.ad}</h3>
+                    {urun.aciklama && <p className="pm-modal__desc">{urun.aciklama}</p>}
+                    <div className="pm-modal__price">
+                        {Math.round(urun.fiyat)}₺
+                        {urun.miktar && <span className="pm-modal__miktar"> / {urun.miktar}{urun.birim === 'g' ? 'gr' : urun.birim}</span>}
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -95,38 +143,41 @@ export default function MenuPage() {
     const [urunlerByKategori, setUrunlerByKategori] = useState({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [activeKat, setActiveKat] = useState(null);
+    const [activeKat, setActiveKat] = useState(null);   // scroll-spy: görünümdeki kategori
+    const [activeTag, setActiveTag] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedUrun, setSelectedUrun] = useState(null);
     const [showScrollTop, setShowScrollTop] = useState(false);
-    const chipsRef = useRef(null);
+
+    const tabRefs = useRef({});      // { katId: <button> }
+    const navScrollRef = useRef(null);
+    const navbarRef = useRef(null);
 
     useEffect(() => {
         if (subeSlug) loadMenu();
     }, [subeSlug]);
 
     useEffect(() => {
-        const handleScroll = () => setShowScrollTop(window.scrollY > 400);
+        const handleScroll = () => setShowScrollTop(window.scrollY > 500);
         window.addEventListener('scroll', handleScroll, { passive: true });
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
+    // Sayfa başlığı — sekme + paylaşım için şube adı
+    useEffect(() => {
+        document.title = sube?.ad ? `${sube.ad} — Sütlüce Kadayıf Menü` : 'Sütlüce Kadayıf';
+    }, [sube]);
 
     async function loadMenu() {
         setLoading(true);
         setError(null);
         try {
             let data;
-
-            // 1. R2 JSON cache'ten dene (CDN — hızlı)
             try {
-                // r2.dev doğrudan erişilemediği için proxy üzerinden (görsellerle aynı yol)
                 const r2Res = await fetch(proxyR2Url(`https://pub-99104fd4f6324895b46545c23e61887f.r2.dev/menu/${subeSlug}.json`));
-                if (r2Res.ok) {
-                    data = await r2Res.json();
-                }
+                if (r2Res.ok) data = await r2Res.json();
             } catch (e) { /* R2'de yoksa API'ye düş */ }
 
-            // 2. R2'de yoksa API'den çek (fallback)
             if (!data) {
                 const res = await api.get(`/menu/${subeSlug}`);
                 data = res.data;
@@ -135,7 +186,6 @@ export default function MenuPage() {
             setSube(data.sube);
             setKategoriler(data.kategoriler);
             setUrunlerByKategori(data.urunlerByKategori);
-            // Set first visible category as active
             const visible = data.kategoriler.filter(k => (data.urunlerByKategori[k.id] || []).length > 0);
             if (visible.length > 0) setActiveKat(visible[0].id);
         } catch (err) {
@@ -144,6 +194,49 @@ export default function MenuPage() {
         }
         setLoading(false);
     }
+
+    const visibleKategoriler = useMemo(
+        () => kategoriler.filter(k => (urunlerByKategori[k.id] || []).length > 0),
+        [kategoriler, urunlerByKategori]
+    );
+
+    const tumUrunler = useMemo(
+        () => visibleKategoriler.flatMap(k => urunlerByKategori[k.id] || []),
+        [visibleKategoriler, urunlerByKategori]
+    );
+
+    const mevcutEtiketler = useMemo(() => {
+        const set = new Set();
+        tumUrunler.forEach(u => (u.etiket || []).forEach(e => set.add(e)));
+        return [...set].filter(e => TAG_LABELS[e]);
+    }, [tumUrunler]);
+
+    const isFiltering = !!(searchQuery.trim() || activeTag);
+
+    // Filtre modunda gösterilecek düz liste (arama > etiket)
+    const filteredProducts = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (q) return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
+        if (activeTag) return tumUrunler.filter(u => u.etiket?.includes(activeTag));
+        return [];
+    }, [searchQuery, activeTag, tumUrunler]);
+
+    // Aktif sekmeyi yatay barda ortala (sayfayı kaydırmadan)
+    useEffect(() => {
+        const tab = tabRefs.current[activeKat];
+        const bar = navScrollRef.current;
+        if (tab && bar) {
+            const target = tab.offsetLeft - bar.clientWidth / 2 + tab.clientWidth / 2;
+            bar.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+        }
+    }, [activeKat]);
+
+    // Kategori seç → yalnızca o kategoriyi göster + menü başına kaydır (sayfa kısa kalsın)
+    const selectKat = (id) => {
+        setActiveTag(null);
+        setActiveKat(id);
+        requestAnimationFrame(() => navbarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    };
 
     if (loading) return <SkeletonLoading />;
     if (error) {
@@ -157,31 +250,12 @@ export default function MenuPage() {
         );
     }
 
-    const visibleKategoriler = kategoriler.filter(k => (urunlerByKategori[k.id] || []).length > 0);
+    // Filtre başlığı
+    const filtreBaslik = searchQuery ? `"${searchQuery}"` : (activeTag ? TAG_LABELS[activeTag] : '');
 
-    // Get products to display based on active category and search
-    const getDisplayProducts = () => {
-        let products = [];
-        if (activeKat) {
-            products = urunlerByKategori[activeKat] || [];
-        } else {
-            // Show all
-            visibleKategoriler.forEach(k => {
-                products = [...products, ...(urunlerByKategori[k.id] || [])];
-            });
-        }
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            products = products.filter(u =>
-                u.ad.toLowerCase().includes(q) ||
-                u.aciklama?.toLowerCase().includes(q)
-            );
-        }
-        return products;
-    };
-
-    const displayProducts = getDisplayProducts();
+    // Gezinme modunda gösterilecek tek kategori
     const activeKatObj = visibleKategoriler.find(k => k.id === activeKat);
+    const activeProducts = urunlerByKategori[activeKat] || [];
 
     return (
         <div className="pm">
@@ -197,11 +271,10 @@ export default function MenuPage() {
                             <span className="pm-header__branch-name">{sube?.ad || subeSlug}</span>
                         </div>
                         <span className="pm-header__divider" />
-                        <a href="#" className="pm-header__link">
-                            <MessageCircle size={13} /> Şikayet
+                        <a href="tel:08503049722" className="pm-header__link">
+                            <MessageCircle size={13} /> İletişim
                         </a>
                     </div>
-
                     <div className="pm-header__brand">
                         <img
                             src={proxyImageUrl('https://qr.sutlucekadayif.com/wp-content/uploads/2025/09/Varlik-1.png')}
@@ -216,89 +289,116 @@ export default function MenuPage() {
             <main className="pm-main">
                 {/* ─── Hero Banner ─── */}
                 <section className="pm-hero">
-                        <div className="pm-hero__glow pm-hero__glow--1" />
-                        <div className="pm-hero__glow pm-hero__glow--2" />
-                        <div className="pm-hero__content">
-                            <span className="pm-hero__eyebrow">İmza Lezzetler</span>
-                            <h2 className="pm-hero__heading">Geleneksel kadayıfın<br />premium deneyimi.</h2>
-                            <p className="pm-hero__desc">Özenle seçilmiş malzemeler, ustalıkla hazırlanan lezzetler ve göz alıcı sunumlarla tatlının ötesinde bir deneyim.</p>
+                    <div className="pm-hero__glow pm-hero__glow--1" />
+                    <div className="pm-hero__glow pm-hero__glow--2" />
+                    <div className="pm-hero__content">
+                        <span className="pm-hero__eyebrow">İmza Lezzetler</span>
+                        <h2 className="pm-hero__heading">Geleneksel kadayıfın<br />premium deneyimi.</h2>
+                        <p className="pm-hero__desc">Özenle seçilmiş malzemeler, ustalıkla hazırlanan lezzetler ve göz alıcı sunumlarla tatlının ötesinde bir deneyim.</p>
+                        {mevcutEtiketler.includes('en_cok_satan') && (
                             <div className="pm-hero__actions">
                                 <button
                                     className="pm-hero__btn pm-hero__btn--primary"
-                                    onClick={() => {
-                                        const best = visibleKategoriler.find(k =>
-                                            (urunlerByKategori[k.id] || []).some(u => u.etiket?.includes('en_cok_satan'))
-                                        );
-                                        if (best) setActiveKat(best.id);
-                                    }}
+                                    onClick={() => { setActiveTag('en_cok_satan'); setSearchQuery(''); }}
                                 >
                                     En Çok Satanlar
                                 </button>
                             </div>
-                        </div>
+                        )}
+                    </div>
                 </section>
 
-                {/* ─── Category Chips + Search ─── */}
-                <section className="pm-chips-section" ref={chipsRef}>
-                    <div className="pm-chips">
-                        <button
-                            className={`pm-chip ${!activeKat ? 'pm-chip--active' : ''}`}
-                            onClick={() => setActiveKat(null)}
-                        >
-                            Tümü
-                        </button>
-                        {visibleKategoriler.map((kat, i) => (
-                            <button
-                                key={kat.id}
-                                className={`pm-chip pm-chip--img ${activeKat === kat.id ? 'pm-chip--active' : ''}`}
-                                onClick={() => setActiveKat(kat.id)}
-                            >
-                                {kat.gorsel && (
-                                    <img src={proxyImageUrl(kat.gorsel)} alt="" className="pm-chip__bg" />
-                                )}
-                                <span className="pm-chip__text">{kat.ad}</span>
-                            </button>
-                        ))}
-                    </div>
+                {/* ─── Arama + Etiket filtreleri ─── */}
+                <section className="pm-filter-section">
                     <div className="pm-header__search">
-                        <Search size={16} className="pm-header__search-icon" />
+                        <Search size={17} className="pm-header__search-icon" />
                         <input
                             type="text"
-                            placeholder="Menüde ara..."
+                            placeholder="Tüm menüde ara..."
                             className="pm-header__search-input"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                         />
+                        {searchQuery && (
+                            <button className="pm-header__search-clear" onClick={() => setSearchQuery('')} aria-label="Temizle">
+                                <X size={14} />
+                            </button>
+                        )}
                     </div>
-                </section>
-                {/* ─── Section Title ─── */}
-                <section className="pm-section-header">
-                    <div>
-                        <span className="pm-section-header__eyebrow">
-                            {searchQuery ? 'Arama sonuçları' : (activeKatObj ? 'Kategori' : 'Tüm Ürünler')}
-                        </span>
-                        <h3 className="pm-section-header__title">
-                            {searchQuery ? `"${searchQuery}"` : (activeKatObj?.ad || 'Menü')}
-                        </h3>
-                    </div>
-                    <span className="pm-section-header__count">{displayProducts.length} ürün</span>
-                </section>
-
-                {/* ─── Product Grid ─── */}
-                <section className="pm-grid-section">
-                    {displayProducts.length === 0 ? (
-                        <div className="pm-empty">
-                            <span style={{ fontSize: 40 }}>🔍</span>
-                            <p>Sonuç bulunamadı</p>
-                        </div>
-                    ) : (
-                        <div className="pm-grid">
-                            {displayProducts.map((urun, index) => (
-                                <ProductCard key={urun.id} urun={urun} index={index} />
+                    {mevcutEtiketler.length > 0 && (
+                        <div className="pm-tags">
+                            {mevcutEtiketler.map((tag) => (
+                                <button
+                                    key={tag}
+                                    className={`pm-tag-filter ${activeTag === tag ? 'pm-tag-filter--active' : ''}`}
+                                    onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                                >
+                                    {TAG_LABELS[tag]}
+                                </button>
                             ))}
                         </div>
                     )}
                 </section>
+
+                {isFiltering ? (
+                    /* ═══ FİLTRE MODU — düz sonuç listesi ═══ */
+                    <>
+                        <section className="pm-section-header">
+                            <div>
+                                <span className="pm-section-header__eyebrow">{searchQuery ? 'Arama sonuçları' : 'Filtre'}</span>
+                                <h3 className="pm-section-header__title">{filtreBaslik}</h3>
+                            </div>
+                            <span className="pm-section-header__count">{filteredProducts.length} ürün</span>
+                        </section>
+                        <section className="pm-grid-section">
+                            {filteredProducts.length === 0 ? (
+                                <div className="pm-empty">
+                                    <span style={{ fontSize: 40 }}>🔍</span>
+                                    <p>Sonuç bulunamadı</p>
+                                </div>
+                            ) : (
+                                <div className="pm-grid">
+                                    {filteredProducts.map((urun, index) => (
+                                        <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
+                                    ))}
+                                </div>
+                            )}
+                        </section>
+                    </>
+                ) : (
+                    /* ═══ GEZİNME MODU — yapışkan bar + TEK kategori (sayfa kısa kalır) ═══ */
+                    <>
+                        <nav className="pm-navbar" ref={navbarRef}>
+                            <div className="pm-navbar__scroll" ref={navScrollRef}>
+                                {visibleKategoriler.map((kat) => (
+                                    <button
+                                        key={kat.id}
+                                        ref={(el) => { tabRefs.current[kat.id] = el; }}
+                                        className={`pm-navtab ${activeKat === kat.id ? 'pm-navtab--active' : ''}`}
+                                        onClick={() => selectKat(kat.id)}
+                                    >
+                                        {kat.ad}
+                                    </button>
+                                ))}
+                            </div>
+                        </nav>
+
+                        <section className="pm-section-header">
+                            <div>
+                                <span className="pm-section-header__eyebrow">Kategori</span>
+                                <h3 className="pm-section-header__title">{activeKatObj?.ad || 'Menü'}</h3>
+                            </div>
+                            <span className="pm-section-header__count">{activeProducts.length} ürün</span>
+                        </section>
+                        <section className="pm-grid-section">
+                            <div className="pm-grid">
+                                {activeProducts.map((urun, index) => (
+                                    <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
+                                ))}
+                            </div>
+                        </section>
+                    </>
+                )}
             </main>
 
             {/* ─── Footer ─── */}
@@ -310,7 +410,6 @@ export default function MenuPage() {
                         Bizi Değerlendirin
                     </a>
                 </div>
-
                 <div className="pm-footer__card">
                     <h3 className="pm-footer__card-title">İş başvurusu için:</h3>
                     <p className="pm-footer__card-subtitle">Sütlüce Kadayıf şubelerinde çalışmak ister misiniz?</p>
@@ -319,7 +418,6 @@ export default function MenuPage() {
                         İş Başvurusu Yap
                     </a>
                 </div>
-
                 <div className="pm-footer__franchise">
                     <h2 className="pm-footer__title">Franchise Fırsatlarıyla Sütlüce Ailesine Katılın</h2>
                     <p className="pm-footer__desc">Sütlüce Kadayıf, güçlü marka yapısı ve özgün ürün konseptiyle sürdürülebilir bir iş modeli sunar.</p>
@@ -327,19 +425,18 @@ export default function MenuPage() {
                         Franchise Başvurusu Yap
                     </a>
                 </div>
-
                 <div className="pm-footer__bottom">
                     <a href="tel:08503049722" className="pm-footer__phone">0850 304 9722</a>
                     <small>©2026 <a href="https://sutlucekadayif.com.tr" target="_blank" rel="noopener noreferrer">Sütlüce Kadayıf</a></small>
                 </div>
             </footer>
 
+            {/* ─── Product Detail Modal ─── */}
+            {selectedUrun && <ProductModal urun={selectedUrun} onClose={() => setSelectedUrun(null)} />}
+
             {/* ─── Scroll to Top ─── */}
             {showScrollTop && (
-                <button
-                    className="pm-scroll-top"
-                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                >
+                <button className="pm-scroll-top" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
                     <ChevronUp size={20} />
                 </button>
             )}

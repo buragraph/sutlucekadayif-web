@@ -8,6 +8,7 @@ import { upsertButce, getAllSubeler, getSubeByKod, getDonemVeri, getSettings, ge
 import { invalidateReportCache } from './services/report-data.js';
 import { invalidateCache } from '../../middleware/cache.js';
 import { campaignBasedImport } from './services/meta-api.js';
+import { getKonumListe } from '../../shared/konum-store.js';
 
 const router = Router();
 
@@ -27,10 +28,25 @@ const dekontUpload = multer({
 });
 
 // ── Helper: Get or create butce doc ──
-async function getButceDoc() {
+export async function getButceDoc() {
   const snap = await BUTCE_DOC_REF.get();
   if (!snap.exists) return { kampanyalar: {} };
   return snap.data();
+}
+
+/**
+ * Güncel dönemde (en son kampanya) bütçesi ONAYLANMIŞ şube kodları (Set).
+ * Sidebar'da onaylı şubeleri üstte gruplamak için kullanılır.
+ */
+export async function getOnayliSubeKodlari() {
+  const doc = await getButceDoc();
+  const kampanyalar = Object.values(doc.kampanyalar || {});
+  if (kampanyalar.length === 0) return [];
+  // En güncel dönem (donem_baslangic'e göre)
+  const latest = kampanyalar.sort((a, b) => (b.donem_baslangic || '').localeCompare(a.donem_baslangic || ''))[0];
+  return Object.entries(latest.yanitlar || {})
+    .filter(([, y]) => y?.durum === 'onaylandi')
+    .map(([kod]) => kod);
 }
 
 // ── Helper: Delete R2 dekontlar for a campaign ──
@@ -132,10 +148,21 @@ router.get(
       const doc = await getButceDoc();
       const kampanyalar = doc.kampanyalar || {};
 
+      // Silinmiş şubeleri yanıt listesinden süz (sayaçlar güncel kalsın).
+      // Konum dokümanı güncel şube kodlarını tutar (1 read, bellek cache'li).
+      const konumListe = await getKonumListe();
+      const gecerli = konumListe ? new Set(konumListe.map((k) => k.slug)) : null;
+      const suz = (yanitlar) => {
+        if (!gecerli) return yanitlar || {};
+        const f = {};
+        for (const [kod, y] of Object.entries(yanitlar || {})) if (gecerli.has(kod)) f[kod] = y;
+        return f;
+      };
+
       // createdAt'e göre desc sırala
       const sorted = Object.entries(kampanyalar)
         .sort((a, b) => new Date(b[1].createdAt) - new Date(a[1].createdAt))
-        .map(([id, data]) => ({ id, ...data }));
+        .map(([id, data]) => ({ id, ...data, yanitlar: suz(data.yanitlar) }));
 
       res.json({ kampanyalar: sorted });
     } catch (err) {
@@ -145,7 +172,10 @@ router.get(
   }
 );
 
-// GET /butce-kampanya/:id — Tek kampanya detayı
+// Kampanya başına "önceki dönem kalanı" haritası için versiyonlu bellek cache'i
+const oncekiKalanCache = new Map();
+
+// GET /butce-kampanya/:id — Tek kampanya detayı (+ şube başına önceki dönem kalanı)
 router.get(
   '/butce-kampanya/:id',
   verifyToken,
@@ -160,7 +190,52 @@ router.get(
         return res.status(404).json({ error: 'Kampanya bulunamadı.' });
       }
 
-      res.json({ id, ...kampanya });
+      // Şube başına önceki dönem kalanı (otomatik: planlanan + devir + merkez − harcama).
+      // Her şubenin donem_ozetleri'nde, kampanya döneminden ÖNCEKİ en güncel dönem alınır.
+      // Versiyonlu cache → veri değişmedikçe N read tekrar yapılmaz.
+      const version = await getDataVersion();
+      const cacheKey = `${id}#v${version}`;
+      let cached = oncekiKalanCache.get(cacheKey);
+      if (!cached) {
+        const onceki_kalanlar = {};
+        const sube_adlari = {}; // subeKod → gerçek şube adı (slug yerine isim göstermek için)
+        const devredilenler = {}; // bu kampanya dönemine İŞLENMİŞ devreden miktar (tik/Düzenle ile)
+        const subeler = await getAllSubeler();
+        for (const sube of subeler) {
+          sube_adlari[sube.kod] = sube.ad || sube.kod;
+          // Bu kampanya döneminin gerçek devreden miktarı (uygulanmadıysa 0/yok)
+          const buDonem = (sube.donem_ozetleri || []).find((d) => d.baslangic === kampanya.donem_baslangic && d.bitis === kampanya.donem_bitis);
+          if (buDonem && buDonem.devredilen_miktar) devredilenler[sube.kod] = buDonem.devredilen_miktar;
+          const oncekiler = (sube.donem_ozetleri || []).filter((d) => d.baslangic < kampanya.donem_baslangic);
+          if (oncekiler.length === 0) continue;
+          const prev = oncekiler.reduce((a, b) => (a.baslangic > b.baslangic ? a : b));
+          const toplam = (prev.planlanan_butce || 0) + (prev.devredilen_miktar || 0) + (prev.merkez_destegi || 0);
+          onceki_kalanlar[sube.kod] = Math.round((toplam - (prev.harcama || 0)) * 100) / 100;
+        }
+        cached = { onceki_kalanlar, sube_adlari, devredilenler };
+        oncekiKalanCache.set(cacheKey, cached);
+      }
+
+      // Silinmiş şubeleri yanıt listesinden çıkar (sube_adlari güncel şubeleri içerir)
+      const gecerliKodlar = new Set(Object.keys(cached.sube_adlari));
+      const gecerliYanitlar = {};
+      for (const [kod, y] of Object.entries(kampanya.yanitlar || {})) {
+        if (gecerliKodlar.has(kod)) gecerliYanitlar[kod] = y;
+      }
+
+      // Önceki dönem bütçe toplamasına KATILANLAR (gonderildi/onaylandi) — bu dönemden
+      // önceki en güncel kampanyadan. Doküman zaten yüklü → ek read yok.
+      const onceki_katilim = {};
+      const oncekiKampanya = Object.values(doc.kampanyalar || {})
+        .filter((k) => (k.donem_baslangic || '') < (kampanya.donem_baslangic || ''))
+        .sort((a, b) => (b.donem_baslangic || '').localeCompare(a.donem_baslangic || ''))[0];
+      if (oncekiKampanya) {
+        for (const [kod, y] of Object.entries(oncekiKampanya.yanitlar || {})) {
+          if (y?.durum === 'gonderildi' || y?.durum === 'onaylandi') onceki_katilim[kod] = true;
+        }
+      }
+
+      res.json({ id, ...kampanya, yanitlar: gecerliYanitlar, onceki_kalanlar: cached.onceki_kalanlar, sube_adlari: cached.sube_adlari, devredilenler: cached.devredilenler, onceki_katilim });
     } catch (err) {
       console.error('[Budget] Kampanya detay hatası:', err);
       res.status(500).json({ error: err.message });
@@ -317,7 +392,7 @@ router.post(
   async (req, res) => {
     try {
       const { id, subeKod } = req.params;
-      const { bakiye } = req.body || {};
+      const { bakiye, merkez, kdv } = req.body || {};
       const doc = await getButceDoc();
       const kampanya = doc.kampanyalar?.[id];
 
@@ -325,34 +400,42 @@ router.post(
         return res.status(404).json({ error: 'Kampanya bulunamadı.' });
       }
 
-      const yanit = kampanya.yanitlar?.[subeKod];
-      if (!yanit) {
-        return res.status(404).json({ error: 'Bu şube için yanıt bulunamadı.' });
-      }
-      
+      // Yanıt kaydı olmayabilir (kampanyadan SONRA eklenen şube). Admin bir bakiye
+      // girerek doğrudan onaylayabilir; reddetme — aşağıdaki update girdiyi oluşturur.
+      const yanit = kampanya.yanitlar?.[subeKod] || null;
+
       const adminBakiye = bakiye !== undefined && bakiye !== null ? Number(bakiye) : null;
-      
-      if (adminBakiye === null && yanit.durum !== 'gonderildi') {
-        return res.status(400).json({ error: 'Bu yanıt henüz gönderilmemiş veya zaten onaylanmış.' });
+      // Merkez desteği: değer verilmişse onu yaz, yoksa mevcut dönem değerini koru
+      const adminMerkez = merkez !== undefined && merkez !== null && merkez !== '' ? Number(merkez) : null;
+      // KDV dahil tutar: admin elle girdiyse yanıta yaz (yoksa istemci bakiyeden hesaplar)
+      const adminKdv = kdv !== undefined && kdv !== null && kdv !== '' ? Number(kdv) : null;
+
+      // Bakiye girilmemişse: yalnızca "gönderildi" ya da zaten "onaylandi" (güncelleme) ise devam
+      if (adminBakiye === null && yanit?.durum !== 'gonderildi' && yanit?.durum !== 'onaylandi') {
+        return res.status(400).json({ error: 'Onaylamak için bir bakiye girin (bu şube henüz bildirim göndermemiş).' });
       }
 
-      const finalBakiye = adminBakiye !== null ? adminBakiye : Number(yanit.secilen_bakiye || 0);
+      const finalBakiye = adminBakiye !== null ? adminBakiye : Number(yanit?.secilen_bakiye || 0);
 
-      // Bütçeyi dönem dokümanına yaz (mevcut devredilen ve merkez desteğini koru)
+      // Bütçeyi dönem dokümanına yaz (devredilen korunur; merkez verildiyse güncellenir)
       const donemVeri = await getDonemVeri(subeKod, kampanya.donem_baslangic, kampanya.donem_bitis) || {};
+      // Dönem dokümanı henüz yoksa yanıttaki merkez desteğine düş — 0'a sıfırlanmasın
+      const finalMerkez = adminMerkez !== null ? adminMerkez : (donemVeri.merkez_destegi ?? yanit?.merkez_destegi ?? 0);
       await upsertButce(
-          subeKod, 
-          kampanya.donem_baslangic, 
-          kampanya.donem_bitis, 
-          finalBakiye, 
+          subeKod,
+          kampanya.donem_baslangic,
+          kampanya.donem_bitis,
+          finalBakiye,
           donemVeri.devredilen_miktar || 0,
-          donemVeri.merkez_destegi || 0
+          finalMerkez
       );
 
-      // Yanıt durumunu güncelle
+      // Yanıt durumunu güncelle (merkez desteğini de yansıt — tabloda görünsün)
       await BUTCE_DOC_REF.update({
         [`kampanyalar.${id}.yanitlar.${subeKod}.durum`]: 'onaylandi',
-        ...(adminBakiye !== null && { [`kampanyalar.${id}.yanitlar.${subeKod}.secilen_bakiye`]: finalBakiye })
+        [`kampanyalar.${id}.yanitlar.${subeKod}.merkez_destegi`]: finalMerkez,
+        ...(adminBakiye !== null && { [`kampanyalar.${id}.yanitlar.${subeKod}.secilen_bakiye`]: finalBakiye }),
+        ...(adminKdv !== null && { [`kampanyalar.${id}.yanitlar.${subeKod}.kdv_dahil_tutar`]: adminKdv })
       });
 
       // Meta'dan verileri otomatik çek (Arka planda)
@@ -379,6 +462,50 @@ router.post(
       res.json({ success: true });
     } catch (err) {
       console.error('[Budget] Tekil onaylama hatası:', err);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// POST /butce-kampanya/:id/devret/:subeKod — Önceki dönem kalanını bu dönemin devreden miktarına işle
+router.post(
+  '/butce-kampanya/:id/devret/:subeKod',
+  verifyToken,
+  requirePermission('budget.manage'),
+  async (req, res) => {
+    try {
+      const { id, subeKod } = req.params;
+      const doc = await getButceDoc();
+      const kampanya = doc.kampanyalar?.[id];
+      if (!kampanya) return res.status(404).json({ error: 'Kampanya bulunamadı.' });
+
+      const sube = await getSubeByKod(subeKod);
+      if (!sube) return res.status(404).json({ error: 'Şube bulunamadı.' });
+
+      // Önceki dönem kalanı (kampanya döneminden ÖNCEKİ en güncel dönem)
+      const oncekiler = (sube.donem_ozetleri || []).filter((d) => d.baslangic < kampanya.donem_baslangic);
+      if (oncekiler.length === 0) return res.status(400).json({ error: 'Önceki döneme ait veri bulunamadı.' });
+      const prev = oncekiler.reduce((a, b) => (a.baslangic > b.baslangic ? a : b));
+      const kalan = Math.round(((prev.planlanan_butce || 0) + (prev.devredilen_miktar || 0) + (prev.merkez_destegi || 0) - (prev.harcama || 0)) * 100) / 100;
+
+      // Bu dönemin DEVREDEN miktarını bu değere işle (planlanan + merkez korunur)
+      const donemVeri = await getDonemVeri(subeKod, kampanya.donem_baslangic, kampanya.donem_bitis) || {};
+      await upsertButce(
+        subeKod,
+        kampanya.donem_baslangic,
+        kampanya.donem_bitis,
+        donemVeri.planlanan_butce || 0,
+        kalan,
+        donemVeri.merkez_destegi || 0
+      );
+      await bumpDataVersion();
+      invalidateReportCache();
+      invalidateCache('/reports');
+      butceDurumCache.clear();
+
+      res.json({ success: true, devredilen: kalan });
+    } catch (err) {
+      console.error('[Budget] Devret hatası:', err);
       res.status(500).json({ error: err.message });
     }
   }
@@ -446,11 +573,11 @@ router.get(
         const harcama = donemOzet?.harcama || 0;
         const kalan = toplamButce - harcama;
 
-        // Kullanım oranı ve durum hesapla
+        // Kullanım oranı ve durum hesapla — toplam bütçe (yalnızca merkez desteği olsa da) varsa
         let kullanimOrani = 0;
         let durum = null;
-        if (planlananButce > 0) {
-          kullanimOrani = toplamButce > 0 ? Math.round((harcama / toplamButce) * 1000) / 10 : 0;
+        if (toplamButce > 0) {
+          kullanimOrani = Math.round((harcama / toplamButce) * 1000) / 10;
           if (kullanimOrani >= 100) {
             durum = 'asim';
             asimSayisi++;
@@ -533,7 +660,10 @@ router.get(
         .filter(([, k]) => {
           // Toplama süresi geçtiyse (son_tarih < bugün) şube sahibine gösterme
           if (k.son_tarih && k.son_tarih < bugun) return false;
-          return k.durum === 'aktif' && k.yanitlar?.[subeSlug]?.durum === 'bekliyor';
+          if (k.durum !== 'aktif') return false;
+          // Yanıt kaydı yoksa (kampanyadan sonra eklenen şube) da "bekliyor" say
+          const y = k.yanitlar?.[subeSlug];
+          return !y || y.durum === 'bekliyor';
         })
         .sort((a, b) => new Date(b[1].createdAt) - new Date(a[1].createdAt))
         .map(([id, data]) => ({
@@ -545,7 +675,7 @@ router.get(
           bakiye_secenekleri: data.bakiye_secenekleri,
           iban: data.iban,
           odeme_notu: data.odeme_notu,
-          yanit: data.yanitlar[subeSlug],
+          yanit: data.yanitlar?.[subeSlug] || { durum: 'bekliyor', secilen_bakiye: null, kdv_dahil_tutar: null, dekont_url: null, gonderim_tarihi: null },
         }));
 
       // Katıldığı kampanyalar — dönem sonuna (donem_bitis) kadar özet olarak görünür
@@ -616,9 +746,8 @@ router.post(
       if (kampanya.durum !== 'aktif') {
         return res.status(400).json({ error: 'Bu kampanya artık aktif değil.' });
       }
-      if (!kampanya.yanitlar?.[subeKod]) {
-        return res.status(403).json({ error: 'Bu kampanyada şubeniz için yanıt kaydı bulunamadı.' });
-      }
+      // Not: yanıt kaydı yoksa (kampanya oluşturulduktan SONRA eklenen şube) reddetme;
+      // aşağıdaki yazma dot-path ile girdiyi kendisi oluşturur.
 
       // Dekont upload
       let dekontUrl = null;

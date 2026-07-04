@@ -100,7 +100,7 @@ export default function Dashboard() {
                             {role === 'admin' ? 'Şube Ağı' : 'Şubeniz'}
                         </p>
                         <h2 className="mt-1 text-2xl font-light leading-tight tracking-tight text-foreground md:text-3xl" style={{ fontFamily: 'Marcellus, serif' }}>
-                            Merhaba, <span className="font-bold text-[#084529] dark:text-[#d8c7a3]">{role === 'admin' ? 'Yönetici' : (subeSlug || 'Şube Yetkilisi')}</span> 👋
+                            Merhaba, <span className="font-bold text-[#084529] dark:text-[#d8c7a3]">{role === 'admin' ? 'Yönetici' : (kendiSube?.ad || subeSlug || 'Şube Yetkilisi')}</span> 👋
                         </h2>
                         <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border bg-background/85 px-3 py-1 text-xs font-medium text-foreground backdrop-blur">
                             <MapIcon className="size-3.5 text-[#084529] dark:text-[#d8c7a3]" />

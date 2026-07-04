@@ -12,8 +12,11 @@ function formatCurrency(n) {
 }
 
 export function generateReportHtml(data) {
-  const { sube, donem, meta, google, planlananButce, devredilenMiktar } = data;
-  const toplamButce = planlananButce ? planlananButce + (devredilenMiktar || 0) : null;
+  const { sube, donem, meta, google, planlananButce, devredilenMiktar, merkezDestegi } = data;
+  // Toplam bütçe: planlanan + devir + merkez. Yalnızca merkez desteği girilse de (planlanan 0)
+  // hesaplanır ki eksik/aşım kartı görünsün.
+  const toplamButceHesap = (planlananButce || 0) + (devredilenMiktar || 0) + (merkezDestegi || 0);
+  const toplamButce = toplamButceHesap > 0 ? toplamButceHesap : null;
   const eksikHarcama = toplamButce ? toplamButce - meta.toplamHarcama : null;
 
   return `<!DOCTYPE html>
@@ -393,9 +396,10 @@ export function generateReportHtml(data) {
         <div class="label">Toplam Harcama</div>
         <div class="value">${formatCurrency(meta.toplamHarcama)} <span class="unit">₺</span></div>
         ${planlananButce ? `<div class="sub">Planlanan Bütçe: <strong>${formatCurrency(planlananButce)} ₺</strong></div>` : ''}
+        ${merkezDestegi ? `<div class="sub">Merkez Desteği: <strong>+${formatCurrency(merkezDestegi)} ₺</strong></div>` : ''}
       </div>
 
-      ${planlananButce ? `
+      ${toplamButce ? `
       <div class="grid-2">
         <div class="big-card" style="text-align:left">
           <div class="label">Devreden</div>

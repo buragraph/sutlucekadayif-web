@@ -9,9 +9,10 @@ import { Navigate } from 'react-router-dom';
  * @param {object} props
  * @param {React.ReactNode} props.children — Korunan içerik
  * @param {string} [props.permission] — Opsiyonel yetki key'i
+ * @param {string} [props.role] — Opsiyonel rol kısıtı (ör: 'admin')
  */
-export default function ProtectedRoute({ children, permission }) {
-    const { user, loading, can } = useAuth();
+export default function ProtectedRoute({ children, permission, role: requiredRole }) {
+    const { user, loading, can, role } = useAuth();
 
     if (loading) {
         return (
@@ -26,7 +27,7 @@ export default function ProtectedRoute({ children, permission }) {
         return <Navigate to="/giris" replace />;
     }
 
-    if (permission && !can(permission)) {
+    if ((requiredRole && role !== requiredRole) || (permission && !can(permission))) {
         return (
             <div className="loading-container">
                 <div className="empty-state">

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { EllipsisVertical, LogOut, CircleUser, CreditCard, MessageSquareDot, Shield, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { EllipsisVertical, LogOut, CircleUser, Shield, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
@@ -131,6 +131,12 @@ export function NavUser() {
                                 </DropdownMenuGroup>
                             </>
                         )}
+
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => navigate('/admin/profil')}>
+                            <CircleUser className="mr-2 h-4 w-4" />
+                            Profil
+                        </DropdownMenuItem>
 
                         <DropdownMenuSeparator />
                         <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">

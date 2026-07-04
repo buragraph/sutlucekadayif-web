@@ -65,6 +65,7 @@ function getDefaultDateRange() {
 export const useReportsStore = create((set, get) => ({
     // Data
     branches: [],
+    onayliKodlar: [],
     activeBranch: null,
     donemCache: {},
     budgetStatus: null,
@@ -77,6 +78,7 @@ export const useReportsStore = create((set, get) => ({
 
     // UI state
     loading: false,
+    branchLoading: false,
     sortCol: 'donem',
     sortDir: 'desc',
     dateRange: getDefaultDateRange(),
@@ -143,13 +145,15 @@ export const useReportsStore = create((set, get) => ({
 
             set((prev) => ({
                 branches: data.subeler,
+                onayliKodlar: data.onayliKodlar || [],
                 hasMappings: data.hasMappings || false,
                 reverseCampaigns: data.reverseCampaigns || {},
                 reverseAdsets: data.reverseAdsets || {},
                 metaPrefixMappings: data.mappings || {},
                 settings: data.settings || {},
                 googleMappings: data.googleMappings || {},
-                donemCache: { ...prev.donemCache, ...newDonemCache },
+                // force (veri çekimi sonrası) → eski şube cache'ini TEMİZLE ki tıklayınca taze gelsin
+                donemCache: force ? { ...newDonemCache } : { ...prev.donemCache, ...newDonemCache },
                 loading: false,
             }));
         } catch (err) {
@@ -159,32 +163,33 @@ export const useReportsStore = create((set, get) => ({
     },
 
     // ── Select Branch ──
+    // Sidebar stub şubeler (sadece kod+ad) içerir; tıklanınca tam şube (aggregate +
+    // donem_ozetleri) /sube/:kod ile lazy çekilir (1 read). Zaten yüklüyse 0 read.
     selectBranch: async (kod, force = false) => {
         set({ activeBranch: kod });
         const { donemCache, branches } = get();
-        
-        if (force || !donemCache[kod]) {
-            // NoSQL Optimizasyonu: Şube dokümanında donem_ozetleri varsa hiç API'ye gitme (0 Read!)
-            const sube = branches.find(b => b.kod === kod);
-            if (!force && sube && sube.donem_ozetleri) {
-                set((s) => ({
-                    donemCache: { ...s.donemCache, [kod]: sube.donem_ozetleri },
-                }));
-                return;
-            }
 
-            // Geriye dönük uyumluluk veya force refresh için API'den çek
-            try {
-                const r = await authFetch(`${API}/sube/${kod}/donemler`);
-                const d = await r.json();
-                set((s) => ({
-                    donemCache: { ...s.donemCache, [kod]: d.donemler || [] },
-                }));
-            } catch {
-                set((s) => ({
-                    donemCache: { ...s.donemCache, [kod]: [] },
-                }));
-            }
+        if (!force && donemCache[kod]) return; // zaten yüklü → 0 read
+
+        // Tam veri şube objesinde hazırsa (ör. sube_sahibi kendi şubesi) API'ye gitme
+        const sube = branches.find(b => b.kod === kod);
+        if (!force && sube && Array.isArray(sube.donem_ozetleri)) {
+            set((s) => ({ donemCache: { ...s.donemCache, [kod]: sube.donem_ozetleri } }));
+            return;
+        }
+
+        // Lazy: tam şube dokümanını çek (aggregate'ler + donem_ozetleri) — 1 read
+        set({ branchLoading: true });
+        try {
+            const r = await authFetch(`${API}/sube/${kod}`);
+            const d = await r.json();
+            set((s) => ({
+                branches: s.branches.map((b) => (b.kod === kod ? { ...b, ...d.sube } : b)),
+                donemCache: { ...s.donemCache, [kod]: (d.sube && d.sube.donem_ozetleri) || [] },
+                branchLoading: false,
+            }));
+        } catch {
+            set((s) => ({ donemCache: { ...s.donemCache, [kod]: [] }, branchLoading: false }));
         }
     },
 

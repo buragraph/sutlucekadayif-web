@@ -93,7 +93,7 @@ export default function BranchesPage() {
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-3xl leading-none tracking-tight">Şubeler</h1>
                 <Button onClick={openAdd}><Plus className="size-4" /> Şube Ekle</Button>
             </div>
@@ -109,7 +109,7 @@ export default function BranchesPage() {
                             <TableRow>
                                 <TableHead>Slug</TableHead>
                                 <TableHead>Şube Adı</TableHead>
-                                <TableHead>Adres</TableHead>
+                                <TableHead className="max-w-[280px]">Adres</TableHead>
                                 <TableHead>Telefon</TableHead>
                                 <TableHead>Ürün Sayısı</TableHead>
                                 <TableHead>Fatura</TableHead>
@@ -121,7 +121,9 @@ export default function BranchesPage() {
                                 <TableRow key={sube.slug}>
                                     <TableCell><code className="rounded bg-muted px-1.5 py-0.5 text-xs">{sube.slug}</code></TableCell>
                                     <TableCell className="font-medium">{sube.ad}</TableCell>
-                                    <TableCell className="text-sm text-muted-foreground">{sube.adres || '—'}</TableCell>
+                                    <TableCell className="max-w-[280px] text-sm text-muted-foreground">
+                                        <div className="truncate" title={sube.adres || ''}>{sube.adres || '—'}</div>
+                                    </TableCell>
                                     <TableCell className="text-sm text-muted-foreground">{sube.telefon || '—'}</TableCell>
                                     <TableCell><Badge variant="secondary">{sube.urunSayisi || 0}</Badge></TableCell>
                                     <TableCell>

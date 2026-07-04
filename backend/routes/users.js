@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'node:crypto';
 import { db, auth } from '../config/firebase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
@@ -60,8 +61,8 @@ router.post(
     asyncHandler(async (req, res) => {
         let { email, password, displayName, subeSlug, role } = req.body;
 
-        if (!email || !password) {
-            return res.status(400).json({ error: 'E-posta ve şifre zorunludur' });
+        if (!email) {
+            return res.status(400).json({ error: 'E-posta zorunludur' });
         }
         if (!role) {
             return res.status(400).json({ error: 'Rol zorunludur' });
@@ -76,10 +77,16 @@ router.post(
             subeSlug = req.user.subeSlug;
         }
 
-        // Firebase Auth'da kullanıcı oluştur
+        // Firebase Auth'da kullanıcı oluştur.
+        // Şifre gönderilmediyse rastgele güçlü bir şifre atanır; kullanıcı kendi
+        // şifresini e-postasına gelen "şifre belirleme" bağlantısıyla oluşturur.
+        const gecerliSifre =
+            password && String(password).length >= 6
+                ? password
+                : `Gecici-${crypto.randomBytes(24).toString('base64url')}`;
         const userRecord = await auth.createUser({
             email,
-            password,
+            password: gecerliSifre,
             displayName: displayName || null,
         });
 

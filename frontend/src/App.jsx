@@ -46,7 +46,7 @@ export default function App() {
             <Route path="/admin/profil" element={<ProfilePage />} />
             <Route path="/admin/subeler" element={<BranchesPage />} />
             <Route path="/admin/qr-menu/kategoriler" element={<CategoriesPage />} />
-            <Route path="/admin/medya" element={<PhotoLibraryPage />} />
+            <Route path="/admin/medya" element={<ProtectedRoute role="admin"><PhotoLibraryPage /></ProtectedRoute>} />
             <Route path="/admin/akademi" element={<AcademyDashboard />} />
             <Route path="/admin/akademi/kurs/:courseId" element={<CourseDetail />} />
             <Route path="/admin/akademi/yonetim" element={<AcademyAdmin />} />

@@ -10,7 +10,6 @@ import {
     PieChart,
     Wallet,
     Megaphone,
-    Store,
 } from 'lucide-react';
 
 /**
@@ -26,7 +25,6 @@ export function getNavGroups(can, role) {
                 { title: 'Genel Bakış', url: '/admin', icon: LayoutDashboard, end: true },
                 ...(role === 'sube_sahibi' ? [
                     { title: 'Reklam', url: '/admin/reklam', icon: Megaphone },
-                    { title: 'Profil', url: '/admin/profil', icon: Store },
                 ] : []),
                 ...(role === 'admin' ? [{ title: 'Medya', url: '/admin/medya', icon: ImagePlus }] : []),
                 { title: 'Akademi', url: '/admin/akademi', icon: GraduationCap },

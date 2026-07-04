@@ -193,7 +193,7 @@ export default function CategoriesPage() {
     return (
         <div className="flex flex-1 flex-col gap-4 w-full">
             {/* Page Header */}
-            <div className="flex items-center justify-between shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
                 <div>
                     <h1 className="text-3xl leading-none tracking-tight text-foreground">Kategoriler</h1>
                     <p className="text-xs text-muted-foreground mt-0.5">Menü kategorilerinizi düzenleyin ve yönetin.</p>

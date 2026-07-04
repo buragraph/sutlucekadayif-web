@@ -343,12 +343,9 @@ export function DataEditModal() {
     const handleSave = async () => {
         setSaving(true);
         const getV = (val) => { const v = val.replace(/\./g, '').replace(/,/g, '.'); return v ? parseFloat(v) : 0; };
+        // Yalnızca BÜTÇE alanları override edilir. Metrikler (harcama/erişim/...) otomatik
+        // çekilir; override'a gönderilmez ki yeniden çekim onları tazeleyebilsin.
         const overrides = {
-            toplamHarcama: getV(form.deHarcama), toplamErisim: getV(form.deErisim), toplamGosterim: getV(form.deGosterim), toplamSonuc: getV(form.deSonuc),
-            toplamTiklama: getV(form.deTiklama), toplamTiklamaTumu: getV(form.deTiklamaTumu), toplamPaylasim: getV(form.dePaylasim),
-            toplamYorum: getV(form.deYorum), toplamMesaj: getV(form.deMesaj),
-            googleArama: getV(form.deGoogleArama), googleHarita: getV(form.deGoogleHarita), googleYolTarifi: getV(form.deGoogleYol),
-            googleTelefon: getV(form.deGoogleTelefon), googleWebTiklama: getV(form.deGoogleWeb), googleMenuTiklama: getV(form.deGoogleMenu),
             planlananButce: getV(form.dePlanlananButce), devredilenMiktar: getV(form.deDevredilenMiktar), merkezDestegi: getV(form.deMerkezDestegi)
         };
         try {
@@ -403,12 +400,13 @@ export function DataEditModal() {
                     <div>
                         <div className="text-xs font-semibold text-blue-600 mb-2 flex items-center gap-1.5">
                             <Target className="w-3 h-3" /> Meta Reklam Verileri
+                            <span className="font-normal text-muted-foreground">· otomatik çekilir (salt okunur)</span>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <FormGroup label="Toplam Harcama (₺)"><Input value={form.deHarcama} onChange={e=>handleInput('deHarcama', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Toplam Erişim"><Input value={form.deErisim} onChange={e=>handleInput('deErisim', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Toplam Gösterim"><Input value={form.deGosterim} onChange={e=>handleInput('deGosterim', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Toplam Sonuç"><Input value={form.deSonuc} onChange={e=>handleInput('deSonuc', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Toplam Harcama (₺)"><Input disabled value={form.deHarcama} onChange={e=>handleInput('deHarcama', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Toplam Erişim"><Input disabled value={form.deErisim} onChange={e=>handleInput('deErisim', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Toplam Gösterim"><Input disabled value={form.deGosterim} onChange={e=>handleInput('deGosterim', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Toplam Sonuç"><Input disabled value={form.deSonuc} onChange={e=>handleInput('deSonuc', e.target.value)} placeholder="0" /></FormGroup>
                         </div>
                     </div>
 
@@ -417,12 +415,12 @@ export function DataEditModal() {
                             <MapPin className="w-3 h-3" /> Google İşletme Verileri
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <FormGroup label="Arama (Toplam)"><Input value={form.deGoogleArama} onChange={e=>handleInput('deGoogleArama', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Harita (Toplam)"><Input value={form.deGoogleHarita} onChange={e=>handleInput('deGoogleHarita', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Yol Tarifi"><Input value={form.deGoogleYol} onChange={e=>handleInput('deGoogleYol', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Telefon Araması"><Input value={form.deGoogleTelefon} onChange={e=>handleInput('deGoogleTelefon', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Web Sitesi Tıklama"><Input value={form.deGoogleWeb} onChange={e=>handleInput('deGoogleWeb', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Menü Tıklama"><Input value={form.deGoogleMenu} onChange={e=>handleInput('deGoogleMenu', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Arama (Toplam)"><Input disabled value={form.deGoogleArama} onChange={e=>handleInput('deGoogleArama', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Harita (Toplam)"><Input disabled value={form.deGoogleHarita} onChange={e=>handleInput('deGoogleHarita', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Yol Tarifi"><Input disabled value={form.deGoogleYol} onChange={e=>handleInput('deGoogleYol', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Telefon Araması"><Input disabled value={form.deGoogleTelefon} onChange={e=>handleInput('deGoogleTelefon', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Web Sitesi Tıklama"><Input disabled value={form.deGoogleWeb} onChange={e=>handleInput('deGoogleWeb', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Menü Tıklama"><Input disabled value={form.deGoogleMenu} onChange={e=>handleInput('deGoogleMenu', e.target.value)} placeholder="0" /></FormGroup>
                         </div>
                     </div>
                 </div>
@@ -749,7 +747,7 @@ export function AddDataModal() {
     const selectBranch = useReportsStore(s => s.selectBranch);
     const settings = useReportsStore(s => s.settings);
 
-    const [form, setForm] = useState({ since: '', until: '', planlanan: '', devredilen: '', erisim: '' });
+    const [form, setForm] = useState({ since: '', until: '' });
     const metaRef = useRef(null);
     const googleRef = useRef(null);
     const [metaLoading, setMetaLoading] = useState(false);
@@ -766,7 +764,6 @@ export function AddDataModal() {
             setForm({
                 since: `${curYear}-${pad(curMonth + 1)}-01`,
                 until: `${curYear}-${pad(curMonth + 1)}-${pad(lastDay)}`,
-                planlanan: '', devredilen: '', erisim: ''
             });
             if (metaRef.current) metaRef.current.value = '';
             if (googleRef.current) googleRef.current.value = '';
@@ -818,9 +815,6 @@ export function AddDataModal() {
         fd.append('subeKod', data.kod);
         if (metaFiles?.length) fd.append('metaCsv', metaFiles[0]);
         if (googleFiles?.length) fd.append('googleCsv', googleFiles[0]);
-        if (form.planlanan) fd.append('planlananButce', form.planlanan);
-        if (form.devredilen) fd.append('devredilenMiktar', form.devredilen);
-        if (form.erisim) fd.append('toplamErisim', form.erisim);
 
         try {
             await reportsApi.uploadData(fd);
@@ -869,21 +863,6 @@ export function AddDataModal() {
                         </div>
                     </div>
 
-                    <div className="h-px bg-border w-full" />
-
-                    <div>
-                        <Label className="text-[10px] font-bold text-foreground uppercase tracking-wide mb-2 block">3. Bütçe Verileri (İsteğe Bağlı)</Label>
-                        <div className="flex gap-4 mb-3">
-                            <FormGroup label="Planlanan Bütçe (₺)"><Input type="number" step="any" value={form.planlanan} onChange={e=>setForm({...form, planlanan:e.target.value})} placeholder="0" /></FormGroup>
-                            <FormGroup label="Devredilen Miktar (₺)">
-                                <Input type="number" step="any" value={form.devredilen} onChange={e=>setForm({...form, devredilen:e.target.value})} placeholder="0" />
-                                {form.devredilen.startsWith('-') && (
-                                    <div className="text-[10px] text-amber-500 mt-1 flex items-start gap-1"><Info className="w-3 h-3 shrink-0 mt-0.5" /> Eksi (-) değer</div>
-                                )}
-                            </FormGroup>
-                        </div>
-                        <FormGroup label="Hesap Özeti Toplam Erişim"><Input type="number" step="1" value={form.erisim} onChange={e=>setForm({...form, erisim:e.target.value})} placeholder="Hesap panelinden net değer..." /></FormGroup>
-                    </div>
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={closeModal}>Vazgeç</Button>

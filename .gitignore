@@ -31,3 +31,9 @@ Thumbs.db
 
 # References
 next-shadcn-admin-dashboard/
+
+# Graphify kod grafiği (lokal üretilir: graphify update .)
+graphify-out/
+
+# Claude Code lokal izinler
+.claude/settings.local.json

@@ -305,6 +305,7 @@ export async function importGoogleCsvBulk(buffer, originalFilename) {
   }
 
   const results = [];
+  const eslesmeyenler = []; // mevcut şubeye eşleşmeyen CSV satırları (yeni şube AÇILMAZ)
   for (const row of records) {
     const mapped = mapRow(row, GOOGLE_COLUMN_MAP);
 
@@ -316,7 +317,12 @@ export async function importGoogleCsvBulk(buffer, originalFilename) {
     if (!branchPart) continue;
     const subeKod = turkishToSlug(branchPart);
 
-    const sube = await upsertSube(subeKod, isletmeAdi, mapped.adres || null);
+    // YALNIZCA mevcut şubeye içe aktar — bilinmeyen koddan yeni şube AÇMA (çöp önleme).
+    const sube = await getSubeByKod(subeKod);
+    if (!sube) {
+      eslesmeyenler.push({ kod: subeKod, ad: isletmeAdi });
+      continue;
+    }
 
     const toplamlar = {
       google_arama: parseInt2(mapped.arama_mobil) + parseInt2(mapped.arama_masaustu),
@@ -334,7 +340,7 @@ export async function importGoogleCsvBulk(buffer, originalFilename) {
   // Aggregate'ler her yazımda delta ile güncellendi; versiyonu sonda bir kez artır
   if (results.length > 0) await bumpDataVersion();
 
-  return { count: results.length, subeler: results, dates };
+  return { count: results.length, subeler: results, dates, eslesmeyenler };
 }
 
 // ── Toplu Meta Import (Otomatik Eşleştirme) ──

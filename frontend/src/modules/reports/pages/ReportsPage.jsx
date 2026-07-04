@@ -19,6 +19,14 @@ export default function ReportsPage() {
     const settings = useReportsStore((s) => s.settings);
     const branches = useReportsStore((s) => s.branches);
     const openModal = useReportsStore((s) => s.openModal);
+    const activeBranch = useReportsStore((s) => s.activeBranch);
+    const selectBranch = useReportsStore((s) => s.selectBranch);
+
+    // Veri çekimi sonrası: şube listesini + cache'i tazele, aktif şubeyi yeniden çek
+    const refreshAfterFetch = async () => {
+        await loadDashboard(true);
+        if (activeBranch) await selectBranch(activeBranch, true);
+    };
 
     const [isFetchingMeta, setIsFetchingMeta] = useState(false);
     const [isFetchingGoogle, setIsFetchingGoogle] = useState(false);
@@ -44,7 +52,7 @@ export default function ReportsPage() {
         try {
             await reportsApi.globalMetaFetch(dateRange.since, dateRange.until, null);
             toast.success('Meta verileri çekildi.');
-            loadDashboard();
+            await refreshAfterFetch();
         } catch (err) {
             toast.error(err.message || 'Meta verileri çekilemedi.');
         } finally {
@@ -59,7 +67,7 @@ export default function ReportsPage() {
         try {
             await reportsApi.globalGoogleFetch(dateRange.since, dateRange.until);
             toast.success('Google verileri çekildi.');
-            loadDashboard();
+            await refreshAfterFetch();
         } catch (err) {
             toast.error(err.message || 'Google verileri çekilemedi.');
         } finally {
@@ -82,7 +90,7 @@ export default function ReportsPage() {
         toast.success('Tüm veriler çekildi.');
         setIsFetchingMeta(false);
         setIsFetchingGoogle(false);
-        loadDashboard();
+        await refreshAfterFetch();
     };
 
     const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);

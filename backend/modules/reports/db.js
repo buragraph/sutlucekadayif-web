@@ -225,12 +225,14 @@ export async function updateOverrides(subeKod, donemBaslangic, donemBitis, overr
   const docId = donemDocId(donemBaslangic, donemBitis);
   const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
 
+  // Tek atomik yazım. mergeFields listesindeki alanlar deep-merge YAPILMADAN bütünüyle
+  // yazılır — veri_overrides tamamen değişir, eski (donmuş) override anahtarları kalmaz.
   await docRef.set({
     donem_baslangic: donemBaslangic,
     donem_bitis: donemBitis,
-    veri_overrides: overrides,
     updatedAt: new Date().toISOString(),
-  }, { merge: true });
+    veri_overrides: overrides,
+  }, { mergeFields: ['donem_baslangic', 'donem_bitis', 'updatedAt', 'veri_overrides'] });
   await bumpDataVersion();
 }
 

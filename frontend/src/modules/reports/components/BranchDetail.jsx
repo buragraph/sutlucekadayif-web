@@ -8,6 +8,7 @@ const ITEMS_PER_PAGE = 5;
 
 export function BranchDetail() {
     const activeBranchCode = useReportsStore((s) => s.activeBranch);
+    const setActiveBranch = useReportsStore((s) => s.setActiveBranch);
     const branches = useReportsStore((s) => s.branches);
     const donemCache = useReportsStore((s) => s.donemCache);
     const sortCol = useReportsStore((s) => s.sortCol);
@@ -49,7 +50,7 @@ export function BranchDetail() {
     
     if (!activeBranchCode) {
         return (
-            <div className="flex-1 flex flex-col items-center justify-center h-full text-center p-10 bg-background/50">
+            <div className="flex-1 hidden lg:flex flex-col items-center justify-center h-full text-center p-10 bg-background/50">
                 <div className="w-12 h-12 rounded-lg bg-muted border flex items-center justify-center mb-4 text-muted-foreground">
                     <LayoutDashboard className="w-6 h-6" />
                 </div>
@@ -63,8 +64,17 @@ export function BranchDetail() {
 
     const branch = branches.find((b) => b.kod === activeBranchCode);
     const donemler = donemCache[activeBranchCode] || [];
-    
+
     if (!branch) return null;
+
+    // Lazy yükleme: stub şube tıklandı ama tam veri (aggregate + dönemler) henüz gelmedi → spinner
+    if (donemCache[activeBranchCode] === undefined) {
+        return (
+            <div className="flex-1 flex items-center justify-center h-full bg-background/50">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+        );
+    }
 
     const initial = (branch.ad.replace(/Sütlüce Kadayıf\s*/i, '') || branch.kod).charAt(0).toUpperCase();
 
@@ -95,11 +105,19 @@ export function BranchDetail() {
     return (
         <div className="flex-1 overflow-y-auto p-4 md:p-6 bg-background scrollbar-thin min-h-0">
             <div className="max-w-[1200px] mx-auto w-full">
-                
+
+                {/* Mobil geri butonu — şube listesine dön */}
+                <button
+                    onClick={() => setActiveBranch(null)}
+                    className="lg:hidden mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+                >
+                    <ChevronLeft className="w-4 h-4" /> Şubeler
+                </button>
+
                 {/* Hero Section */}
-                <div className="flex items-center justify-between pb-5 border-b mb-6">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-lg bg-muted border flex items-center justify-center font-semibold text-lg text-foreground">
+                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between pb-5 border-b mb-6">
+                    <div className="flex items-center gap-4 min-w-0">
+                        <div className="w-12 h-12 shrink-0 rounded-lg bg-muted border flex items-center justify-center font-semibold text-lg text-foreground">
                             {initial}
                         </div>
                         <div>
@@ -147,7 +165,8 @@ export function BranchDetail() {
                     if ((!bs || !bs.toplamButce) && donemler.length > 0) {
                         // En son bütçe olan dönemi bul (desc sıralı)
                         const sorted = [...donemler].sort((a, b) => (b.baslangic || '').localeCompare(a.baslangic || ''));
-                        const latestBudget = sorted.find(d => (d.planlanan_butce || 0) > 0);
+                        // Toplam bütçesi olan en son dönem (yalnızca merkez desteği girilse de bulunsun)
+                        const latestBudget = sorted.find(d => ((d.planlanan_butce || 0) + (d.devredilen_miktar || 0) + (d.merkez_destegi || 0)) > 0);
                         if (latestBudget) {
                             const todayStr = new Date().toISOString().split('T')[0];
                             if (latestBudget.bitis >= todayStr) {
@@ -312,8 +331,8 @@ export function BranchDetail() {
                     </div>
                 ) : (
                     <>
-                        <div className="border rounded-lg bg-card overflow-hidden">
-                            <table className="w-full text-sm">
+                        <div className="border rounded-lg bg-card overflow-x-auto">
+                            <table className="w-full min-w-[560px] text-sm">
                                 <thead className="bg-muted/50 border-b">
                                     <tr>
                                         <th onClick={() => setSort('donem')} className="cursor-pointer select-none px-4 py-2.5 text-left font-medium text-muted-foreground text-xs whitespace-nowrap">Dönem <SortIcon col="donem" /></th>

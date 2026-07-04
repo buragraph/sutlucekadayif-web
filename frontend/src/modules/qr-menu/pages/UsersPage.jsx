@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Spinner } from '@/components/ui/spinner';
 
 export default function UsersPage() {
-    const { user: currentUser, refreshClaims } = useAuth();
+    const { user: currentUser, refreshClaims, resetPassword } = useAuth();
     const toast = useToast();
     const confirm = useConfirm();
     const [users, setUsers] = useState([]);
@@ -91,17 +91,32 @@ export default function UsersPage() {
                 });
                 // Kullanıcı kendi rol/şubesini değiştirdiyse token'ı tazele (yeniden giriş gerekmesin)
                 if (editingUser.uid === currentUser?.uid) await refreshClaims();
+                closeModal();
+                await loadData();
+                toast.success('Kullanıcı güncellendi');
             } else {
-                if (!form.password) {
-                    toast.error('Şifre zorunludur');
-                    setSaving(false);
-                    return;
+                await api.post('/users', {
+                    email: form.email,
+                    displayName: form.displayName,
+                    subeSlug: form.subeSlug,
+                    role: form.role,
+                });
+                // Kullanıcı kendi şifresini belirlesin: e-postasına bağlantı gönder
+                let mailGitti = true;
+                try {
+                    await resetPassword(form.email);
+                } catch (mailErr) {
+                    mailGitti = false;
+                    console.error('Şifre belirleme e-postası gönderilemedi:', mailErr);
                 }
-                await api.post('/users', form);
+                closeModal();
+                await loadData();
+                if (mailGitti) {
+                    toast.success('Kullanıcı oluşturuldu, şifre belirleme e-postası gönderildi');
+                } else {
+                    toast.warning('Kullanıcı oluşturuldu ancak şifre belirleme e-postası gönderilemedi. Kullanıcı giriş ekranından "Şifremi unuttum" ile şifre belirleyebilir.');
+                }
             }
-            closeModal();
-            await loadData();
-            toast.success(editingUser ? 'Kullanıcı güncellendi' : 'Kullanıcı oluşturuldu');
         } catch (err) {
             console.error('İşlem hatası:', err);
             toast.error(err.response?.data?.error || 'Bir hata oluştu');
@@ -152,7 +167,7 @@ export default function UsersPage() {
 
     return (
         <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-3xl leading-none tracking-tight">{isSubeSahibi ? 'Çalışanlar' : 'Kullanıcılar'}</h1>
                 <Button onClick={openAddModal}>
                     <UserPlus className="size-4" />
@@ -249,17 +264,10 @@ export default function UsersPage() {
                         </div>
 
                         {!editingUser && (
-                            <div className="space-y-1.5">
-                                <Label>Şifre</Label>
-                                <Input
-                                    type="password"
-                                    value={form.password}
-                                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                                    required
-                                    minLength={6}
-                                    placeholder="Min. 6 karakter"
-                                />
-                            </div>
+                            <p className="text-sm text-muted-foreground">
+                                Kullanıcıya şifre belirleme bağlantısı e-posta ile gönderilecek.
+                                Şifreyi kullanıcı kendisi oluşturur.
+                            </p>
                         )}
 
                         <div className="space-y-1.5">

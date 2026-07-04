@@ -135,6 +135,7 @@ if (process.env.LOCAL_DEV === 'true') {
 
 // ─── Firebase Functions Export (Gen 2) ───
 import { onRequest } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 
 export const api = onRequest(
     {
@@ -144,6 +145,25 @@ export const api = onRequest(
         region: "us-central1"
     },
     app
+);
+
+// ─── Otomatik Rapor Çekimi (dönem bitince) ───
+// Her gün çalışır; SON 3 gün içinde BİTEN bütçe dönemlerinin Meta+Google verisini
+// otomatik çeker (dönem içinde dokunmaz). Böylece dönem kapanınca gecikmeli harcama
+// dahil son rakam manuel müdahale olmadan gelir.
+export const otomatikRaporCekimi = onSchedule(
+    {
+        schedule: "0 7 * * *",          // her gün 07:00
+        timeZone: "Europe/Istanbul",
+        memory: "1GiB",
+        timeoutSeconds: 540,
+        region: "us-central1",
+    },
+    async () => {
+        const { runScheduledFetch } = await import('./modules/reports/services/scheduled-fetch.js');
+        const sonuc = await runScheduledFetch();
+        console.log('[Scheduled] Otomatik çekim tamamlandı:', JSON.stringify(sonuc).slice(0, 800));
+    }
 );
 
 // ─── Process Error Handlers ───

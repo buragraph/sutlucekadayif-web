@@ -1,0 +1,22 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "meta_data",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "donem_baslangic", "order": "ASCENDING" },
+        { "fieldPath": "donem_bitis", "order": "ASCENDING" },
+        { "fieldPath": "harcama", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "medya",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "klasor", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

@@ -27,18 +27,24 @@ const DEFAULT_BAKIYE_OPTIONS = [
     { bakiye: 70000, kdv_dahil: 79800 },
 ];
 
-export default function BudgetCampaignForm({ onCancel, onSuccess }) {
+export default function BudgetCampaignForm({ onCancel, onSuccess, editKampanya = null }) {
+    const isEdit = !!editKampanya;
     const [loading, setLoading] = useState(false);
-    const [baslik, setBaslik] = useState('');
-    const [donemBaslangic, setDonemBaslangic] = useState(null);
-    const [donemBitis, setDonemBitis] = useState(null);
-    const [sonTarih, setSonTarih] = useState(null);
-    const [aliciAdi, setAliciAdi] = useState('');
-    const [iban, setIban] = useState('');
-    const [odemeNotu, setOdemeNotu] = useState('');
-    const [kdvOrani, setKdvOrani] = useState(20);
+    const [baslik, setBaslik] = useState(editKampanya?.baslik || '');
+    const [donemBaslangic, setDonemBaslangic] = useState(editKampanya?.donem_baslangic ? new Date(editKampanya.donem_baslangic) : null);
+    const [donemBitis, setDonemBitis] = useState(editKampanya?.donem_bitis ? new Date(editKampanya.donem_bitis) : null);
+    const [sonTarih, setSonTarih] = useState(editKampanya?.son_tarih ? new Date(editKampanya.son_tarih) : null);
+    const [aliciAdi, setAliciAdi] = useState(editKampanya?.alici_adi || '');
+    const [iban, setIban] = useState(editKampanya?.iban || '');
+    const [odemeNotu, setOdemeNotu] = useState(editKampanya?.odeme_notu || '');
+    const [kdvOrani, setKdvOrani] = useState(() => {
+        const o = editKampanya?.bakiye_secenekleri?.[0];
+        return (o && o.bakiye && o.kdv_dahil) ? Math.round((o.kdv_dahil / o.bakiye - 1) * 100) : 20;
+    });
     const [bakiyeSecenekleri, setBakiyeSecenekleri] = useState(
-        DEFAULT_BAKIYE_OPTIONS.map((o) => ({ bakiye: o.bakiye }))
+        editKampanya?.bakiye_secenekleri?.length
+            ? editKampanya.bakiye_secenekleri.map((o) => ({ bakiye: o.bakiye }))
+            : DEFAULT_BAKIYE_OPTIONS.map((o) => ({ bakiye: o.bakiye }))
     );
 
     const handleAddRow = () => {
@@ -68,40 +74,53 @@ export default function BudgetCampaignForm({ onCancel, onSuccess }) {
         );
         if (invalidRows) return toast.error('Tüm bakiye seçeneklerini doldurun.');
 
+        const bakiyeListe = bakiyeSecenekleri.map((r) => {
+            const b = Number(r.bakiye);
+            return { bakiye: b, kdv_dahil: Math.round(b * (1 + Number(kdvOrani) / 100)) };
+        });
+
         setLoading(true);
         try {
-            await api.post('/reports/butce-kampanya', {
-                baslik: baslik.trim(),
-                donem_baslangic: format(donemBaslangic, 'yyyy-MM-dd'),
-                donem_bitis: format(donemBitis, 'yyyy-MM-dd'),
-                son_tarih: format(sonTarih, 'yyyy-MM-dd'),
-                alici_adi: aliciAdi.trim(),
-                iban: iban.trim(),
-                odeme_notu: odemeNotu.trim(),
-                bakiye_secenekleri: bakiyeSecenekleri.map((r) => {
-                    const b = Number(r.bakiye);
-                    return {
-                        bakiye: b,
-                        kdv_dahil: Math.round(b * (1 + Number(kdvOrani) / 100)),
-                    };
-                }),
-            });
-            toast.success('Kampanya oluşturuldu.');
+            if (isEdit) {
+                // Dönem (donem_baslangic/bitis) kampanya kimliği — değiştirilmez.
+                await api.put(`/reports/butce-kampanya/${editKampanya.id}`, {
+                    baslik: baslik.trim(),
+                    son_tarih: format(sonTarih, 'yyyy-MM-dd'),
+                    alici_adi: aliciAdi.trim(),
+                    iban: iban.trim(),
+                    odeme_notu: odemeNotu.trim(),
+                    bakiye_secenekleri: bakiyeListe,
+                });
+                toast.success('Kampanya güncellendi.');
+            } else {
+                await api.post('/reports/butce-kampanya', {
+                    baslik: baslik.trim(),
+                    donem_baslangic: format(donemBaslangic, 'yyyy-MM-dd'),
+                    donem_bitis: format(donemBitis, 'yyyy-MM-dd'),
+                    son_tarih: format(sonTarih, 'yyyy-MM-dd'),
+                    alici_adi: aliciAdi.trim(),
+                    iban: iban.trim(),
+                    odeme_notu: odemeNotu.trim(),
+                    bakiye_secenekleri: bakiyeListe,
+                });
+                toast.success('Kampanya oluşturuldu.');
+            }
             onSuccess?.();
         } catch (err) {
-            toast.error(err.response?.data?.error || 'Kampanya oluşturulamadı.');
+            toast.error(err.response?.data?.error || (isEdit ? 'Kampanya güncellenemedi.' : 'Kampanya oluşturulamadı.'));
         } finally {
             setLoading(false);
         }
     };
 
-    const DatePickerField = ({ label, value, onChange }) => (
+    const DatePickerField = ({ label, value, onChange, disabled = false }) => (
         <div className="space-y-1.5">
             <Label className="text-sm">{label}</Label>
             <Popover>
                 <PopoverTrigger asChild>
                     <Button
                         variant="outline"
+                        disabled={disabled}
                         className={cn(
                             'w-full justify-start text-left font-normal',
                             !value && 'text-muted-foreground'
@@ -135,10 +154,10 @@ export default function BudgetCampaignForm({ onCancel, onSuccess }) {
                 </Button>
                 <div>
                     <h1 className="text-3xl leading-none tracking-tight text-foreground">
-                        Yeni Kampanya
+                        {isEdit ? 'Kampanyayı Düzenle' : 'Yeni Kampanya'}
                     </h1>
                     <p className="text-sm text-muted-foreground mt-0.5">
-                        Şubelere gönderilecek bütçe kampanyasını oluşturun.
+                        {isEdit ? 'Kampanya bilgilerini güncelleyin.' : 'Şubelere gönderilecek bütçe kampanyasını oluşturun.'}
                     </p>
                 </div>
             </div>
@@ -159,10 +178,11 @@ export default function BudgetCampaignForm({ onCancel, onSuccess }) {
 
                         {/* Dönem Tarihleri */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <DatePickerField label="Dönem Başlangıç *" value={donemBaslangic} onChange={setDonemBaslangic} />
-                            <DatePickerField label="Dönem Bitiş *" value={donemBitis} onChange={setDonemBitis} />
+                            <DatePickerField label="Dönem Başlangıç *" value={donemBaslangic} onChange={setDonemBaslangic} disabled={isEdit} />
+                            <DatePickerField label="Dönem Bitiş *" value={donemBitis} onChange={setDonemBitis} disabled={isEdit} />
                             <DatePickerField label="Son Tarih *" value={sonTarih} onChange={setSonTarih} />
                         </div>
+                        {isEdit && <p className="text-xs text-muted-foreground -mt-2">Dönem tarihleri kampanya kimliğidir, değiştirilemez.</p>}
 
                         {/* IBAN & Alıcı Adı */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -276,7 +296,7 @@ export default function BudgetCampaignForm({ onCancel, onSuccess }) {
                             </Button>
                             <Button type="submit" disabled={loading}>
                                 {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                                Oluştur
+                                {isEdit ? 'Güncelle' : 'Oluştur'}
                             </Button>
                         </div>
                     </form>

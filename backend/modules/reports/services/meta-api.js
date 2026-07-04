@@ -433,17 +433,36 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
     const toplamlar = aggregateApiRows(grup.rows);
     await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipBump: true });
 
-    // Kampanya seviyesinde tekil erişim yaz
-    let toplamTekilErisim = 0;
-    for (const cId of grup.campaignIds) {
-      const cData = campaignData.find(c => c.campaign_id === cId);
-      if (cData) toplamTekilErisim += parseInt(cData.reach) || 0;
+    // Tekil (unique) erişim — şubenin REKLAM SETLERİNE filtreli TEK sorgu; Meta bu
+    // sorguda erişimi dedupe eder. Adset reach toplamı (toplamlar.erisim) dedupe'siz
+    // ÜST sınırdır; dönen değer bundan büyükse (filtre uygulanmamış/hesap geneli gelmiş)
+    // reddedip kampanya seviyesine düşeriz. Böylece adset-eşlemeli şubelerde şişme olmaz.
+    const grupAdsetIds = [...new Set(grup.rows.map(r => r.adset_id || r.id).filter(Boolean))];
+    const ustSinir = toplamlar.erisim || 0; // adset reach toplamı (dedupe'siz)
+    let tekilErisim = 0;
+    if (grupAdsetIds.length > 0) {
+      try {
+        const reachRows = await fetchInsightRows(
+          insightsUrl('account', 'reach', [{ field: 'adset.id', operator: 'IN', value: grupAdsetIds }])
+        );
+        const r = reachRows.reduce((s, x) => s + (parseInt(x.reach) || 0), 0);
+        if (r > 0 && (ustSinir === 0 || r <= ustSinir + 1)) tekilErisim = r;
+      } catch (e) {
+        console.error(`   ⚠️ ${grup.sube.ad} adset tekil erişim alınamadı: ${e.message}`);
+      }
     }
-    if (toplamTekilErisim > 0) {
-      await upsertToplamErisim(grup.sube.kod, since, until, toplamTekilErisim, { skipBump: true });
-      console.log(`   📊 ${grup.sube.ad}: tekil erişim = ${toplamTekilErisim.toLocaleString('tr-TR')}`);
+    // Fallback: adset-filtreli sorgu başarısız/geçersizse kampanya erişimi
+    if (tekilErisim === 0) {
+      for (const cId of grup.campaignIds) {
+        const cData = campaignData.find(c => c.campaign_id === cId);
+        if (cData) tekilErisim += parseInt(cData.reach) || 0;
+      }
     }
-    sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length, tekilErisim: toplamTekilErisim });
+    if (tekilErisim > 0) {
+      await upsertToplamErisim(grup.sube.kod, since, until, tekilErisim, { skipBump: true });
+      console.log(`   📊 ${grup.sube.ad}: tekil erişim = ${tekilErisim.toLocaleString('tr-TR')}`);
+    }
+    sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length, tekilErisim });
   }
 
   // Aggregate'leri sonda bir kez hesapla (2×N yerine 1×N recalc)
