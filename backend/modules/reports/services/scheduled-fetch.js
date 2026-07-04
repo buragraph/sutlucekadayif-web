@@ -2,16 +2,12 @@ import { db } from '../../../config/firebase.js';
 import { getSettings, upsertGoogleToplanlar, bumpDataVersion } from '../db.js';
 import { campaignBasedImport } from './meta-api.js';
 import { loadGoogleMappings, fetchLocationMetrics, isGoogleConnected } from './google-business.js';
+import { bugunStr, gunFarki, tarihObj } from './date-utils.js';
 
 // Dönem bitişinden sonra kaç gün boyunca (gecikmeli harcama için) çekim tekrarlansın.
 // Meta, kapanan pencerenin harcamasını birkaç gün sonra yukarı revize edebildiği için
 // (geç atıflar) pencereyi geniş tutuyoruz; her gün tekrar çekilir, son çekim nihai olur.
 const GRACE_DAYS = 7;
-
-const bugunStr = () => new Date().toISOString().slice(0, 10);
-const gunFarki = (tarih, bugun) => Math.floor((new Date(bugun) - new Date(tarih)) / 86400000);
-// "YYYY-MM-DD" → { year, month, day } (Google Business API tarih objesi bekler)
-const tarihObj = (s) => { const [y, m, d] = s.split('-').map(Number); return { year: y, month: m, day: d }; };
 
 /**
  * Tek bir dönem için tüm şubelerin Meta + Google verisini çeker.
@@ -89,5 +85,18 @@ export async function runScheduledFetch() {
     console.log(`[Scheduled] Dönem çekiliyor: ${d.since} → ${d.until}`);
     sonuclar.push(await donemCek(d.since, d.until));
   }
-  return { tarih: bugun, donemSayisi: donemler.size, sonuclar };
+
+  // Başarı sınıflandırması sonuç şeklinin sahibi olan bu modülde yapılır —
+  // server.js yalnızca kritikHata'ya bakar, iç şekle bağımlı kalmaz.
+  // Kalıcı konfigürasyon eksikleri (token tanımsız, Google bağlı değil) her gün
+  // alarm üretmesin diye "gerçek hata" sayılmaz.
+  const KONFIG_HATALARI = new Set(['meta: token yok', 'google: bağlı değil']);
+  const tumHatalar = sonuclar.flatMap((s) => (s.hata || []).map((h) => `${s.since}→${s.until} ${h}`));
+  const gercekHatalar = sonuclar.flatMap((s) => (s.hata || [])).filter((h) => !KONFIG_HATALARI.has(h));
+  const hicVeriYok = donemler.size > 0 && sonuclar.every((s) => !s.meta && s.google === 0);
+  const kritikHata = hicVeriYok && gercekHatalar.length > 0
+    ? `hiçbir veri çekilemedi (${donemler.size} dönem): ${gercekHatalar.join(' | ')}`
+    : null;
+
+  return { tarih: bugun, donemSayisi: donemler.size, sonuclar, tumHatalar, kritikHata };
 }

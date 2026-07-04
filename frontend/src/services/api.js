@@ -1,8 +1,12 @@
 import axios from 'axios';
 import { auth } from '../firebase';
 
+// Ortak API tabanı — useReports ve imageProxy de bunu kullanır (tek kaynak;
+// env değişkeni/port değişirse yalnızca burası güncellenir)
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5001/api',
+    baseURL: API_BASE,
     headers: {
         'Content-Type': 'application/json',
     },

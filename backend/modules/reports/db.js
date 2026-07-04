@@ -10,14 +10,27 @@ import { FieldValue } from 'firebase-admin/firestore';
 
 const VERSION_REF = db.collection('reports').doc('meta');
 
+// Versiyon mikro-cache'i: her isteğin 1 read ödememesi için kısa TTL ile
+// bellekte tutulur. Bedeli: başka instance'ın yazdığı veri en fazla TTL kadar
+// gecikmeyle görünür (kabul edilebilir bayatlık penceresi).
+const VERSION_TTL_MS = 5000;
+let versionCache = { v: null, t: 0 };
+
 export async function getDataVersion() {
+  if (versionCache.v !== null && Date.now() - versionCache.t < VERSION_TTL_MS) {
+    return versionCache.v;
+  }
   const doc = await VERSION_REF.get();
-  return doc.exists ? (doc.data().v || 0) : 0;
+  const v = doc.exists ? (doc.data().v || 0) : 0;
+  versionCache = { v, t: Date.now() };
+  return v;
 }
 
 export async function bumpDataVersion() {
   try {
     await VERSION_REF.set({ v: FieldValue.increment(1) }, { merge: true });
+    // Bu instance kendi yazdığı değişikliği hemen görsün — cache'i düşür
+    versionCache = { v: null, t: 0 };
   } catch (err) {
     console.error('[db] Versiyon artırılamadı:', err.message);
   }
@@ -221,9 +234,15 @@ export async function upsertToplamErisim(subeKod, donemBaslangic, donemBitis, to
 /**
  * Override'ları dönem dokümanına yazar.
  */
-export async function updateOverrides(subeKod, donemBaslangic, donemBitis, overrides) {
+export async function updateOverrides(subeKod, donemBaslangic, donemBitis, overrides, { donemVar = null } = {}) {
   const docId = donemDocId(donemBaslangic, donemBitis);
   const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
+  // Varlık bilgisi çağırandan geçilebilir (handler dokümanı zaten okumuş oluyor) — +1 read önlenir
+  const mevcutVar = donemVar !== null ? donemVar : (await docRef.get()).exists;
+
+  // Var olmayan dönemde saklanacak override da yoksa hiç yazma — yalnızca
+  // veri_overrides içeren hayalet dönem dokümanı oluşturmanın anlamı yok
+  if (!mevcutVar && (!overrides || Object.keys(overrides).length === 0)) return;
 
   // Tek atomik yazım. mergeFields listesindeki alanlar deep-merge YAPILMADAN bütünüyle
   // yazılır — veri_overrides tamamen değişir, eski (donmuş) override anahtarları kalmaz.
@@ -233,6 +252,11 @@ export async function updateOverrides(subeKod, donemBaslangic, donemBitis, overr
     updatedAt: new Date().toISOString(),
     veri_overrides: overrides,
   }, { mergeFields: ['donem_baslangic', 'donem_bitis', 'updatedAt', 'veri_overrides'] });
+
+  // Doküman bu yazımla OLUŞTUYSA donem_ozetleri/donem_sayisi bundan habersiz kalır
+  // (applyDonemWrite dışındaki tek yazım yolu bu) — tam recalc ile senkronla,
+  // yoksa sonraki applyDonemWrite dönemi "yeni değil" sayar ve sayaç eksik kalır.
+  if (!mevcutVar) await recalcSubeAggregates(subeKod, { skipBump: true });
   await bumpDataVersion();
 }
 
@@ -257,26 +281,6 @@ export async function getDonemVeriMap(subeKodlari, donemBaslangic, donemBitis) {
   const sonuc = {};
   snaps.forEach((snap, i) => { sonuc[subeKodlari[i]] = snap.exists ? snap.data() : null; });
   return sonuc;
-}
-
-/**
- * Bütçe verisini döner (getDonemVeri wrapper — uyumluluk için).
- */
-export async function getButce(subeKod, donemBaslangic, donemBitis) {
-  const veri = await getDonemVeri(subeKod, donemBaslangic, donemBitis);
-  if (!veri) return null;
-  // Eski format uyumluluğu
-  const result = {
-    planlanan_butce: veri.planlanan_butce || 0,
-    devredilen_miktar: veri.devredilen_miktar || 0,
-    toplam_erisim: veri.erisim || 0,
-  };
-  if (veri.veri_overrides) {
-    result.veri_overrides = typeof veri.veri_overrides === 'object'
-      ? JSON.stringify(veri.veri_overrides)
-      : veri.veri_overrides;
-  }
-  return result;
 }
 
 /**
@@ -426,9 +430,21 @@ export async function getCampaignMappings() {
   const doc = await db.collection('reports').doc('campaign_mappings').get();
   return doc.exists ? doc.data() : {};
 }
-export async function saveCampaignMappings(mappings) {
-  await db.collection('reports').doc('campaign_mappings').set(mappings, { merge: false });
+// Merge + null-silme: gelen eşleştirmeler mevcutların ÜZERİNE yazılır, null değer
+// o eşleştirmeyi siler. Tam yerine yazma (merge:false), modalın tarih aralığı
+// dışında kalan eski eşleştirmeleri sessizce kaybettiriyordu.
+async function saveMappingsMerged(docName, mappings) {
+  const updates = {};
+  for (const [id, val] of Object.entries(mappings || {})) {
+    updates[id] = val === null ? FieldValue.delete() : val;
+  }
+  if (Object.keys(updates).length === 0) return;
+  await db.collection('reports').doc(docName).set(updates, { merge: true });
   await bumpDataVersion();
+}
+
+export async function saveCampaignMappings(mappings) {
+  await saveMappingsMerged('campaign_mappings', mappings);
 }
 
 // ── Meta Reklam Seti Eşleştirmeleri ──
@@ -437,8 +453,7 @@ export async function getAdsetMappings() {
   return doc.exists ? doc.data() : {};
 }
 export async function saveAdsetMappings(mappings) {
-  await db.collection('reports').doc('adset_mappings').set(mappings, { merge: false });
-  await bumpDataVersion();
+  await saveMappingsMerged('adset_mappings', mappings);
 }
 
 // ── Meta Adset Cache ──

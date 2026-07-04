@@ -148,9 +148,9 @@ export const api = onRequest(
 );
 
 // ─── Otomatik Rapor Çekimi (dönem bitince) ───
-// Her gün çalışır; SON 3 gün içinde BİTEN bütçe dönemlerinin Meta+Google verisini
-// otomatik çeker (dönem içinde dokunmaz). Böylece dönem kapanınca gecikmeli harcama
-// dahil son rakam manuel müdahale olmadan gelir.
+// Her gün çalışır; son GRACE_DAYS (7) gün içinde BİTEN bütçe dönemlerinin Meta+Google
+// verisini otomatik çeker (dönem içinde dokunmaz). Böylece dönem kapanınca gecikmeli
+// harcama dahil son rakam manuel müdahale olmadan gelir.
 export const otomatikRaporCekimi = onSchedule(
     {
         schedule: "0 7 * * *",          // her gün 07:00
@@ -158,11 +158,22 @@ export const otomatikRaporCekimi = onSchedule(
         memory: "1GiB",
         timeoutSeconds: 540,
         region: "us-central1",
+        retryCount: 2,                  // kritik hatada tekrar dene (çekimler upsert — tekrar güvenli)
     },
     async () => {
         const { runScheduledFetch } = await import('./modules/reports/services/scheduled-fetch.js');
         const sonuc = await runScheduledFetch();
         console.log('[Scheduled] Otomatik çekim tamamlandı:', JSON.stringify(sonuc).slice(0, 800));
+
+        // Hatalar sessizce yutulmasın: tam logla. Başarı sınıflandırması servis
+        // içinde yapılır (kritikHata) — kalıcı config eksikleri throw ETMEZ,
+        // gerçek hata yüzünden hiç veri çekilemediyse failed işaretlenir.
+        if (sonuc.tumHatalar?.length > 0) {
+            console.error(`[Scheduled] ${sonuc.tumHatalar.length} hata:\n` + sonuc.tumHatalar.join('\n'));
+        }
+        if (sonuc.kritikHata) {
+            throw new Error(`Otomatik çekim: ${sonuc.kritikHata}`);
+        }
     }
 );
 

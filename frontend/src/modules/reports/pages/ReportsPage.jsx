@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useReportsStore, reportsApi } from '../hooks/useReports';
+import { useReportsStore, reportsApi, toastFetchSonuclari } from '../hooks/useReports';
 import { BranchSidebar } from '../components/BranchSidebar';
 import { BranchDetail } from '../components/BranchDetail';
 import { ReportsModals } from '../components/ReportsModals';
@@ -19,13 +19,15 @@ export default function ReportsPage() {
     const settings = useReportsStore((s) => s.settings);
     const branches = useReportsStore((s) => s.branches);
     const openModal = useReportsStore((s) => s.openModal);
-    const activeBranch = useReportsStore((s) => s.activeBranch);
     const selectBranch = useReportsStore((s) => s.selectBranch);
 
-    // Veri çekimi sonrası: şube listesini + cache'i tazele, aktif şubeyi yeniden çek
+    // Veri çekimi sonrası: şube listesini + cache'i tazele, aktif şubeyi yeniden çek.
+    // Aktif şube store'dan TAZE okunur — tıklama anındaki değere kapanmak (stale
+    // closure), çekim sürerken şube değiştiren kullanıcıyı eski şubeye geri zıplatıyordu.
     const refreshAfterFetch = async () => {
         await loadDashboard(true);
-        if (activeBranch) await selectBranch(activeBranch, true);
+        const guncelAktif = useReportsStore.getState().activeBranch;
+        if (guncelAktif) await selectBranch(guncelAktif, true);
     };
 
     const [isFetchingMeta, setIsFetchingMeta] = useState(false);
@@ -77,17 +79,24 @@ export default function ReportsPage() {
 
     const handleFetchAll = async () => {
         if (!dateRange.since || !dateRange.until) return toast.error('Tarih aralığı seçin.');
-        
+
         setIsFetchingMeta(true);
         setIsFetchingGoogle(true);
         const promises = [];
+        const etiketler = [];
         if (settings.hasMetaToken) {
             promises.push(reportsApi.globalMetaFetch(dateRange.since, dateRange.until, null));
+            etiketler.push('Meta');
         }
         promises.push(reportsApi.globalGoogleFetch(dateRange.since, dateRange.until));
-        
-        await Promise.allSettled(promises);
-        toast.success('Tüm veriler çekildi.');
+        etiketler.push('Google');
+
+        const sonuclar = await Promise.allSettled(promises);
+        toastFetchSonuclari(sonuclar, etiketler, {
+            basari: 'Tüm veriler çekildi.',
+            hepsiHata: 'Veriler çekilemedi',
+            kismi: 'Kısmen çekildi',
+        });
         setIsFetchingMeta(false);
         setIsFetchingGoogle(false);
         await refreshAfterFetch();

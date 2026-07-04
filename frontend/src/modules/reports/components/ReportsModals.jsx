@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useReportsStore, reportsApi, fmtThousand, parseThousand, formatDateTR } from '../hooks/useReports';
+import { useReportsStore, reportsApi, fmt, formatDateTR } from '../hooks/useReports';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,15 @@ const FormGroup = ({ label, children, description }) => (
         {description && <div className="text-[11px] text-muted-foreground mt-1 leading-tight">{description}</div>}
     </div>
 );
+
+// Meta API'den gelen İngilizce formatlı sayı ("1234.56") Number()'a çevrilip
+// paylaşılan fmt ile gösterilir (aşağıda fmtApi olarak). Türkçe-girdi bekleyen
+// eski formatter noktayı binlik ayracı sanıp değeri 100 kat şişiriyordu.
+const fmtApi = (val) => fmt(Number(val) || 0);
+
+// Kampanya/adset listeleme sorgularının üst tarih sınırı — gelecek yılın sonu.
+// Hardcoded '2026-12-31' sabiti 2027'de yeni kampanyaları sessizce dışarıda bırakacaktı.
+const API_RANGE_END = `${new Date().getFullYear() + 1}-12-31`;
 
 const DatePicker = ({ label, value, onChange }) => (
     <Popover>
@@ -295,6 +304,7 @@ export function DataEditModal() {
         deGoogleArama:'', deGoogleHarita:'', deGoogleYol:'', deGoogleTelefon:'', deGoogleWeb:'', deGoogleMenu:'',
         dePlanlananButce:'', deDevredilenMiktar:'', deMerkezDestegi:''
     });
+    const [initialButce, setInitialButce] = useState({}); // dirty takibi (yalnızca bütçe alanları)
 
     useEffect(() => {
         if (open && data) {
@@ -303,7 +313,7 @@ export function DataEditModal() {
                 .then(res => {
                     const c = res.computed; const o = res.overrides || {};
                     const formatVal = (v) => (v == null || v === '') ? '' : v.toString().replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-                    setForm({
+                    const yeniForm = {
                         deHarcama: formatVal(o.toplamHarcama ?? c.toplamHarcama),
                         deErisim: formatVal(o.toplamErisim ?? c.toplamErisim),
                         deGosterim: formatVal(o.toplamGosterim ?? c.toplamGosterim),
@@ -322,6 +332,14 @@ export function DataEditModal() {
                         dePlanlananButce: formatVal(o.planlananButce ?? c.planlananButce),
                         deDevredilenMiktar: formatVal(o.devredilenMiktar ?? c.devredilenMiktar),
                         deMerkezDestegi: formatVal(o.merkezDestegi ?? c.merkezDestegi),
+                    };
+                    setForm(yeniForm);
+                    // Yalnızca kullanıcının DEĞİŞTİRDİĞİ bütçe alanını override olarak
+                    // göndermek için yüklenen değerler saklanır (dirty takibi)
+                    setInitialButce({
+                        dePlanlananButce: yeniForm.dePlanlananButce,
+                        deDevredilenMiktar: yeniForm.deDevredilenMiktar,
+                        deMerkezDestegi: yeniForm.deMerkezDestegi,
                     });
                 })
                 .catch(err => { toast.error('Veri yüklenemedi'); closeModal(); })
@@ -345,9 +363,18 @@ export function DataEditModal() {
         const getV = (val) => { const v = val.replace(/\./g, '').replace(/,/g, '.'); return v ? parseFloat(v) : 0; };
         // Yalnızca BÜTÇE alanları override edilir. Metrikler (harcama/erişim/...) otomatik
         // çekilir; override'a gönderilmez ki yeniden çekim onları tazeleyebilsin.
-        const overrides = {
-            planlananButce: getV(form.dePlanlananButce), devredilenMiktar: getV(form.deDevredilenMiktar), merkezDestegi: getV(form.deMerkezDestegi)
-        };
+        // Yalnızca DEĞİŞEN alanlar gönderilir — backend eksik alanı mevcut override'ından
+        // korur; dokunulmamış alanı her kayıtta override'a çevirmek gereksiz donduruyordu.
+        const overrides = {};
+        if (form.dePlanlananButce !== initialButce.dePlanlananButce) overrides.planlananButce = getV(form.dePlanlananButce);
+        if (form.deDevredilenMiktar !== initialButce.deDevredilenMiktar) overrides.devredilenMiktar = getV(form.deDevredilenMiktar);
+        if (form.deMerkezDestegi !== initialButce.deMerkezDestegi) overrides.merkezDestegi = getV(form.deMerkezDestegi);
+        if (Object.keys(overrides).length === 0) {
+            toast.info('Değişiklik yok.');
+            setSaving(false);
+            closeModal();
+            return;
+        }
         try {
             await reportsApi.saveOverrides(data.kod, data.baslangic, data.bitis, overrides);
             toast.success('Rapor verileri güncellendi!');
@@ -459,6 +486,10 @@ export function DeleteDonemModal() {
             });
             // Sidebar'daki harcama/dönem sayılarını lokal olarak güncelle
             useReportsStore.getState().recalcBranchFromCache(kod);
+            // Erişim/sonuç aggregate'leri donem_ozetleri'nde olmadığından lokal
+            // hesaplanamıyor — hedefli yenilemeyle (1 read) taze değerleri çek,
+            // yoksa "Toplam Erişim/Sonuç" kartları silinen dönemi içermeye devam eder
+            reportsApi.refreshBranch(kod).catch(() => {});
         } catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
     };
@@ -539,7 +570,7 @@ export function EditBranchModal() {
                 setMetaMappedText(null);
                 if (settings.hasMetaToken) {
                     setMetaPrefixLoading(true);
-                    reportsApi.previewMeta(null, '2025-06-01', '2026-12-31')
+                    reportsApi.previewMeta(null, '2025-06-01', API_RANGE_END)
                         .then(res => setMetaPrefixes(res.gruplar.filter(g => g.kayitSayisi >= 3).sort((a,b) => a.prefix.localeCompare(b.prefix,'tr'))))
                         .catch(() => {})
                         .finally(() => setMetaPrefixLoading(false));
@@ -892,15 +923,15 @@ export function CampaignMapModal() {
     useEffect(() => {
         if (open && settings.hasMetaToken) {
             setLoading(true);
-            reportsApi.fetchCampaigns(null, dateRange.since || '2025-01-01', dateRange.until || '2026-12-31')
+            reportsApi.fetchCampaigns(null, dateRange.since || '2025-01-01', dateRange.until || API_RANGE_END)
                 .then(res => {
                     setCampaigns(res.kampanyalar || []);
                     setSubeler(res.mevcutSubeler || []);
-                    const initialSelections = {};
+                    const initial = {};
                     (res.kampanyalar || []).forEach(c => {
-                        if (c.eslesmeKod) initialSelections[c.id] = c.eslesmeKod;
+                        if (c.eslesmeKod) initial[c.id] = c.eslesmeKod;
                     });
-                    setSelections(initialSelections);
+                    setSelections(initial);
                 })
                 .catch(err => toast.error(err.message))
                 .finally(() => setLoading(false));
@@ -909,11 +940,15 @@ export function CampaignMapModal() {
 
     const handleSave = async () => {
         setSaving(true);
+        // Backend merge'ler: yalnızca listelenen kampanyalar gönderilir, aralık dışı
+        // eşleştirmeler korunur. Kayıtlı eşleştirmesi (eslesmeKod) kaldırılan null ile silinir.
         const mappings = {};
         campaigns.forEach(c => {
             const val = selections[c.id];
             if (val && val !== '__atla__') {
                 mappings[c.id] = { sube: val, name: c.name };
+            } else if (c.eslesmeKod) {
+                mappings[c.id] = null;
             }
         });
 
@@ -954,7 +989,7 @@ export function CampaignMapModal() {
                                 <div key={c.id} className="flex items-center gap-4 px-6 py-4 bg-card border-b border-border last:border-b-0 hover:bg-muted/50 transition-colors">
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm font-medium text-foreground truncate" title={c.name}>{c.name}</div>
-                                        <div className="text-xs text-muted-foreground mt-1">₺{fmtThousand(c.spend?.toString())} harcama · {fmtThousand(c.reach?.toString())} erişim</div>
+                                        <div className="text-xs text-muted-foreground mt-1">₺{fmtApi(c.spend)} harcama · {fmtApi(c.reach)} erişim</div>
                                     </div>
                                     <select
                                         className="w-48 bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
@@ -1000,14 +1035,14 @@ export function AdsetMapModal() {
     const loadData = async (forceRefresh = false) => {
         setLoading(true);
         try {
-            const res = await reportsApi.fetchAdsets(null, dateRange.since || '2025-01-01', dateRange.until || '2026-12-31', forceRefresh);
+            const res = await reportsApi.fetchAdsets(null, dateRange.since || '2025-01-01', dateRange.until || API_RANGE_END, forceRefresh);
             setAdsets(res.adsets || []);
             setSubeler(res.mevcutSubeler || []);
-            const initialSelections = {};
+            const initial = {};
             (res.adsets || []).forEach(a => {
-                if (a.eslesmeKod) initialSelections[a.id] = a.eslesmeKod;
+                if (a.eslesmeKod) initial[a.id] = a.eslesmeKod;
             });
-            setSelections(initialSelections);
+            setSelections(initial);
             setChecked({});
         } catch (err) { toast.error(err.message); }
         finally { setLoading(false); }
@@ -1022,11 +1057,15 @@ export function AdsetMapModal() {
 
     const handleSave = async () => {
         setSaving(true);
+        // Backend merge'ler: aralık dışı eşleştirmeler korunur; kayıtlı eşleştirmesi
+        // (eslesmeKod) kaldırılan null ile silinir
         const mappings = {};
         adsets.forEach(a => {
             const val = selections[a.id];
             if (val && val !== '__atla__') {
                 mappings[a.id] = { sube: val, name: a.name };
+            } else if (a.eslesmeKod) {
+                mappings[a.id] = null;
             }
         });
 
@@ -1117,7 +1156,7 @@ export function AdsetMapModal() {
                                     <div className="flex-1 min-w-0">
                                         <div className="text-sm font-medium text-foreground truncate" title={a.name}>{a.name}</div>
                                         <div className="text-xs text-muted-foreground mt-1 truncate">Kampanya: {a.campaignName}</div>
-                                        <div className="text-xs text-blue-600 mt-1">₺{fmtThousand(a.spend?.toString())} harcama · {fmtThousand(a.reach?.toString())} erişim</div>
+                                        <div className="text-xs text-blue-600 mt-1">₺{fmtApi(a.spend)} harcama · {fmtApi(a.reach)} erişim</div>
                                     </div>
                                     <select
                                         className="w-48 bg-background border border-input rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"

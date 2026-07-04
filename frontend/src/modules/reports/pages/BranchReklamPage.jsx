@@ -70,13 +70,18 @@ export default function BranchReklamPage() {
         }
     }, [subeSlug, selectBranch, storeLoading, branches.length]);
 
+    // Unmount sonrası setState koruması (yanıt sayfa kapandıktan sonra dönerse)
+    const mountedRef = React.useRef(true);
+    useEffect(() => () => { mountedRef.current = false; }, []);
+
     // Fetch pending campaign
     const fetchPendingBudget = async () => {
         if (!subeSlug) return;
         setBudgetLoading(true);
         try {
             const { data } = await api.get('/reports/butce-bekleyen');
-            const kampanyalar = data.campaigns || data.kampanyalar || [];
+            if (!mountedRef.current) return;
+            const kampanyalar = data.kampanyalar || [];
             if (kampanyalar.length > 0) {
                 const first = kampanyalar[0];
                 setKampanya(first);
@@ -94,9 +99,9 @@ export default function BranchReklamPage() {
             if (err.response?.status !== 404) {
                 console.error('Bütçe bilgileri yüklenemedi:', err);
             }
-            setKampanya(null);
+            if (mountedRef.current) setKampanya(null);
         } finally {
-            setBudgetLoading(false);
+            if (mountedRef.current) setBudgetLoading(false);
         }
     };
 

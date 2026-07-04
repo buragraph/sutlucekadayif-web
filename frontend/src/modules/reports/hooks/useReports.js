@@ -1,8 +1,13 @@
 import { create } from 'zustand';
+import { toast } from 'sonner';
 import { auth } from '@/firebase';
+import { API_BASE } from '@/services/api';
 
 // ── API Base ──
-const API = 'https://api-fyfp72cohq-uc.a.run.app/api/reports';
+// Taban tek kaynaktan (services/api.js). Dikkat: frontend/.env prod URL'sini
+// tanımladığı için lokal geliştirme de BİLİNÇLİ olarak prod API/Firestore'a gider
+// (mevcut çalışma şekli). Dev için ayrı ortam açılırsa .env.development ile yönlendirilir.
+const API = `${API_BASE}/reports`;
 
 // ── Auth-aware fetch wrapper ──
 async function authFetch(url, options = {}) {
@@ -30,20 +35,16 @@ export function formatDateTR(dateStr) {
     return `${parseInt(parts[2], 10)} ${months[parseInt(parts[1], 10) - 1]} ${parts[0]}`;
 }
 
-export function fmtThousand(value) {
-    let isNegative = value.startsWith('-');
-    let val = value.replace(/[^0-9,]/g, '');
-    if (val === '' && !isNegative) return '';
-    if (val === '' && isNegative) return '-';
-    let parts = val.split(',');
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    if (parts.length > 2) parts = [parts[0], parts.slice(1).join('')];
-    return (isNegative ? '-' : '') + parts.join(',');
-}
-
-export function parseThousand(str) {
-    const v = (str || '').replace(/\./g, '').replace(/,/g, '.');
-    return v ? parseFloat(v) : 0;
+// Promise.allSettled sonuçlarını tek toast'a çevirir: hepsi hatalı → error,
+// bir kısmı → warning, hiçbiri → success. Koşulsuz başarı toast'ı, çekim
+// başarısızken kullanıcıyı bayat veriye güvendiriyordu.
+export function toastFetchSonuclari(sonuclar, etiketler, { basari, hepsiHata, kismi } = {}) {
+    const hatalar = sonuclar
+        .map((r, i) => (r.status === 'rejected' ? `${etiketler[i]}: ${r.reason?.message || 'hata'}` : null))
+        .filter(Boolean);
+    if (hatalar.length === 0) return toast.success(basari || 'Tamamlandı.');
+    if (hatalar.length === sonuclar.length) return toast.error(`${hepsiHata || 'İşlem başarısız'} — ${hatalar.join(' · ')}`);
+    return toast.warning(`${kismi || 'Kısmen tamamlandı'} — ${hatalar.join(' · ')}`);
 }
 
 // ── Default date range (previous month) ──
@@ -206,6 +207,11 @@ export const useReportsStore = create((set, get) => ({
         });
     },
 }));
+
+// Bütçe durumu yarış koruması: geç dönen eski tam-liste yanıtı, daha yeni bir
+// yanıtı (tam liste VEYA hedefli şube merge'i) ezmesin diye her istek sıra
+// numarasını ilerletir; tam-liste yazımı yalnızca hâlâ en yeniyse yapılır.
+let butceDurumSeq = 0;
 
 // ── Standalone API functions ──
 export const reportsApi = {
@@ -419,7 +425,9 @@ export const reportsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mappings }),
         });
-        return await res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Google eşleştirmesi kaydedilemedi');
+        return data;
     },
 
     async saveMetaMappings(eslesmeler) {
@@ -428,7 +436,9 @@ export const reportsApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ saveMappingsOnly: true, eslesmeler }),
         });
-        return await res.json();
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Meta eşleştirmesi kaydedilemedi');
+        return data;
     },
 
     async previewMeta(token, since, until) {
@@ -480,6 +490,7 @@ export const reportsApi = {
     },
 
     async fetchBudgetStatus(since, until, subeKod = null) {
+        const seq = ++butceDurumSeq;
         const url = `${API}/butce-durum?since=${since}&until=${until}` + (subeKod ? `&subeKod=${subeKod}` : '');
         const res = await authFetch(url);
         const data = await res.json();
@@ -493,7 +504,8 @@ export const reportsApi = {
                 const others = prev.subeler.filter((b) => b.kod !== subeKod);
                 return { budgetStatus: { ...prev, subeler: [...others, ...(data.subeler || [])] } };
             });
-        } else {
+        } else if (seq === butceDurumSeq) {
+            // Daha yeni bir tam-liste isteği başlamadıysa yaz (eski yanıt yenisini ezmesin)
             useReportsStore.setState({ budgetStatus: data });
         }
         return data;

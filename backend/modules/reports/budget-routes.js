@@ -9,6 +9,7 @@ import { invalidateReportCache } from './services/report-data.js';
 import { invalidateCache } from '../../middleware/cache.js';
 import { campaignBasedImport } from './services/meta-api.js';
 import { getKonumListe } from '../../shared/konum-store.js';
+import { bugunStr } from './services/date-utils.js';
 
 const router = Router();
 
@@ -25,6 +26,16 @@ const dekontUpload = multer({
     if (allowed.includes(ext)) cb(null, true);
     else cb(new Error('Sadece PDF, JPG, JPEG ve PNG dosyaları kabul edilir.'));
   },
+});
+
+// Boş "bekliyor" yanıt kaydı — tek kaynak; kopyalar arasında alan drift'i olmasın
+const bosYanit = () => ({
+  durum: 'bekliyor',
+  secilen_bakiye: null,
+  kdv_dahil_tutar: null,
+  notlar: null,
+  dekont_url: null,
+  gonderim_tarihi: null,
 });
 
 // ── Helper: Get or create butce doc ──
@@ -80,7 +91,8 @@ router.post(
         return res.status(400).json({ error: 'Zorunlu alanlar eksik.' });
       }
 
-      const doc = await getButceDoc();
+      // İki okuma bağımsız — paralel çek (1 RTT tasarrufu)
+      const [doc, subeler] = await Promise.all([getButceDoc(), getAllSubeler()]);
       const kampanyalar = doc.kampanyalar || {};
 
       // Aynı döneme ait kampanya varsa ezme — yanıtlar sıfırlanır, veri kaybolur
@@ -90,17 +102,9 @@ router.post(
       }
 
       // Yanitlar map oluştur — tüm şubeler "bekliyor"
-      const subeler = await getAllSubeler();
       const yanitlar = {};
       for (const sube of subeler) {
-        yanitlar[sube.kod] = {
-          durum: 'bekliyor',
-          secilen_bakiye: null,
-          kdv_dahil_tutar: null,
-          notlar: null,
-          dekont_url: null,
-          gonderim_tarihi: null,
-        };
+        yanitlar[sube.kod] = bosYanit();
       }
 
       const yeniKampanya = {
@@ -117,6 +121,12 @@ router.post(
         createdAt: new Date().toISOString(),
       };
 
+      // Önce yeni kampanyayı yaz — sil-sonra-yaz sırasında yazma başarısız olursa
+      // eski kampanya geri dönüşsüz kaybolurdu; bu sırada en kötü durumda doküman
+      // geçici olarak tavan+1 kampanya taşır. Yalnızca yeni anahtar yazılır — tüm
+      // map'i yazmak, okuma ile yazma arasındaki eşzamanlı şube yanıtlarını ezer.
+      await BUTCE_DOC_REF.set({ kampanyalar: { [kampanyaId]: yeniKampanya } }, { merge: true });
+
       // Max 6 kampanya kontrolü — en eskisini sil.
       // FieldValue.delete() şart: merge'li set anahtar SİLEMEZ, kampanya dokümanda kalır.
       if (Object.keys(kampanyalar).length >= MAX_KAMPANYA) {
@@ -124,13 +134,10 @@ router.post(
           .sort((a, b) => new Date(a[1].createdAt) - new Date(b[1].createdAt));
         const [eskiId, eskiKampanya] = entries[0];
 
-        await deleteDekontlar(eskiKampanya);
         await BUTCE_DOC_REF.update({ [`kampanyalar.${eskiId}`]: admin.firestore.FieldValue.delete() });
+        // R2 dekont temizliği doküman yazımını bloklamasın, hatası oluşturmayı düşürmesin
+        deleteDekontlar(eskiKampanya).catch((e) => console.error('[Budget] Eski kampanya dekont temizliği:', e.message));
       }
-
-      // Yalnızca yeni kampanya anahtarını yaz — tüm map'i yazmak, okuma ile yazma
-      // arasında gelen eşzamanlı şube yanıtlarını ezer
-      await BUTCE_DOC_REF.set({ kampanyalar: { [kampanyaId]: yeniKampanya } }, { merge: true });
 
       res.json({ success: true, kampanyaId, kampanya: yeniKampanya });
     } catch (err) {
@@ -337,28 +344,52 @@ router.post(
         kampanya.donem_bitis
       );
 
-      for (const [subeKod, yanit] of gonderilenler) {
-        // Bütçeyi dönem dokümanına yaz
-        const donemVeri = donemVeriler[subeKod] || {};
-        await upsertButce(
-          subeKod,
-          kampanya.donem_baslangic,
-          kampanya.donem_bitis,
-          yanit.secilen_bakiye,
-          donemVeri.devredilen_miktar || 0,
-          donemVeri.merkez_destegi || 0,
-          { skipBump: true } // versiyon döngü sonunda bir kez artırılır
-        );
-        onaylananSubeler.push(subeKod);
+      try {
+        // Bütçeler paralel yazılır — her upsertButce yalnızca kendi şubesinin iki
+        // dokümanına dokunan ayrı bir transaction (skipBump ortak versiyon dokümanı
+        // çakışmasını da önler); sıralı await N×RTT bekletiyordu
+        const yazimlar = await Promise.allSettled(gonderilenler.map(([subeKod, yanit]) => {
+          const donemVeri = donemVeriler[subeKod] || {};
+          return upsertButce(
+            subeKod,
+            kampanya.donem_baslangic,
+            kampanya.donem_bitis,
+            yanit.secilen_bakiye,
+            donemVeri.devredilen_miktar || 0,
+            donemVeri.merkez_destegi || 0,
+            { skipBump: true } // versiyon toplu yazım sonunda bir kez artırılır
+          );
+        }));
 
-        // Yanıt durumunu güncelle
-        updates[`kampanyalar.${id}.yanitlar.${subeKod}.durum`] = 'onaylandi';
+        const yazimHatalari = [];
+        yazimlar.forEach((sonuc, i) => {
+          const subeKod = gonderilenler[i][0];
+          if (sonuc.status === 'fulfilled') {
+            onaylananSubeler.push(subeKod);
+            updates[`kampanyalar.${id}.yanitlar.${subeKod}.durum`] = 'onaylandi';
+          } else {
+            yazimHatalari.push(`${subeKod}: ${sonuc.reason?.message || 'yazılamadı'}`);
+          }
+        });
+        if (yazimHatalari.length > 0) {
+          throw new Error(`Bazı şubeler onaylanamadı — ${yazimHatalari.join(' · ')}`);
+        }
+
+        // Kampanya durumunu tamamlandı yap — yalnızca tüm liste işlenince
+        updates[`kampanyalar.${id}.durum`] = 'tamamlandi';
+      } finally {
+        // Kısmi hatada da: yazılmış şubelerin yanıt durumu Firestore'a işlensin ve
+        // versiyon ilerlesin — yoksa dönem dokümanına yazılan bütçelerle ekran ayrışır
+        // (bayat cache + 'gonderildi' görünen onaylılar → çift onay riski)
+        if (Object.keys(updates).length > 0) await BUTCE_DOC_REF.update(updates);
+        if (onaylananSubeler.length > 0) {
+          // Not: upsertButce donem_ozetleri'ni kendisi günceller; tam recalc gerekmez
+          await bumpDataVersion();
+          invalidateReportCache();
+          invalidateCache('/reports');
+          butceDurumCache.clear();
+        }
       }
-
-      // Kampanya durumunu tamamlandı yap
-      updates[`kampanyalar.${id}.durum`] = 'tamamlandi';
-
-      await BUTCE_DOC_REF.update(updates);
 
       // Meta'dan verileri otomatik çek (Arka planda)
       const { donem_baslangic, donem_bitis } = kampanya;
@@ -377,12 +408,6 @@ router.post(
           invalidateCache('/reports');
         }
       }).catch(err => console.error('[Budget] Otomatik Meta çekim genel hatası:', err));
-
-      // Not: upsertButce donem_ozetleri'ni kendisi günceller; tam recalc gerekmez
-      if (onaylananSubeler.length > 0) await bumpDataVersion();
-      invalidateReportCache();
-      invalidateCache('/reports');
-      butceDurumCache.clear();
 
       res.json({ success: true, onaylanan: onaylananSubeler.length });
     } catch (err) {
@@ -529,11 +554,10 @@ router.post(
   async (req, res) => {
     try {
       const { id, subeKod } = req.params;
-      const doc = await getButceDoc();
+      // İki okuma bağımsız — paralel çek
+      const [doc, sube] = await Promise.all([getButceDoc(), getSubeByKod(subeKod)]);
       const kampanya = doc.kampanyalar?.[id];
       if (!kampanya) return res.status(404).json({ error: 'Kampanya bulunamadı.' });
-
-      const sube = await getSubeByKod(subeKod);
       if (!sube) return res.status(404).json({ error: 'Şube bulunamadı.' });
 
       if (kampanya.yanitlar?.[subeKod]) {
@@ -541,14 +565,7 @@ router.post(
       }
 
       await BUTCE_DOC_REF.update({
-        [`kampanyalar.${id}.yanitlar.${subeKod}`]: {
-          durum: 'bekliyor',
-          secilen_bakiye: null,
-          kdv_dahil_tutar: null,
-          notlar: null,
-          dekont_url: null,
-          gonderim_tarihi: null,
-        },
+        [`kampanyalar.${id}.yanitlar.${subeKod}`]: bosYanit(),
       });
 
       res.json({ success: true });
@@ -701,8 +718,8 @@ router.get(
       const doc = await getButceDoc();
       const kampanyalar = doc.kampanyalar || {};
 
-      // Bugünün tarihi (YYYY-MM-DD) — son_tarih'i geçmiş kampanyalar gösterilmez
-      const bugun = new Date().toISOString().slice(0, 10);
+      // Bugünün tarihi (YYYY-MM-DD, Europe/Istanbul) — son_tarih'i geçmiş kampanyalar gösterilmez
+      const bugun = bugunStr();
 
       const bekleyenler = Object.entries(kampanyalar)
         .filter(([, k]) => {
@@ -723,7 +740,7 @@ router.get(
           bakiye_secenekleri: data.bakiye_secenekleri,
           iban: data.iban,
           odeme_notu: data.odeme_notu,
-          yanit: data.yanitlar?.[subeSlug] || { durum: 'bekliyor', secilen_bakiye: null, kdv_dahil_tutar: null, dekont_url: null, gonderim_tarihi: null },
+          yanit: data.yanitlar?.[subeSlug] || bosYanit(),
         }));
 
       // Katıldığı kampanyalar — dönem sonuna (donem_bitis) kadar özet olarak görünür
@@ -794,8 +811,8 @@ router.post(
       if (kampanya.durum !== 'aktif') {
         return res.status(400).json({ error: 'Bu kampanya artık aktif değil.' });
       }
-      // Son tarih kontrolü — liste gizlese de doğrudan API çağrısı bu kapıdan dönmeli
-      const bugun = new Date().toISOString().slice(0, 10);
+      // Son tarih kontrolü (Europe/Istanbul günü) — liste gizlese de doğrudan API çağrısı bu kapıdan dönmeli
+      const bugun = bugunStr();
       if (kampanya.son_tarih && kampanya.son_tarih < bugun) {
         return res.status(400).json({ error: 'Bu kampanyanın son gönderim tarihi geçti.' });
       }
@@ -826,7 +843,9 @@ router.post(
         secilen_bakiye: numBakiye,
         kdv_dahil_tutar: numKdvTutar,
         notlar: notlar || null,
-        dekont_url: dekontUrl,
+        // Yeni dekont yüklenmediyse mevcut dekont korunur — tam-obje yazımı
+        // önceki dekont_url'i null ile ezip kaydı dekontsuz bırakıyordu
+        dekont_url: dekontUrl || mevcutYanit?.dekont_url || null,
         gonderim_tarihi: new Date().toISOString(),
       };
 

@@ -137,11 +137,15 @@ function aggregateApiRows(rows) {
   return { harcama, erisim, gosterim, sonuc, tiklama, tiklama_tumu, mesaj, yorum, paylasim };
 }
 
-export async function importFromMetaApi(accessToken, since, until) {
-  console.log(`\n📡 Meta API'den veri çekiliyor: ${since} → ${until}`);
+export async function importFromMetaApi(accessToken, since, until, targetSubeKod = null) {
+  console.log(`\n📡 Meta API'den veri çekiliyor: ${since} → ${until}${targetSubeKod ? ` (hedef: ${targetSubeKod})` : ''}`);
   const rawData = await fetchMetaInsights(accessToken, { since, until });
   console.log(`   ${rawData.length} reklam seti bulundu`);
-  if (rawData.length === 0) return { count: 0, subeler: [], hatalar: [] };
+  if (rawData.length === 0) {
+    // Hedefli çekimde sessiz 200 dönme — frontend başarı toast'ı basar, kullanıcı bayat veriye güvenir
+    if (targetSubeKod) throw new Error(`Bu aralıkta Meta verisi bulunamadı (hedef: ${targetSubeKod}).`);
+    return { count: 0, subeler: [], hatalar: [] };
+  }
 
   const mevcutSubeler = await getAllSubeler();
   const subeGruplari = {};
@@ -154,21 +158,39 @@ export async function importFromMetaApi(accessToken, since, until) {
     const slug = turkishToSlug(prefix);
     let sube = mevcutSubeler.find(s => s.kod === slug);
     if (!sube) sube = mevcutSubeler.find(s => s.kod.includes(slug) || slug.includes(s.kod));
-    if (!sube) { sube = await upsertSube(slug, `Sütlüce Kadayıf ${prefix}`); mevcutSubeler.push(sube); }
+    if (!sube) {
+      // Hedefli çekimde eşleşmeyen prefix için yeni şube AÇMA — çöp kayıt oluşur
+      if (targetSubeKod) { hatalar.push({ adset: adsetName, error: 'Şube eşleşmedi (hedefli çekim)' }); continue; }
+      sube = await upsertSube(slug, `Sütlüce Kadayıf ${prefix}`); mevcutSubeler.push(sube);
+    }
+    // Hedef şube verilmişse yalnızca ona ait satırlar işlenir; diğer şubelere yazılmaz
+    if (targetSubeKod && sube.kod !== targetSubeKod) continue;
     if (!subeGruplari[sube.kod]) subeGruplari[sube.kod] = { sube, rows: [] };
     subeGruplari[sube.kod].rows.push(row);
   }
 
   const sonuclar = [];
-  for (const [kod, grup] of Object.entries(subeGruplari)) {
-    const toplamlar = aggregateApiRows(grup.rows);
-    await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipBump: true });
-    sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length });
-    console.log(`   ✅ ${grup.sube.ad}: ${grup.rows.length} reklam seti → toplamlar yazıldı`);
+  const yazilanlar = [];
+  try {
+    for (const [kod, grup] of Object.entries(subeGruplari)) {
+      const toplamlar = aggregateApiRows(grup.rows);
+      await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipBump: true });
+      yazilanlar.push(kod);
+      sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length });
+      console.log(`   ✅ ${grup.sube.ad}: ${grup.rows.length} reklam seti → toplamlar yazıldı`);
+    }
+  } finally {
+    // Aggregate'leri sonda bir kez hesapla (N yerine 1 recalc per şube).
+    // finally: döngü ortasında hata olsa da yazılan şubelerin versiyonu ilerlesin,
+    // yoksa cache bayat kalır (Firestore'daki veri ile ekran ayrışır).
+    if (yazilanlar.length > 0) await bumpAfterBatch(yazilanlar);
   }
 
-  // Aggregate'leri sonda bir kez hesapla (N yerine 1 recalc per şube)
-  await bumpAfterBatch(Object.keys(subeGruplari));
+  // Hedefli çekimde hiçbir satır hedef şubeye yazılamadıysa hata döndür —
+  // sessiz 200, frontend'de sahte "güncellendi" toast'ına dönüşüyor
+  if (targetSubeKod && sonuclar.length === 0) {
+    throw new Error(`Hedef şube (${targetSubeKod}) için eşleşen reklam seti bulunamadı — adset adları şube prefix'iyle eşleşmiyor olabilir.`);
+  }
 
   console.log(`\n✅ Toplam: ${sonuclar.length} şube, ${rawData.length} reklam seti\n`);
   return { count: rawData.length, subeSayisi: sonuclar.length, subeler: sonuclar, hatalar };
@@ -216,30 +238,35 @@ export async function confirmMetaImport(accessToken, since, until, eslesmeleri) 
   }
 
   const sonuclar = [];
-  for (const [kod, grup] of Object.entries(subeGruplari)) {
-    const toplamlar = aggregateApiRows(grup.rows);
-    await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipBump: true });
-    sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length });
-  }
-
-  // Kampanya seviyesinde tekil erişim çek
+  const yazilanlar = [];
   try {
-    const campaignReach = await fetchCampaignLevelReach(accessToken, since, until);
     for (const [kod, grup] of Object.entries(subeGruplari)) {
-      const match = campaignReach[kod];
-      if (match && match.reach > 0) {
-        await upsertToplamErisim(grup.sube.kod, since, until, match.reach, { skipBump: true });
-        console.log(`   📊 ${grup.sube.ad}: tekil erişim = ${match.reach}`);
-        const s = sonuclar.find(x => x.kod === kod);
-        if (s) s.tekilErisim = match.reach;
-      }
+      const toplamlar = aggregateApiRows(grup.rows);
+      await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipBump: true });
+      yazilanlar.push(kod);
+      sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length });
     }
-  } catch (err) {
-    console.log('   ⚠️ Kampanya erişim çekilemedi:', err.message);
-  }
 
-  // Aggregate'leri sonda bir kez hesapla (2×N yerine 1×N recalc)
-  await bumpAfterBatch(Object.keys(subeGruplari));
+    // Kampanya seviyesinde tekil erişim çek
+    try {
+      const campaignReach = await fetchCampaignLevelReach(accessToken, since, until);
+      for (const [kod, grup] of Object.entries(subeGruplari)) {
+        const match = campaignReach[kod];
+        if (match && match.reach > 0) {
+          await upsertToplamErisim(grup.sube.kod, since, until, match.reach, { skipBump: true });
+          console.log(`   📊 ${grup.sube.ad}: tekil erişim = ${match.reach}`);
+          const s = sonuclar.find(x => x.kod === kod);
+          if (s) s.tekilErisim = match.reach;
+        }
+      }
+    } catch (err) {
+      console.log('   ⚠️ Kampanya erişim çekilemedi:', err.message);
+    }
+  } finally {
+    // Aggregate'leri sonda bir kez hesapla (2×N yerine 1×N recalc).
+    // finally: kısmi yazımda da versiyon ilerlesin, cache bayat kalmasın.
+    if (yazilanlar.length > 0) await bumpAfterBatch(yazilanlar);
+  }
 
   return { count: rawData.length, subeSayisi: sonuclar.length, subeler: sonuclar, atlanan: atlanan.length };
 }
@@ -429,44 +456,60 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
   }
 
   const sonuclar = [];
-  for (const [kod, grup] of Object.entries(subeGruplari)) {
-    const toplamlar = aggregateApiRows(grup.rows);
-    await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipBump: true });
+  const yazilanlar = [];
+  try {
+    for (const [kod, grup] of Object.entries(subeGruplari)) {
+      const toplamlar = aggregateApiRows(grup.rows);
+      await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar, { skipBump: true });
+      yazilanlar.push(kod);
 
-    // Tekil (unique) erişim — şubenin REKLAM SETLERİNE filtreli TEK sorgu; Meta bu
-    // sorguda erişimi dedupe eder. Adset reach toplamı (toplamlar.erisim) dedupe'siz
-    // ÜST sınırdır; dönen değer bundan büyükse (filtre uygulanmamış/hesap geneli gelmiş)
-    // reddedip kampanya seviyesine düşeriz. Böylece adset-eşlemeli şubelerde şişme olmaz.
-    const grupAdsetIds = [...new Set(grup.rows.map(r => r.adset_id || r.id).filter(Boolean))];
-    const ustSinir = toplamlar.erisim || 0; // adset reach toplamı (dedupe'siz)
-    let tekilErisim = 0;
-    if (grupAdsetIds.length > 0) {
-      try {
-        const reachRows = await fetchInsightRows(
-          insightsUrl('account', 'reach', [{ field: 'adset.id', operator: 'IN', value: grupAdsetIds }])
-        );
-        const r = reachRows.reduce((s, x) => s + (parseInt(x.reach) || 0), 0);
-        if (r > 0 && (ustSinir === 0 || r <= ustSinir + 1)) tekilErisim = r;
-      } catch (e) {
-        console.error(`   ⚠️ ${grup.sube.ad} adset tekil erişim alınamadı: ${e.message}`);
+      // Tekil (unique) erişim — şubenin REKLAM SETLERİNE filtreli TEK sorgu; Meta bu
+      // sorguda erişimi dedupe eder. Adset reach toplamı (toplamlar.erisim) dedupe'siz
+      // ÜST sınırdır; dönen değer bundan büyükse (filtre uygulanmamış/hesap geneli gelmiş)
+      // reddedip kampanya seviyesine düşeriz. Böylece adset-eşlemeli şubelerde şişme olmaz.
+      const grupAdsetIds = [...new Set(grup.rows.map(r => r.adset_id || r.id).filter(Boolean))];
+      const ustSinir = toplamlar.erisim || 0; // adset reach toplamı (dedupe'siz)
+      let tekilErisim = 0;
+      if (grupAdsetIds.length > 0) {
+        try {
+          const reachRows = await fetchInsightRows(
+            insightsUrl('account', 'reach', [{ field: 'adset.id', operator: 'IN', value: grupAdsetIds }])
+          );
+          const r = reachRows.reduce((s, x) => s + (parseInt(x.reach) || 0), 0);
+          if (r > 0 && (ustSinir === 0 || r <= ustSinir + 1)) tekilErisim = r;
+        } catch (e) {
+          console.error(`   ⚠️ ${grup.sube.ad} adset tekil erişim alınamadı: ${e.message}`);
+        }
       }
-    }
-    // Fallback: adset-filtreli sorgu başarısız/geçersizse kampanya erişimi
-    if (tekilErisim === 0) {
-      for (const cId of grup.campaignIds) {
-        const cData = campaignData.find(c => c.campaign_id === cId);
-        if (cData) tekilErisim += parseInt(cData.reach) || 0;
+      // Fallback: adset-filtreli sorgu başarısız/geçersizse kampanya erişimi.
+      // Kampanya birden çok şube arasında bölünmüş olabilir (adset-eşlemeli) —
+      // toplam, şubenin adset reach toplamını (ustSinir) aşamaz; aşarsa kırpılır,
+      // yoksa diğer şubelerin erişimi de bu şubeye yazılırdı.
+      if (tekilErisim === 0) {
+        let kampanyaToplam = 0;
+        for (const cId of grup.campaignIds) {
+          const cData = campaignData.find(c => c.campaign_id === cId);
+          if (cData) kampanyaToplam += parseInt(cData.reach) || 0;
+        }
+        tekilErisim = ustSinir > 0 ? Math.min(kampanyaToplam, ustSinir) : kampanyaToplam;
       }
+      if (tekilErisim > 0) {
+        await upsertToplamErisim(grup.sube.kod, since, until, tekilErisim, { skipBump: true });
+        console.log(`   📊 ${grup.sube.ad}: tekil erişim = ${tekilErisim.toLocaleString('tr-TR')}`);
+      }
+      sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length, tekilErisim });
     }
-    if (tekilErisim > 0) {
-      await upsertToplamErisim(grup.sube.kod, since, until, tekilErisim, { skipBump: true });
-      console.log(`   📊 ${grup.sube.ad}: tekil erişim = ${tekilErisim.toLocaleString('tr-TR')}`);
-    }
-    sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length, tekilErisim });
+  } finally {
+    // Aggregate'leri sonda bir kez hesapla (2×N yerine 1×N recalc).
+    // finally: döngü ortasında hata olsa da yazılan şubelerin versiyonu ilerlesin,
+    // yoksa cache bayat kalır (Firestore'daki veri ile ekran ayrışır).
+    if (yazilanlar.length > 0) await bumpAfterBatch(yazilanlar);
   }
 
-  // Aggregate'leri sonda bir kez hesapla (2×N yerine 1×N recalc)
-  await bumpAfterBatch(Object.keys(subeGruplari));
+  // Hedefli çekimde hiçbir veri yazılamadıysa sessiz 200 dönme (sahte başarı toast'ı)
+  if (targetSubeKod && sonuclar.length === 0) {
+    throw new Error(`Hedef şube (${targetSubeKod}) için bu aralıkta eşleşen Meta verisi bulunamadı.`);
+  }
 
   return { count: adsetCampaignMap.length, subeSayisi: sonuclar.length, subeler: sonuclar, atlanan: atlanan.length };
 }

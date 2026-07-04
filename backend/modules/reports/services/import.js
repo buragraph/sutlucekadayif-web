@@ -1,5 +1,3 @@
-import { readFileSync, readdirSync, existsSync } from 'fs';
-import { join, basename } from 'path';
 import { parse } from 'csv-parse/sync';
 import { upsertSube, upsertMetaToplanlar, upsertGoogleToplanlar, getSubeByKod, getAllSubeler, bumpDataVersion } from '../db.js';
 
@@ -85,7 +83,7 @@ function mapRow(row, columnMap) {
   const headers = Object.keys(row);
   
   for (const header of headers) {
-    const cleanHeader = header.replace(/^\\uFEFF/, '').trim();
+    const cleanHeader = header.replace(/^﻿/, '').trim();
     if (columnMap[cleanHeader]) {
       mapped[columnMap[cleanHeader]] = row[header];
     }
@@ -228,40 +226,6 @@ export async function importGoogleCsv(buffer, subeKod, originalFilename = null) 
   if (count > 0) await bumpDataVersion();
 
   return count;
-}
-
-// ── Toplu Import ──
-
-export async function importSubeVerileri(verilerDir, subeKod) {
-  const results = { meta: 0, google: 0 };
-
-  // Meta CSV'leri
-  const metaDir = join(verilerDir, 'meta', subeKod);
-  if (existsSync(metaDir)) {
-    const files = readdirSync(metaDir).filter(f => f.endsWith('.csv'));
-    for (const file of files) {
-      const count = await importMetaCsv(join(metaDir, file), subeKod);
-      results.meta += count;
-      console.log(`  ✅ Meta: ${file} → ${count} reklam seti import edildi`);
-    }
-  } else {
-    console.log(`  ⚠️  Meta klasörü bulunamadı: ${metaDir}`);
-  }
-
-  // Google CSV'leri
-  const googleDir = join(verilerDir, 'google', subeKod);
-  if (existsSync(googleDir)) {
-    const files = readdirSync(googleDir).filter(f => f.endsWith('.csv'));
-    for (const file of files) {
-      const count = await importGoogleCsv(join(googleDir, file), subeKod);
-      results.google += count;
-      console.log(`  ✅ Google: ${file} → ${count} kayıt import edildi`);
-    }
-  } else {
-    console.log(`  ⚠️  Google klasörü bulunamadı: ${googleDir}`);
-  }
-
-  return results;
 }
 
 // ── Yardımcı: Türkçe → slug ──

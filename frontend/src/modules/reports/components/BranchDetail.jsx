@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useReportsStore, fmt, fmtC, formatDateTR, reportsApi } from '../hooks/useReports';
+import { useReportsStore, fmt, fmtC, formatDateTR, reportsApi, toastFetchSonuclari } from '../hooks/useReports';
 import { Plus, ArrowUpDown, ArrowUp, ArrowDown, LayoutDashboard, BarChart2, SlidersHorizontal, Eye, FileDown, Trash2, Settings, ChevronLeft, ChevronRight, AlertTriangle, Wallet, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -19,11 +19,12 @@ export function BranchDetail() {
 
     const [currentPage, setCurrentPage] = useState(1);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [pdfBusy, setPdfBusy] = useState(null); // indirilen dönemin anahtarı
 
     const handleRefresh = async (baslangic, bitis) => {
         setIsRefreshing(true);
         try {
-            await Promise.allSettled([
+            const sonuclar = await Promise.allSettled([
                 reportsApi.metaFetchForBranch(null, baslangic, bitis, activeBranchCode),
                 reportsApi.googleFetchForBranch(baslangic, bitis, activeBranchCode)
             ]);
@@ -33,11 +34,26 @@ export function BranchDetail() {
                 reportsApi.refreshBranch(activeBranchCode),
                 reportsApi.fetchBudgetStatus(baslangic, bitis, activeBranchCode),
             ]);
-            toast.success('Dönem verileri güncellendi!');
+            toastFetchSonuclari(sonuclar, ['Meta', 'Google'], {
+                basari: 'Dönem verileri güncellendi!',
+                hepsiHata: 'Veriler güncellenemedi',
+                kismi: 'Kısmen güncellendi',
+            });
         } catch (err) {
             toast.error(err.message || 'Güncelleme sırasında bir hata oluştu');
         } finally {
             setIsRefreshing(false);
+        }
+    };
+
+    const handleDownloadPdf = async (baslangic, bitis) => {
+        setPdfBusy(`${baslangic}_${bitis}`);
+        try {
+            await reportsApi.generatePdf(activeBranchCode, baslangic, bitis);
+        } catch (err) {
+            toast.error(err.message || 'PDF indirilemedi');
+        } finally {
+            setPdfBusy(null);
         }
     };
 
@@ -168,7 +184,8 @@ export function BranchDetail() {
                         // Toplam bütçesi olan en son dönem (yalnızca merkez desteği girilse de bulunsun)
                         const latestBudget = sorted.find(d => ((d.planlanan_butce || 0) + (d.devredilen_miktar || 0) + (d.merkez_destegi || 0)) > 0);
                         if (latestBudget) {
-                            const todayStr = new Date().toISOString().split('T')[0];
+                            // Lokal (TR) günü — toISOString UTC verir, 00:00–03:00 arası bir gün geri kayardı
+                            const todayStr = new Date().toLocaleDateString('en-CA');
                             if (latestBudget.bitis >= todayStr) {
                                 const pb = latestBudget.planlanan_butce || 0;
                                 const dev = latestBudget.devredilen_miktar || 0;
@@ -192,11 +209,14 @@ export function BranchDetail() {
                     let projectedOverage = 0;
                     let currentDailySpend = 0;
 
-                    // Verinin kaç gün önce güncellendiğini hesapla
+                    // Verinin kaç gün önce güncellendiğini hesapla — iki taraf da LOKAL gece
+                    // yarısına indirgenir; UTC/lokal karışımı rozeti 1 gün kaydırıyordu
                     const lastUpdate = bs.updatedAt ? new Date(bs.updatedAt) : null;
                     const today = new Date();
                     today.setHours(0,0,0,0);
-                    const staleDays = lastUpdate ? Math.floor((today - new Date(lastUpdate.toISOString().split('T')[0])) / (1000 * 60 * 60 * 24)) : null;
+                    const staleDays = lastUpdate
+                        ? Math.floor((today - new Date(lastUpdate.getFullYear(), lastUpdate.getMonth(), lastUpdate.getDate())) / 86400000)
+                        : null;
 
                     if (bs.baslangic && bs.bitis && bs.kalan > 0) {
                         const startDate = new Date(bs.baslangic);
@@ -363,8 +383,8 @@ export function BranchDetail() {
                                                         <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-foreground" onClick={() => openModal('preview', { kod: branch.kod, ad: branch.ad, b: d.baslangic, e: d.bitis })}>
                                                             <Eye className="w-3.5 h-3.5" />
                                                         </Button>
-                                                        <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-foreground" onClick={() => openModal('downloadPdf', { kod: branch.kod, ad: branch.ad, b: d.baslangic, e: d.bitis })}>
-                                                            <FileDown className="w-3.5 h-3.5" />
+                                                        <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-foreground" disabled={pdfBusy === `${d.baslangic}_${d.bitis}`} onClick={() => handleDownloadPdf(d.baslangic, d.bitis)}>
+                                                            {pdfBusy === `${d.baslangic}_${d.bitis}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
                                                         </Button>
                                                         <Button variant="ghost" size="icon" className="w-7 h-7 text-muted-foreground hover:text-destructive" onClick={() => openModal('deleteDonem', { kod: branch.kod, b: d.baslangic, e: d.bitis })}>
                                                             <Trash2 className="w-3.5 h-3.5" />

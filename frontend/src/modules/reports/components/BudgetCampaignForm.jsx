@@ -12,19 +12,20 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import api from '../../../services/api';
 
+// Varsayılan bakiye seçenekleri — KDV dahil tutar formdaki orandan hesaplanır
 const DEFAULT_BAKIYE_OPTIONS = [
-    { bakiye: 15000, kdv_dahil: 17100 },
-    { bakiye: 20000, kdv_dahil: 22800 },
-    { bakiye: 25000, kdv_dahil: 28500 },
-    { bakiye: 30000, kdv_dahil: 34200 },
-    { bakiye: 35000, kdv_dahil: 39900 },
-    { bakiye: 40000, kdv_dahil: 45600 },
-    { bakiye: 45000, kdv_dahil: 51300 },
-    { bakiye: 50000, kdv_dahil: 57000 },
-    { bakiye: 55000, kdv_dahil: 62700 },
-    { bakiye: 60000, kdv_dahil: 68400 },
-    { bakiye: 65000, kdv_dahil: 74100 },
-    { bakiye: 70000, kdv_dahil: 79800 },
+    { bakiye: 15000 },
+    { bakiye: 20000 },
+    { bakiye: 25000 },
+    { bakiye: 30000 },
+    { bakiye: 35000 },
+    { bakiye: 40000 },
+    { bakiye: 45000 },
+    { bakiye: 50000 },
+    { bakiye: 55000 },
+    { bakiye: 60000 },
+    { bakiye: 65000 },
+    { bakiye: 70000 },
 ];
 
 export default function BudgetCampaignForm({ onCancel, onSuccess, editKampanya = null }) {
@@ -74,9 +75,14 @@ export default function BudgetCampaignForm({ onCancel, onSuccess, editKampanya =
         );
         if (invalidRows) return toast.error('Tüm bakiye seçeneklerini doldurun.');
 
+        // KDV oranı boş bırakılırsa Number('') = 0 olur ve KDV dahil tutar
+        // bakiyeyle aynı kaydedilirdi — geçerli pozitif oran zorunlu
+        const oran = Number(kdvOrani);
+        if (!Number.isFinite(oran) || oran <= 0) return toast.error('Geçerli bir KDV oranı girin (ör. 20).');
+
         const bakiyeListe = bakiyeSecenekleri.map((r) => {
             const b = Number(r.bakiye);
-            return { bakiye: b, kdv_dahil: Math.round(b * (1 + Number(kdvOrani) / 100)) };
+            return { bakiye: b, kdv_dahil: Math.round(b * (1 + oran / 100)) };
         });
 
         setLoading(true);

@@ -5,7 +5,7 @@
  * Örn: https://pub-xxx.r2.dev/urunler/abc.webp
  *   → http://localhost:5001/api/upload/proxy/urunler/abc.webp
  */
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+import { API_BASE } from '../services/api';
 
 export function proxyImageUrl(url) {
     if (!url) return '';

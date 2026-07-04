@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync, readdirSync, unlinkSync, readFileSync, rmSync, writeFileSync, createWriteStream } from 'fs';
 
 // Yeni modül yollarına göre servisleri dahil ediyoruz
-import { importMetaCsv, importGoogleCsv, importSubeVerileri, importGoogleCsvBulk, importMetaCsvAutoMatch } from './services/import.js';
+import { importMetaCsv, importGoogleCsv, importGoogleCsvBulk, importMetaCsvAutoMatch } from './services/import.js';
 import { importFromMetaApi, previewMetaInsights, confirmMetaImport, saveMappings, loadMappings, fetchAccountLevelReach, fetchCampaigns, saveCampaignMappings, loadCampaignMappings, campaignBasedImport, fetchAdsets, saveAdsetMappings, loadAdsetMappings } from './services/meta-api.js';
 import { getGoogleAuthUrl, handleGoogleCallback, isGoogleConnected, listAccounts, fetchLocationMetrics, fetchAllLocationMetrics, saveGoogleMappings, loadGoogleMappings } from './services/google-business.js';
 import { buildReportData, invalidateReportCache } from './services/report-data.js';
@@ -693,7 +693,8 @@ router.put('/sube/:kod/donem/overrides', verifyToken, requirePermission('reports
     // erişim, gösterim, sonuç, google...) override'a YAZILMAZ — böylece yeniden Meta/
     // Google çekimi bu değerleri her zaman tazeler (donmuş override sorunu çözülür).
     const BUTCE_OVERRIDE_ALANLARI = ['planlananButce', 'devredilenMiktar', 'merkezDestegi'];
-    const mevcutVeri = await getDonemVeri(sube.kod, baslangic, bitis) || {};
+    const mevcutVeriRaw = await getDonemVeri(sube.kod, baslangic, bitis);
+    const mevcutVeri = mevcutVeriRaw || {};
     const mevcutOverrides = (mevcutVeri.veri_overrides && typeof mevcutVeri.veri_overrides === 'object')
       ? mevcutVeri.veri_overrides : {};
     // Eksik gönderilen bütçe alanı mevcut override'ından korunur (kısmi istek diğer
@@ -703,7 +704,8 @@ router.put('/sube/:kod/donem/overrides', verifyToken, requirePermission('reports
       if (overrides?.[k] !== undefined) butceOverrides[k] = overrides[k];
       else if (mevcutOverrides[k] !== undefined) butceOverrides[k] = mevcutOverrides[k];
     }
-    await updateOverrides(sube.kod, baslangic, bitis, butceOverrides);
+    // donemVar ipucu: doküman az önce okundu, updateOverrides tekrar okumasın
+    await updateOverrides(sube.kod, baslangic, bitis, butceOverrides, { donemVar: mevcutVeriRaw !== null });
 
     if (Object.keys(butceOverrides).length > 0) {
       const plan = butceOverrides.planlananButce !== undefined ? butceOverrides.planlananButce : (mevcutVeri.planlanan_butce || 0);
@@ -744,7 +746,7 @@ router.post('/campaign-fetch', verifyToken, requirePermission('reports.manage'),
     invalidateCache('/reports');
     res.json(result);
   } catch (err) {
-    if (err.message.includes("Eşleşme bulunamadı") || err.message.includes("eşleştirme")) {
+    if (err.message.includes("eşleştirme")) {
       res.status(400).json({ error: 'Kampanya eşleştirmesi bulunamadı' });
     } else {
       console.error('[Reports] campaign-fetch error:', err);
