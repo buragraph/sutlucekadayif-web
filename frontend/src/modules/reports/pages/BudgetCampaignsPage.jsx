@@ -8,6 +8,9 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
+    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from '@/components/ui/dropdown-menu';
+import {
     ArrowLeft, Plus, Loader2, Trash2, CheckCircle2,
     Clock, Users, Wallet, FileText, ExternalLink, ArrowUpDown, Check, Pencil,
 } from 'lucide-react';
@@ -70,6 +73,7 @@ export default function BudgetCampaignsPage() {
     const [editedMerkez, setEditedMerkez] = useState({});
     const [editedKdv, setEditedKdv] = useState({});
     const [devretBusy, setDevretBusy] = useState(null);
+    const [addingSube, setAddingSube] = useState(false);
     const [devretildi, setDevretildi] = useState(new Set());
     const [sortType, setSortType] = useState('status'); // 'status' | 'name_asc' | 'name_desc'
     const confirm = useConfirm();
@@ -126,6 +130,20 @@ export default function BudgetCampaignsPage() {
             toast.error(err.response?.data?.error || 'Onaylama başarısız.');
         } finally {
             setApprovingAll(false);
+        }
+    };
+
+    const handleAddSube = async (subeKod) => {
+        setAddingSube(true);
+        try {
+            await api.post(`/reports/butce-kampanya/${selectedCampaign}/sube/${subeKod}`);
+            toast.success('Şube kampanyaya eklendi.');
+            fetchDetail(selectedCampaign);
+            fetchCampaigns();
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Şube eklenemedi.');
+        } finally {
+            setAddingSube(false);
         }
     };
 
@@ -301,8 +319,11 @@ export default function BudgetCampaignsPage() {
         const subeAdlari = kampanya.sube_adlari || {};
         const oncekiKatilim = kampanya.onceki_katilim || {};
         const devredilenler = kampanya.devredilenler || {};
-        // Yalnızca kampanyanın katılımcıları (yanitlar). Sonradan eklenen/test şubeler
-        // kalabalık yapmasın; yeni bir şube ancak bildirim gönderince listeye girer.
+        // Yalnızca kampanyanın katılımcıları (yanitlar) listelenir. Sonradan eklenen
+        // şubeler "Şube Ekle" ile kampanyaya dahil edilir (son tarih geçse de çalışır).
+        const eksikSubeler = Object.entries(subeAdlari)
+            .filter(([kod]) => !yanitlarMap[kod])
+            .sort((a, b) => a[1].localeCompare(b[1], 'tr'));
         const bildirimler = Object.entries(yanitlarMap).map(([subeKod, yanit]) => ({
             sube_kod: subeKod,
             sube_adi: subeAdlari[subeKod] || subeKod,
@@ -424,6 +445,25 @@ export default function BudgetCampaignsPage() {
                         </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                        {eksikSubeler.length > 0 && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" disabled={addingSube}>
+                                        {addingSube
+                                            ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                            : <Plus className="w-4 h-4 mr-2" />}
+                                        Şube Ekle
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+                                    {eksikSubeler.map(([kod, ad]) => (
+                                        <DropdownMenuItem key={kod} onClick={() => handleAddSube(kod)}>
+                                            {ad}
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
                         <Button variant="outline" onClick={() => { setEditKampanya(kampanya); setModalOpen(true); }}>
                             <Pencil className="w-4 h-4 mr-2" /> Düzenle
                         </Button>

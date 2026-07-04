@@ -4,7 +4,7 @@ import { db } from '../../config/firebase.js';
 import admin from 'firebase-admin';
 import { verifyToken, requirePermission } from '../../middleware/auth.js';
 import { uploadFile, deleteFile, urlToKey } from '../../config/r2.js';
-import { upsertButce, getAllSubeler, getSubeByKod, getDonemVeri, getSettings, getDataVersion, bumpDataVersion } from './db.js';
+import { upsertButce, getAllSubeler, getSubeByKod, getDonemVeri, getDonemVeriMap, getSettings, getDataVersion, bumpDataVersion } from './db.js';
 import { invalidateReportCache } from './services/report-data.js';
 import { invalidateCache } from '../../middleware/cache.js';
 import { campaignBasedImport } from './services/meta-api.js';
@@ -83,6 +83,12 @@ router.post(
       const doc = await getButceDoc();
       const kampanyalar = doc.kampanyalar || {};
 
+      // Aynı döneme ait kampanya varsa ezme — yanıtlar sıfırlanır, veri kaybolur
+      const kampanyaId = `${donem_baslangic}_${donem_bitis}`;
+      if (kampanyalar[kampanyaId]) {
+        return res.status(400).json({ error: 'Bu döneme ait bir kampanya zaten var. Önce onu silin veya düzenleyin.' });
+      }
+
       // Yanitlar map oluştur — tüm şubeler "bekliyor"
       const subeler = await getAllSubeler();
       const yanitlar = {};
@@ -97,7 +103,6 @@ router.post(
         };
       }
 
-      const kampanyaId = `${donem_baslangic}_${donem_bitis}`;
       const yeniKampanya = {
         baslik,
         donem_baslangic,
@@ -112,23 +117,20 @@ router.post(
         createdAt: new Date().toISOString(),
       };
 
-      // Max 6 kampanya kontrolü — en eskisini sil
-      const entries = Object.entries(kampanyalar);
-      if (entries.length >= MAX_KAMPANYA) {
-        // En eskisini bul
-        entries.sort((a, b) => new Date(a[1].createdAt) - new Date(b[1].createdAt));
+      // Max 6 kampanya kontrolü — en eskisini sil.
+      // FieldValue.delete() şart: merge'li set anahtar SİLEMEZ, kampanya dokümanda kalır.
+      if (Object.keys(kampanyalar).length >= MAX_KAMPANYA) {
+        const entries = Object.entries(kampanyalar)
+          .sort((a, b) => new Date(a[1].createdAt) - new Date(b[1].createdAt));
         const [eskiId, eskiKampanya] = entries[0];
 
-        // R2 dekontlarını sil
         await deleteDekontlar(eskiKampanya);
-
-        // Firestore'dan kaldır
-        delete kampanyalar[eskiId];
+        await BUTCE_DOC_REF.update({ [`kampanyalar.${eskiId}`]: admin.firestore.FieldValue.delete() });
       }
 
-      kampanyalar[kampanyaId] = yeniKampanya;
-
-      await BUTCE_DOC_REF.set({ kampanyalar }, { merge: true });
+      // Yalnızca yeni kampanya anahtarını yaz — tüm map'i yazmak, okuma ile yazma
+      // arasında gelen eşzamanlı şube yanıtlarını ezer
+      await BUTCE_DOC_REF.set({ kampanyalar: { [kampanyaId]: yeniKampanya } }, { merge: true });
 
       res.json({ success: true, kampanyaId, kampanya: yeniKampanya });
     } catch (err) {
@@ -327,24 +329,30 @@ router.post(
       const updates = {};
       const onaylananSubeler = [];
 
-      for (const [subeKod, yanit] of Object.entries(yanitlar)) {
-        if (yanit.durum === 'gonderildi') {
-          // Bütçeyi dönem dokümanına yaz
-          const donemVeri = await getDonemVeri(subeKod, kampanya.donem_baslangic, kampanya.donem_bitis) || {};
-          await upsertButce(
-            subeKod,
-            kampanya.donem_baslangic,
-            kampanya.donem_bitis,
-            yanit.secilen_bakiye,
-            donemVeri.devredilen_miktar || 0,
-            donemVeri.merkez_destegi || 0,
-            { skipBump: true } // versiyon döngü sonunda bir kez artırılır
-          );
-          onaylananSubeler.push(subeKod);
+      // Gönderilmiş yanıtların dönem verilerini tek toplu okumayla al (döngüde tekil get yok)
+      const gonderilenler = Object.entries(yanitlar).filter(([, y]) => y.durum === 'gonderildi');
+      const donemVeriler = await getDonemVeriMap(
+        gonderilenler.map(([kod]) => kod),
+        kampanya.donem_baslangic,
+        kampanya.donem_bitis
+      );
 
-          // Yanıt durumunu güncelle
-          updates[`kampanyalar.${id}.yanitlar.${subeKod}.durum`] = 'onaylandi';
-        }
+      for (const [subeKod, yanit] of gonderilenler) {
+        // Bütçeyi dönem dokümanına yaz
+        const donemVeri = donemVeriler[subeKod] || {};
+        await upsertButce(
+          subeKod,
+          kampanya.donem_baslangic,
+          kampanya.donem_bitis,
+          yanit.secilen_bakiye,
+          donemVeri.devredilen_miktar || 0,
+          donemVeri.merkez_destegi || 0,
+          { skipBump: true } // versiyon döngü sonunda bir kez artırılır
+        );
+        onaylananSubeler.push(subeKod);
+
+        // Yanıt durumunu güncelle
+        updates[`kampanyalar.${id}.yanitlar.${subeKod}.durum`] = 'onaylandi';
       }
 
       // Kampanya durumunu tamamlandı yap
@@ -506,6 +514,46 @@ router.post(
       res.json({ success: true, devredilen: kalan });
     } catch (err) {
       console.error('[Budget] Devret hatası:', err);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+
+// POST /butce-kampanya/:id/sube/:subeKod — Kampanyaya sonradan şube ekle
+// (kampanya oluşturulduktan sonra sisteme eklenen şubeler için; son tarih geçse de çalışır)
+router.post(
+  '/butce-kampanya/:id/sube/:subeKod',
+  verifyToken,
+  requirePermission('budget.manage'),
+  async (req, res) => {
+    try {
+      const { id, subeKod } = req.params;
+      const doc = await getButceDoc();
+      const kampanya = doc.kampanyalar?.[id];
+      if (!kampanya) return res.status(404).json({ error: 'Kampanya bulunamadı.' });
+
+      const sube = await getSubeByKod(subeKod);
+      if (!sube) return res.status(404).json({ error: 'Şube bulunamadı.' });
+
+      if (kampanya.yanitlar?.[subeKod]) {
+        return res.status(400).json({ error: 'Bu şube zaten kampanyada.' });
+      }
+
+      await BUTCE_DOC_REF.update({
+        [`kampanyalar.${id}.yanitlar.${subeKod}`]: {
+          durum: 'bekliyor',
+          secilen_bakiye: null,
+          kdv_dahil_tutar: null,
+          notlar: null,
+          dekont_url: null,
+          gonderim_tarihi: null,
+        },
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[Budget] Kampanyaya şube ekleme hatası:', err);
       res.status(500).json({ error: err.message });
     }
   }
@@ -746,6 +794,17 @@ router.post(
       if (kampanya.durum !== 'aktif') {
         return res.status(400).json({ error: 'Bu kampanya artık aktif değil.' });
       }
+      // Son tarih kontrolü — liste gizlese de doğrudan API çağrısı bu kapıdan dönmeli
+      const bugun = new Date().toISOString().slice(0, 10);
+      if (kampanya.son_tarih && kampanya.son_tarih < bugun) {
+        return res.status(400).json({ error: 'Bu kampanyanın son gönderim tarihi geçti.' });
+      }
+      // Onaylanmış yanıt şube tarafından ezilemez — dönem dokümanına yazılmış bütçeyle
+      // tutarsızlık doğar; değişiklik admin tekil onay/güncelleme üzerinden yapılır
+      const mevcutYanit = kampanya.yanitlar?.[subeKod];
+      if (mevcutYanit?.durum === 'onaylandi') {
+        return res.status(400).json({ error: 'Bu kampanya için bildiriminiz onaylanmış. Değişiklik için yönetime başvurun.' });
+      }
       // Not: yanıt kaydı yoksa (kampanya oluşturulduktan SONRA eklenen şube) reddetme;
       // aşağıdaki yazma dot-path ile girdiyi kendisi oluşturur.
 
@@ -755,6 +814,11 @@ router.post(
         const ext = req.file.originalname.split('.').pop().toLowerCase();
         const key = `dekontlar/${kampanyaId}/${subeKod}.${ext}`;
         dekontUrl = await uploadFile(req.file.buffer, key, req.file.mimetype);
+        // Yeniden gönderimde uzantı değiştiyse eski dekont R2'de öksüz kalmasın
+        if (mevcutYanit?.dekont_url) {
+          const eskiKey = urlToKey(mevcutYanit.dekont_url);
+          if (eskiKey && eskiKey !== key) await deleteFile(eskiKey).catch(() => {});
+        }
       }
 
       const yanitData = {

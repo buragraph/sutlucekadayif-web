@@ -247,6 +247,19 @@ export async function getDonemVeri(subeKod, donemBaslangic, donemBitis) {
 }
 
 /**
+ * Birden çok şubenin aynı dönem dokümanını tek toplu okumayla döner (kod → veri | null).
+ */
+export async function getDonemVeriMap(subeKodlari, donemBaslangic, donemBitis) {
+  if (!subeKodlari || subeKodlari.length === 0) return {};
+  const docId = donemDocId(donemBaslangic, donemBitis);
+  const refs = subeKodlari.map((kod) => db.collection('subeler').doc(kod).collection('donemler').doc(docId));
+  const snaps = await db.getAll(...refs);
+  const sonuc = {};
+  snaps.forEach((snap, i) => { sonuc[subeKodlari[i]] = snap.exists ? snap.data() : null; });
+  return sonuc;
+}
+
+/**
  * Bütçe verisini döner (getDonemVeri wrapper — uyumluluk için).
  */
 export async function getButce(subeKod, donemBaslangic, donemBitis) {
