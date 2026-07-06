@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { db } from '../../../config/firebase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import { deleteFile, urlToKey } from '../../../config/r2.js';
-import { stripQuizAnswers } from '../utils.js';
+import { stripQuizAnswers, courseVisibleToUser } from '../utils.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import { syncUserProgressStats, invalidateStatsCache } from './progress.js';
 
@@ -20,9 +20,13 @@ async function cleanupLessonProgress(courseId, lessonId) {
         const hedefler = snap.docs.filter(d => d.id === lessonId);
         if (hedefler.length === 0) return;
 
-        const batch = db.batch();
-        hedefler.forEach(d => batch.delete(d.ref));
-        await batch.commit();
+        // Batch başına 500 yazma limiti — çok tamamlanmış derste parçalara böl
+        for (let i = 0; i < hedefler.length; i += 450) {
+            const chunk = hedefler.slice(i, i + 450);
+            const batch = db.batch();
+            chunk.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+        }
 
         // Etkilenen kullanıcıların özetini tazele (yol: academy_progress/{uid}/completedLessons/{id})
         const uids = [...new Set(hedefler.map(d => d.ref.parent.parent.id))];
@@ -51,13 +55,22 @@ async function deleteLessonFile(data) {
  */
 router.get('/:courseId', verifyToken, asyncHandler(async (req, res) => {
     const { courseId } = req.params;
+    const isAdmin = req.user.role === 'admin';
+
+    // Kurs görünürlük kuralı derslerde de geçerli — yayında olmayan veya hedef
+    // kitle dışındaki kursun ders içerikleri courseId bilinse bile sızmasın
+    if (!isAdmin) {
+        const courseDoc = await db.collection('academy_courses').doc(courseId).get();
+        const course = courseDoc.exists ? courseDoc.data() : null;
+        if (!course || !course.isPublished || !courseVisibleToUser(course, req.user)) {
+            return res.status(404).json({ error: 'Kurs bulunamadı' });
+        }
+    }
 
     const snapshot = await db.collection('academy_courses').doc(courseId)
         .collection('lessons')
         .orderBy('orderIndex', 'asc')
         .get();
-
-    const isAdmin = req.user.role === 'admin';
     const lessons = snapshot.docs.map(d => stripQuizAnswers({ id: d.id, ...d.data() }, isAdmin));
     res.json({ lessons });
 }));

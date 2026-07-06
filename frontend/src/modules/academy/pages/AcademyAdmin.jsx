@@ -69,10 +69,12 @@ export default function AcademyAdmin() {
         if (statsFetched && !force) return;
         setStatsLoading(true);
         try {
-            const { data } = await api.get('/academy/progress/admin/stats');
+            // force: backend'in 60 sn'lik istatistik cache'ini de atla (Yenile butonu)
+            const { data } = await api.get('/academy/progress/admin/stats', { params: force ? { fresh: '1' } : {} });
             setStats(data.stats);
             setSubeAdlari(data.subeAdlari || {});
             setStatsFetched(true);
+            if (force) { setUserDetails({}); setExpandedUser(null); } // detay cache'i de tazelensin
         } catch { toast.error('İstatistikler yüklenemedi'); }
         finally { setStatsLoading(false); }
     };
@@ -190,6 +192,16 @@ export default function AcademyAdmin() {
 
     const formatDate = (dateStr) => { if (!dateStr) return '—'; return new Date(dateStr).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
     const subeAdi = (slug) => (slug ? (subeAdlari[slug] || slug) : null);
+
+    // Kursun bu kullanıcıya görünüp görünmediği (backend courseVisibleToUser + yayın kuralının aynası).
+    // İlerleme paydası buna göre hesaplanır — taslak/hedef-dışı kurslar yüzdeyi şişirmesin.
+    const kursGorunur = (c, user) => {
+        if (!c.isPublished) return false;
+        if (user.role === 'admin') return true;
+        if (Array.isArray(c.targetRoles) && c.targetRoles.length > 0 && !c.targetRoles.includes(user.role)) return false;
+        if (Array.isArray(c.targetSubeler) && c.targetSubeler.length > 0 && !c.targetSubeler.includes(user.subeSlug)) return false;
+        return true;
+    };
 
     const exportCsv = (rows) => {
         const sep = ';';
@@ -395,7 +407,6 @@ export default function AcademyAdmin() {
                             const branches = [...new Set(validStats.map(s => s.subeSlug).filter(Boolean))]
                                 .sort((a, b) => (subeAdi(a) || '').localeCompare(subeAdi(b) || '', 'tr'));
                             const baslamayanSayisi = validStats.filter(u => (u.totalCompleted || 0) === 0).length;
-                            const toplamDers = courses.reduce((s, c) => s + (c.lessonCount || 0), 0);
                             const filteredStats = validStats.filter(user => {
                                 if (searchQuery) {
                                     const q = searchQuery.toLowerCase();
@@ -471,10 +482,14 @@ export default function AcademyAdmin() {
                                                     {currentStats.map(user => {
                                                         const displayChar = (user.displayName || user.email || '?')[0]?.toUpperCase() || '?';
                                                         const basladi = (user.totalCompleted || 0) > 0;
-                                                        const genelPct = toplamDers > 0 ? Math.min(100, Math.round(((user.totalCompleted || 0) / toplamDers) * 100)) : 0;
+                                                        // Payda: yalnızca bu kullanıcıya görünen (yayında + hedefinde) kursların dersleri
+                                                        const kisiToplamDers = courses.filter(c => kursGorunur(c, user)).reduce((s, c) => s + (c.lessonCount || 0), 0);
+                                                        const genelPct = kisiToplamDers > 0 ? Math.min(100, Math.round(((user.totalCompleted || 0) / kisiToplamDers) * 100)) : 0;
                                                         const acik = expandedUser === user.userId;
                                                         const detay = userDetails[user.userId];
                                                         const sinavlar = (detay || []).filter(d => d.lessonType === 'quiz');
+                                                        // Detayda kullanıcıya görünen kurslar + (artık görünmese de) ilerlemesi olanlar
+                                                        const detayKurslari = courses.filter(c => kursGorunur(c, user) || (user.byCourse?.[c.id]?.count || 0) > 0);
                                                         return (
                                                             <Fragment key={user.userId}>
                                                                 <TableRow className="hover:bg-muted/10 cursor-pointer" onClick={() => toggleUserDetail(user.userId)}>
@@ -497,7 +512,7 @@ export default function AcademyAdmin() {
                                                                                 <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted/50 ring-1 ring-inset ring-muted shrink-0">
                                                                                     <div className="h-full rounded-full bg-primary" style={{ width: `${genelPct}%` }} />
                                                                                 </div>
-                                                                                <span className="text-xs font-medium text-foreground whitespace-nowrap">{user.totalCompleted} / {toplamDers} ders</span>
+                                                                                <span className="text-xs font-medium text-foreground whitespace-nowrap">{user.totalCompleted} / {kisiToplamDers} ders</span>
                                                                             </div>
                                                                         ) : (
                                                                             <Badge variant="outline" className="text-[10px] font-medium border-red-200 text-red-600 bg-red-50">Başlamadı</Badge>
@@ -518,7 +533,7 @@ export default function AcademyAdmin() {
                                                                                     <div>
                                                                                         <h5 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5">Kurs Bazlı İlerleme</h5>
                                                                                         <div className="space-y-2">
-                                                                                            {courses.map(c => {
+                                                                                            {detayKurslari.map(c => {
                                                                                                 const count = user.byCourse?.[c.id]?.count || 0;
                                                                                                 const total = c.lessonCount || 0;
                                                                                                 const pct = total > 0 ? Math.min(100, Math.round((count / total) * 100)) : 0;
@@ -534,7 +549,7 @@ export default function AcademyAdmin() {
                                                                                                     </div>
                                                                                                 );
                                                                                             })}
-                                                                                            {courses.length === 0 && <p className="text-xs text-muted-foreground">Kurs yok.</p>}
+                                                                                            {detayKurslari.length === 0 && <p className="text-xs text-muted-foreground">Bu kullanıcıya atanmış kurs yok.</p>}
                                                                                         </div>
                                                                                     </div>
                                                                                     <div>

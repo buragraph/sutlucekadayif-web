@@ -18,6 +18,8 @@ export function parseYouTubeInput(input) {
     const videoPatterns = [
         /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
         /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
+        // shorts/live linkleri ve youtube-nocookie embed'leri
+        /(?:youtube\.com|youtube-nocookie\.com)\/(?:shorts|live|embed|v)\/([a-zA-Z0-9_-]{11})/,
     ];
 
     for (const pattern of videoPatterns) {

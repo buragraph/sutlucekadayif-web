@@ -118,7 +118,11 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
         }
         if (form.lessonType === 'video') {
             if (!fileUrl.trim()) return toast.error('Video linki gerekli');
-            if (!videoGecerli) return toast.error('YouTube linki tanınamadı. Video/playlist linkini veya 11 karakterlik video ID\'sini yapıştırın.');
+            // Tanınmayan format kaydı engellemesin (eski kayıtlar/nadir URL biçimleri) — onayla geç
+            if (!videoGecerli) {
+                const yes = await confirm('YouTube linki tanınamadı. Çalışmayan bir link kaydedilirse ders açılmaz. Yine de kaydedilsin mi?');
+                if (!yes) return;
+            }
         }
         if (form.lessonType === 'pdf' && !fileUrl) return toast.error('PDF dosyası yükleyin');
 
@@ -153,7 +157,10 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
     const tipSecici = (tip, Icon, etiket, renk) => (
         <button
             type="button"
-            onClick={() => { setForm((f) => ({ ...f, lessonType: tip })); setFileUrl(''); setFileName(''); }}
+            onClick={() => {
+                if (form.lessonType === tip) return; // aynı tipe tekrar tıklamak mevcut içeriği silmesin
+                setForm((f) => ({ ...f, lessonType: tip })); setFileUrl(''); setFileName('');
+            }}
             className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-lg border transition-colors ${form.lessonType === tip ? renk : 'border-border bg-card text-muted-foreground hover:bg-muted/50'}`}
         >
             <Icon className="size-5" />

@@ -29,9 +29,18 @@ function sanitizeTargetSubeler(v) {
 router.get('/', verifyToken, asyncHandler(async (req, res) => {
     const snapshot = await db.collection('academy_courses').get();
 
+    // Görünürlük filtresi ders sayımlarından ÖNCE — gösterilmeyecek kursa count sorgusu harcama
+    let docs = snapshot.docs;
+    if (req.user.role !== 'admin') {
+        docs = docs.filter((d) => {
+            const c = d.data();
+            return c.isPublished && courseVisibleToUser(c, req.user);
+        });
+    }
+
     // Ders sayılarını count() aggregation ile al — ders dokümanlarını okumadan,
     // tümü paralel (N+1 tam okuma yerine N hafif sayım, eşzamanlı)
-    let courses = await Promise.all(snapshot.docs.map(async (doc) => {
+    const courses = await Promise.all(docs.map(async (doc) => {
         const countSnap = await doc.ref.collection('lessons').count().get();
         return { id: doc.id, ...doc.data(), lessonCount: countSnap.data().count };
     }));
@@ -44,10 +53,6 @@ router.get('/', verifyToken, asyncHandler(async (req, res) => {
         if (ao !== bo) return ao - bo;
         return (b.createdAt || '').localeCompare(a.createdAt || '');
     });
-
-    if (req.user.role !== 'admin') {
-        courses = courses.filter((c) => c.isPublished && courseVisibleToUser(c, req.user));
-    }
 
     res.json({ courses });
 }));
@@ -87,8 +92,11 @@ router.post('/', verifyToken, requirePermission('academy.manage'), asyncHandler(
     const { title, description, thumbnailUrl, targetRoles, targetSubeler } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: 'Kurs başlığı gerekli' });
 
-    // Yeni kurs listenin sonuna eklenir
-    const countSnap = await db.collection('academy_courses').count().get();
+    // Yeni kurs listenin sonuna eklenir — count() değil max(orderIndex)+1:
+    // kurs silinince indekslerde delik kalır, count mevcut bir indeksle çakışabilir
+    const sonKurs = await db.collection('academy_courses')
+        .orderBy('orderIndex', 'desc').limit(1).get();
+    const orderIndex = sonKurs.empty ? 0 : (Number(sonKurs.docs[0].data().orderIndex) || 0) + 1;
 
     const courseData = {
         title: title.trim(),
@@ -97,7 +105,7 @@ router.post('/', verifyToken, requirePermission('academy.manage'), asyncHandler(
         isPublished: false,
         targetRoles: sanitizeTargetRoles(targetRoles),
         targetSubeler: sanitizeTargetSubeler(targetSubeler),
-        orderIndex: countSnap.data().count,
+        orderIndex,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
     };
@@ -112,13 +120,18 @@ router.post('/', verifyToken, requirePermission('academy.manage'), asyncHandler(
  */
 router.put('/reorder', verifyToken, requirePermission('academy.manage'), asyncHandler(async (req, res) => {
     const { order } = req.body; // [{ id, orderIndex }]
-    if (!Array.isArray(order)) return res.status(400).json({ error: 'Sıralama verisi gerekli' });
+    if (!Array.isArray(order) || order.length === 0) return res.status(400).json({ error: 'Sıralama verisi gerekli' });
+    const gecerli = order.every((o) => o && typeof o.id === 'string' && Number.isFinite(o.orderIndex));
+    if (!gecerli) return res.status(400).json({ error: 'Geçersiz sıralama verisi' });
 
-    const batch = db.batch();
-    order.forEach(({ id, orderIndex }) => {
-        batch.update(db.collection('academy_courses').doc(id), { orderIndex });
-    });
-    await batch.commit();
+    // Batch yerine tekil güncellemeler: bayat listeden gelen silinmiş bir kurs
+    // (NOT_FOUND) diğer kursların sıralanmasını engellemesin
+    const sonuclar = await Promise.allSettled(
+        order.map(({ id, orderIndex }) =>
+            db.collection('academy_courses').doc(id).update({ orderIndex }))
+    );
+    const gercekHata = sonuclar.some((s) => s.status === 'rejected' && s.reason?.code !== 5); // 5 = NOT_FOUND
+    if (gercekHata) return res.status(500).json({ error: 'Sıralama güncellenemedi' });
 
     res.json({ success: true });
 }));

@@ -82,8 +82,9 @@ router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
         return res.status(403).json({ error: 'Yetkisiz' });
     }
 
-    // Kısa ömürlü cache — sık yenilemede pahalı sorguyu tekrarlama
-    if (statsCache && Date.now() - statsCache.ts < STATS_TTL) {
+    // Kısa ömürlü cache — sık yenilemede pahalı sorguyu tekrarlama.
+    // ?fresh=1 (Yenile butonu) cache'i atlar, sonuç yine cache'e yazılır.
+    if (req.query.fresh !== '1' && statsCache && Date.now() - statsCache.ts < STATS_TTL) {
         return res.json(statsCache.data);
     }
 
@@ -180,8 +181,11 @@ router.get('/admin/stats/:userId/detail', verifyToken, asyncHandler(async (req, 
     const items = snap.docs.map(d => ({ lessonId: d.id, ...d.data() }));
     if (items.length === 0) return res.json({ detay: [] });
 
+    // courseId'siz (eski/bozuk) kayıtlarda courseIds boş kalabilir — getAll argümansız çağrılamaz
     const courseIds = [...new Set(items.map(i => i.courseId).filter(Boolean))];
-    const courseDocs = await db.getAll(...courseIds.map(id => db.collection('academy_courses').doc(id)));
+    const courseDocs = courseIds.length > 0
+        ? await db.getAll(...courseIds.map(id => db.collection('academy_courses').doc(id)))
+        : [];
     const courseTitles = {};
     courseDocs.forEach(d => { if (d.exists) courseTitles[d.id] = d.data().title; });
 
