@@ -66,7 +66,7 @@ export default function AcademyDashboard() {
                     {courses.map(course => {
                         const completedCount = progressSummary[course.id] || 0;
                         const totalCount = course.lessonCount || 0;
-                        const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+                        const progressPct = totalCount > 0 ? Math.min(100, Math.round((completedCount / totalCount) * 100)) : 0;
 
                         return (
                             <div

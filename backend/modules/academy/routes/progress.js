@@ -2,16 +2,18 @@ import { Router } from 'express';
 import { db, auth } from '../../../config/firebase.js';
 import { verifyToken } from '../../../middleware/auth.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
+import { getKonumListe, syncAllKonumlar } from '../../../shared/konum-store.js';
 
 const router = Router();
 
 // Admin istatistikleri için kısa ömürlü cache (kullanıcı sayısı arttıkça pahalı sorgu)
 let statsCache = null; // { ts, data }
 const STATS_TTL = 60 * 1000;
-function invalidateStatsCache() { statsCache = null; }
+export function invalidateStatsCache() { statsCache = null; }
 
 // Helper: İlgili kullanıcının tamamlanan derslerini okuyup parent doc'a (academy_progress) yazar
-async function syncUserProgressStats(userId) {
+// (ders/kurs silme sonrası yeniden hesap için lessons.js/courses.js de kullanır)
+export async function syncUserProgressStats(userId) {
     const lessonsSnap = await db.collection('academy_progress')
         .doc(userId)
         .collection('completedLessons')
@@ -70,7 +72,10 @@ router.get('/all/summary', verifyToken, asyncHandler(async (req, res) => {
 
 /**
  * GET /api/academy/progress/admin/stats
- * Admin: Tüm kullanıcıların ilerleme istatistikleri
+ * Admin: Tüm kullanıcıların ilerleme istatistikleri.
+ * İlerleme kaydı olanların YANI SIRA hiç başlamamış kullanıcılar da (kullanici_sube
+ * içindeki admin olmayan herkes) 0 ilerlemeyle listelenir — "kim eğitimi hiç açmadı"
+ * sorusu cevaplanabilsin. Şube adları da (slug → ad) yanıtla döner.
  */
 router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
     if (req.user.role !== 'admin') {
@@ -82,16 +87,26 @@ router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
         return res.json(statsCache.data);
     }
 
-    // Şube eşleştirmelerini al
-    const subeSnap = await db.collection('kullanici_sube').get();
+    // Şube eşleştirmeleri + şube adları (konum listesi tek denormalize doküman, 1 read)
+    const [subeSnap, konumListe] = await Promise.all([
+        db.collection('kullanici_sube').get(),
+        getKonumListe().then((l) => (l === null ? syncAllKonumlar() : l)),
+    ]);
     const subeMap = {};
     subeSnap.forEach(doc => { subeMap[doc.id] = doc.data(); });
+    const subeAdlari = {};
+    (konumListe || []).forEach((k) => { subeAdlari[k.slug] = k.ad; });
 
     const progressRef = db.collection('academy_progress');
     const userDocRefs = await progressRef.listDocuments();
 
+    // İlerlemesi olanlar + eğitim hedef kitlesindeki (admin olmayan) tüm kullanıcılar
+    const userIds = [...new Set([
+        ...userDocRefs.map(ref => ref.id),
+        ...subeSnap.docs.filter(d => d.data().role !== 'admin').map(d => d.id),
+    ])];
+
     // Firebase Auth'dan kullanıcıları batch (100'erli) olarak al (Hız Optimizasyonu)
-    const userIds = userDocRefs.map(ref => ref.id);
     const authUsersMap = {};
     for (let i = 0; i < userIds.length; i += 100) {
         const chunk = userIds.slice(i, i + 100);
@@ -108,14 +123,21 @@ router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
         }
     }
 
-    const stats = [];
-    for (const userDocRef of userDocRefs) {
-        const userId = userDocRef.id;
-        const userDocSnap = await userDocRef.get();
-        let data = userDocSnap.exists ? userDocSnap.data() : {};
+    // İlerleme dokümanlarını toplu oku (döngüde tekil get yerine tek getAll)
+    const progressDataMap = {};
+    if (userDocRefs.length > 0) {
+        const progressDocs = await db.getAll(...userDocRefs);
+        progressDocs.forEach(d => { progressDataMap[d.id] = d.exists ? d.data() : {}; });
+    }
 
-        // Lazy Migration: Eğer istatistikler henüz ana belgeye yazılmadıysa, hesapla ve yaz
-        if (!data.statsMigrated) {
+    const stats = [];
+    for (const userId of userIds) {
+        let data = progressDataMap[userId];
+        const hasProgress = data !== undefined;
+        data = data || {};
+
+        // Lazy Migration: ilerlemesi olup istatistiği ana belgeye yazılmamışsa hesapla
+        if (hasProgress && !data.statsMigrated) {
             data = await syncUserProgressStats(userId);
         }
 
@@ -126,7 +148,7 @@ router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
             userId,
             displayName: userInfo.displayName,
             email: userInfo.email,
-            subeSlug: subeData.sube_slug || null,
+            subeSlug: subeData.sube_slug || subeData.subeSlug || null,
             role: subeData.role || null,
             totalCompleted: data.totalCompleted || 0,
             lastActivity: data.lastActivity || null,
@@ -134,11 +156,55 @@ router.get('/admin/stats', verifyToken, asyncHandler(async (req, res) => {
         });
     }
 
-    // Son aktiviteye göre sırala
+    // Son aktiviteye göre sırala (hiç başlamayanlar en sonda)
     stats.sort((a, b) => (b.lastActivity || '').localeCompare(a.lastActivity || ''));
 
-    statsCache = { ts: Date.now(), data: { stats } };
-    res.json({ stats });
+    statsCache = { ts: Date.now(), data: { stats, subeAdlari } };
+    res.json({ stats, subeAdlari });
+}));
+
+/**
+ * GET /api/academy/progress/admin/stats/:userId/detail
+ * Admin: Bir kullanıcının ders bazlı tamamlama kayıtları (sınav skorlarıyla).
+ * İstatistik tablosunda satır genişletilince istenir — kurs/ders başlıkları
+ * sunucuda zenginleştirilir (yalnızca kullanıcının dokunduğu kurslar okunur).
+ */
+router.get('/admin/stats/:userId/detail', verifyToken, asyncHandler(async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Yetkisiz' });
+    }
+    const { userId } = req.params;
+
+    const snap = await db.collection('academy_progress').doc(userId)
+        .collection('completedLessons').get();
+    const items = snap.docs.map(d => ({ lessonId: d.id, ...d.data() }));
+    if (items.length === 0) return res.json({ detay: [] });
+
+    const courseIds = [...new Set(items.map(i => i.courseId).filter(Boolean))];
+    const courseDocs = await db.getAll(...courseIds.map(id => db.collection('academy_courses').doc(id)));
+    const courseTitles = {};
+    courseDocs.forEach(d => { if (d.exists) courseTitles[d.id] = d.data().title; });
+
+    const lessonEntries = await Promise.all(courseIds.map(async (cid) => {
+        const ls = await db.collection('academy_courses').doc(cid).collection('lessons').get();
+        const m = {};
+        ls.docs.forEach(d => { m[d.id] = { title: d.data().title, lessonType: d.data().lessonType }; });
+        return [cid, m];
+    }));
+    const lessonInfo = Object.fromEntries(lessonEntries);
+
+    const detay = items.map(i => ({
+        courseId: i.courseId || null,
+        courseTitle: courseTitles[i.courseId] || 'Silinmiş kurs',
+        lessonId: i.lessonId,
+        lessonTitle: lessonInfo[i.courseId]?.[i.lessonId]?.title || 'Silinmiş ders',
+        lessonType: lessonInfo[i.courseId]?.[i.lessonId]?.lessonType || null,
+        score: i.score ?? null,
+        completedAt: i.completedAt || null,
+    }));
+    detay.sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
+
+    res.json({ detay });
 }));
 
 /**

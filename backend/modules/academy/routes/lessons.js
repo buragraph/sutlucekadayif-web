@@ -4,8 +4,34 @@ import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import { deleteFile, urlToKey } from '../../../config/r2.js';
 import { stripQuizAnswers } from '../utils.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
+import { syncUserProgressStats, invalidateStatsCache } from './progress.js';
 
 const router = Router();
+
+/**
+ * Silinen dersin kullanıcı ilerleme kayıtlarını temizler ve etkilenen
+ * kullanıcıların özet istatistiklerini yeniden hesaplar. Yetim kayıt kalırsa
+ * kullanıcı yüzdesi %100'ü aşar. Best-effort: hata ders silmeyi engellemez.
+ */
+async function cleanupLessonProgress(courseId, lessonId) {
+    try {
+        const snap = await db.collectionGroup('completedLessons')
+            .where('courseId', '==', courseId).get();
+        const hedefler = snap.docs.filter(d => d.id === lessonId);
+        if (hedefler.length === 0) return;
+
+        const batch = db.batch();
+        hedefler.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+
+        // Etkilenen kullanıcıların özetini tazele (yol: academy_progress/{uid}/completedLessons/{id})
+        const uids = [...new Set(hedefler.map(d => d.ref.parent.parent.id))];
+        await Promise.all(uids.map(uid => syncUserProgressStats(uid)));
+        invalidateStatsCache();
+    } catch (e) {
+        console.error('[Academy] Ders ilerleme temizliği atlandı:', e.message);
+    }
+}
 
 // Dersin R2 dosyasını (video/pdf) best-effort siler
 async function deleteLessonFile(data) {
@@ -165,6 +191,7 @@ router.delete('/:courseId/:lessonId', verifyToken, requirePermission('academy.ma
 
     await deleteLessonFile(doc.data()); // R2'deki video/pdf'i de sil
     await docRef.delete();
+    await cleanupLessonProgress(courseId, lessonId); // yetim ilerleme kaydı bırakma
     res.json({ success: true });
 }));
 

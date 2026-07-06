@@ -2,26 +2,52 @@ import { Router } from 'express';
 import { db } from '../../../config/firebase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import { deleteFile, urlToKey } from '../../../config/r2.js';
-import { stripQuizAnswers } from '../utils.js';
+import { stripQuizAnswers, courseVisibleToUser } from '../utils.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
+import { syncUserProgressStats, invalidateStatsCache } from './progress.js';
 
 const router = Router();
 
+const ALLOWED_TARGET_ROLES = ['sube_sahibi', 'calisan'];
+
+// Hedef kitle alanlarını temizler: yalnızca bilinen roller / string şube slug'ları.
+// Boş dizi = herkes / tüm şubeler.
+function sanitizeTargetRoles(v) {
+    if (!Array.isArray(v)) return [];
+    return v.filter((r) => ALLOWED_TARGET_ROLES.includes(r));
+}
+function sanitizeTargetSubeler(v) {
+    if (!Array.isArray(v)) return [];
+    return [...new Set(v.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim()))];
+}
+
 /**
  * GET /api/academy/courses
- * Tüm kursları listele
+ * Kursları listele. Admin tümünü görür; diğer roller yalnızca yayında olan ve
+ * hedef kitlesine (rol/şube) girdikleri kursları görür.
  */
 router.get('/', verifyToken, asyncHandler(async (req, res) => {
-    const snapshot = await db.collection('academy_courses')
-        .orderBy('createdAt', 'desc')
-        .get();
+    const snapshot = await db.collection('academy_courses').get();
 
     // Ders sayılarını count() aggregation ile al — ders dokümanlarını okumadan,
     // tümü paralel (N+1 tam okuma yerine N hafif sayım, eşzamanlı)
-    const courses = await Promise.all(snapshot.docs.map(async (doc) => {
+    let courses = await Promise.all(snapshot.docs.map(async (doc) => {
         const countSnap = await doc.ref.collection('lessons').count().get();
         return { id: doc.id, ...doc.data(), lessonCount: countSnap.data().count };
     }));
+
+    // Admin'in belirlediği sıra (orderIndex); alanı olmayan eski kurslar en sonda,
+    // kendi aralarında yeniden-eskiye
+    courses.sort((a, b) => {
+        const ao = Number.isFinite(a.orderIndex) ? a.orderIndex : Infinity;
+        const bo = Number.isFinite(b.orderIndex) ? b.orderIndex : Infinity;
+        if (ao !== bo) return ao - bo;
+        return (b.createdAt || '').localeCompare(a.createdAt || '');
+    });
+
+    if (req.user.role !== 'admin') {
+        courses = courses.filter((c) => c.isPublished && courseVisibleToUser(c, req.user));
+    }
 
     res.json({ courses });
 }));
@@ -36,6 +62,11 @@ router.get('/:id', verifyToken, asyncHandler(async (req, res) => {
     if (!doc.exists) return res.status(404).json({ error: 'Kurs bulunamadı' });
 
     const course = { id: doc.id, ...doc.data() };
+
+    // Yayında olmayan veya hedef kitlesi dışındaki kursa doğrudan URL ile erişim yok
+    if (req.user.role !== 'admin' && (!course.isPublished || !courseVisibleToUser(course, req.user))) {
+        return res.status(404).json({ error: 'Kurs bulunamadı' });
+    }
 
     // Dersler
     const lessonsSnap = await db.collection('academy_courses').doc(id)
@@ -53,14 +84,20 @@ router.get('/:id', verifyToken, asyncHandler(async (req, res) => {
  * Yeni kurs oluştur (admin only)
  */
 router.post('/', verifyToken, requirePermission('academy.manage'), asyncHandler(async (req, res) => {
-    const { title, description, thumbnailUrl } = req.body;
+    const { title, description, thumbnailUrl, targetRoles, targetSubeler } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: 'Kurs başlığı gerekli' });
+
+    // Yeni kurs listenin sonuna eklenir
+    const countSnap = await db.collection('academy_courses').count().get();
 
     const courseData = {
         title: title.trim(),
         description: description?.trim() || '',
         thumbnailUrl: thumbnailUrl || '',
         isPublished: false,
+        targetRoles: sanitizeTargetRoles(targetRoles),
+        targetSubeler: sanitizeTargetSubeler(targetSubeler),
+        orderIndex: countSnap.data().count,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
     };
@@ -70,12 +107,29 @@ router.post('/', verifyToken, requirePermission('academy.manage'), asyncHandler(
 }));
 
 /**
+ * PUT /api/academy/courses/reorder
+ * Kurs sıralamasını güncelle. NOT: /:id route'undan ÖNCE tanımlı olmalı.
+ */
+router.put('/reorder', verifyToken, requirePermission('academy.manage'), asyncHandler(async (req, res) => {
+    const { order } = req.body; // [{ id, orderIndex }]
+    if (!Array.isArray(order)) return res.status(400).json({ error: 'Sıralama verisi gerekli' });
+
+    const batch = db.batch();
+    order.forEach(({ id, orderIndex }) => {
+        batch.update(db.collection('academy_courses').doc(id), { orderIndex });
+    });
+    await batch.commit();
+
+    res.json({ success: true });
+}));
+
+/**
  * PUT /api/academy/courses/:id
  * Kurs güncelle
  */
 router.put('/:id', verifyToken, requirePermission('academy.manage'), asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const { title, description, thumbnailUrl, isPublished } = req.body;
+    const { title, description, thumbnailUrl, isPublished, targetRoles, targetSubeler } = req.body;
 
     const docRef = db.collection('academy_courses').doc(id);
     const doc = await docRef.get();
@@ -86,6 +140,8 @@ router.put('/:id', verifyToken, requirePermission('academy.manage'), asyncHandle
     if (description !== undefined) updateData.description = description.trim();
     if (thumbnailUrl !== undefined) updateData.thumbnailUrl = thumbnailUrl;
     if (isPublished !== undefined) updateData.isPublished = isPublished;
+    if (targetRoles !== undefined) updateData.targetRoles = sanitizeTargetRoles(targetRoles);
+    if (targetSubeler !== undefined) updateData.targetSubeler = sanitizeTargetSubeler(targetSubeler);
 
     await docRef.update(updateData);
     res.json({ course: { id, ...doc.data(), ...updateData } });
@@ -129,6 +185,10 @@ router.delete('/:id', verifyToken, requirePermission('academy.manage'), asyncHan
             chunk.forEach(d => pBatch.delete(d.ref));
             await pBatch.commit();
         }
+        // Etkilenen kullanıcıların özet istatistiklerini tazele
+        const uids = [...new Set(progressSnap.docs.map(d => d.ref.parent.parent.id))];
+        await Promise.all(uids.map(uid => syncUserProgressStats(uid)));
+        invalidateStatsCache();
     } catch (e) {
         console.error('[Academy] İlerleme temizliği atlandı (collectionGroup index gerekebilir):', e.message);
     }

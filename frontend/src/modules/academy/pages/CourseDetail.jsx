@@ -137,7 +137,7 @@ export default function CourseDetail() {
     const currentIdx = lessons.findIndex(l => l.id === currentLesson?.id);
     const completedCount = Object.keys(completed).length;
     const totalCount = lessons.length;
-    const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+    const progressPct = totalCount > 0 ? Math.min(100, Math.round((completedCount / totalCount) * 100)) : 0;
 
     return (
         <div className="flex flex-1 flex-col gap-4 w-full h-full min-h-0">
