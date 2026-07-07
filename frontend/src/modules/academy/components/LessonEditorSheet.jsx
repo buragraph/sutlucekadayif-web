@@ -26,10 +26,13 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
     const [uploading, setUploading] = useState(false);
     const [saving, setSaving] = useState(false);
     const initialRef = useRef('');
+    // "Kaydet + Yeni" sonrası panel açıkken düzenlenen ders değişir — prop yerine iç state
+    const [mevcutDers, setMevcutDers] = useState(lesson);
 
     // Panel açılınca formu derse (veya boşa) göre kur ve dirty-takip anlık görüntüsünü al
     useEffect(() => {
         if (!open) return;
+        setMevcutDers(lesson);
         const f = {
             title: lesson?.title || '',
             description: lesson?.description || '',
@@ -100,7 +103,7 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
         return { ...q, options: kalan, correctOptionId: q.correctOptionId === silinen.id ? 'A' : q.correctOptionId };
     }));
 
-    const save = async () => {
+    const save = async (kapat = true) => {
         if (!form.title.trim()) return toast.error('Ders başlığı gerekli');
         if (form.lessonType === 'quiz') {
             if (!form.questions || form.questions.length === 0) return toast.error('Sınav için en az bir soru eklemelisiniz');
@@ -137,16 +140,25 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
         };
         setSaving(true);
         try {
-            if (lesson) {
-                await api.put(`/academy/lessons/${courseId}/${lesson.id}`, payload);
+            if (mevcutDers) {
+                await api.put(`/academy/lessons/${courseId}/${mevcutDers.id}`, payload);
                 toast.success('Ders güncellendi');
             } else {
                 await api.post(`/academy/lessons/${courseId}`, payload);
                 toast.success('Ders eklendi');
             }
-            initialRef.current = JSON.stringify({ f: form, url: fileUrl }); // artık dirty değil
             onSaved(courseId);
-            onClose();
+            if (kapat) {
+                initialRef.current = JSON.stringify({ f: form, url: fileUrl }); // artık dirty değil
+                onClose();
+            } else {
+                // Kaydet + Yeni: panel açık kalır, boş forma dönülür (ardışık ders girişi)
+                setMevcutDers(null);
+                setForm(bosForm);
+                setFileUrl('');
+                setFileName('');
+                initialRef.current = JSON.stringify({ f: bosForm, url: '' });
+            }
         } catch (err) {
             toast.error(err.response?.data?.error || 'İşlem başarısız');
         } finally {
@@ -172,7 +184,7 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
         <Sheet open={open} onOpenChange={(o) => { if (!o) requestClose(); }}>
             <SheetContent side="right" className="data-[side=right]:sm:max-w-2xl w-full gap-0 p-0">
                 <SheetHeader className="border-b px-5 py-4">
-                    <SheetTitle>{lesson ? 'Ders Düzenle' : 'Yeni Ders'}</SheetTitle>
+                    <SheetTitle>{mevcutDers ? 'Ders Düzenle' : 'Yeni Ders'}</SheetTitle>
                     <SheetDescription className="text-xs">
                         {form.lessonType === 'quiz' ? 'Soruları ekleyin, doğru cevabı işaretleyin.' : 'Ders bilgilerini ve içeriğini girin.'}
                     </SheetDescription>
@@ -333,11 +345,14 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
                     )}
                 </div>
 
-                <div className="border-t bg-card/50 px-5 py-3 flex justify-end gap-2 shrink-0">
+                <div className="border-t px-5 py-3 flex justify-end gap-2 shrink-0">
                     <Button variant="outline" size="sm" onClick={requestClose}>İptal</Button>
-                    <Button size="sm" onClick={save} disabled={uploading || saving}>
+                    <Button variant="outline" size="sm" onClick={() => save(false)} disabled={uploading || saving} title="Kaydeder ve yeni ders için boş form açar">
+                        Kaydet + Yeni Ders
+                    </Button>
+                    <Button size="sm" onClick={() => save(true)} disabled={uploading || saving}>
                         {saving && <Spinner className="size-3.5 mr-1.5" />}
-                        {lesson ? 'Değişiklikleri Kaydet' : 'Dersi Ekle'}
+                        {mevcutDers ? 'Değişiklikleri Kaydet' : 'Dersi Ekle'}
                     </Button>
                 </div>
             </SheetContent>

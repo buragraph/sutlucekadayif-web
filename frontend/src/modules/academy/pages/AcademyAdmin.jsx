@@ -1,18 +1,25 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Pencil, Trash2, ChevronDown, ChevronRight, Video, FileText, Eye, EyeOff, Users, BarChart3, Search, Check, HelpCircle, ArrowUp, ArrowDown, RefreshCw, Download, UserX, BookOpen } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, ChevronDown, ChevronRight, Video, FileText, Users, BarChart3, Search, Check, HelpCircle, RefreshCw, Download, UserX, BookOpen, GripVertical, MoreHorizontal } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import api from '../../../services/api';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import LessonEditorSheet from '../components/LessonEditorSheet';
+import { parseYouTubeInput } from '../utils/youtube';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Spinner } from '@/components/ui/spinner';
 
@@ -23,7 +30,6 @@ const ROZET = {
     yesil: 'rounded-md border-green-600/50 bg-green-50 px-2 py-0.5 font-medium text-[10px] text-green-600 dark:border-green-800/50 dark:bg-green-500/10 dark:text-green-400',
     mavi: 'rounded-md border-blue-600/50 bg-blue-50 px-2 py-0.5 font-medium text-[10px] text-blue-600 dark:border-blue-800/50 dark:bg-blue-500/10 dark:text-blue-400',
     kirmizi: 'rounded-md border-destructive/50 bg-destructive/10 px-2 py-0.5 font-medium text-[10px] text-destructive',
-    notr: 'rounded-md px-2 py-0.5 font-medium text-[10px]',
 };
 
 // Ders tipi göstergesi: sol renk çubuğu + ikon + etiket
@@ -33,11 +39,27 @@ const DERS_TIPI = {
     quiz: { bar: 'bg-emerald-500', Icon: HelpCircle, etiket: 'Sınav' },
 };
 
-// Dokunmatik cihazda hover olmadığından aksiyon butonları her zaman görünür;
-// fare kullanan cihazlarda hover'da belirir
-const HOVER_ACTIONS = 'opacity-100 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100 transition-opacity';
-
 const bosKursForm = { title: '', description: '', hedefSahip: true, hedefCalisan: true, tumSubeler: true, seciliSubeler: [] };
+
+// Video dersin YouTube küçük resmi (satırda önizleme) — geçersiz/boş linkte null
+function videoThumb(lesson) {
+    if (lesson.lessonType !== 'video' || !lesson.videoUrl) return null;
+    const p = parseYouTubeInput(lesson.videoUrl);
+    return p.type === 'video' && /^[a-zA-Z0-9_-]{11}$/.test(p.id || '')
+        ? `https://img.youtube.com/vi/${p.id}/default.jpg`
+        : null;
+}
+
+// dnd-kit sıralanabilir öğe sarmalayıcısı (render-prop): ref/style/grip verir
+function Sortable({ id, children }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+    return children({
+        ref: setNodeRef,
+        style: { transform: CSS.Transform.toString(transform), transition },
+        isDragging,
+        grip: { ...attributes, ...listeners },
+    });
+}
 
 export default function AcademyAdmin() {
     const navigate = useNavigate();
@@ -73,9 +95,13 @@ export default function AcademyAdmin() {
     const [userDetails, setUserDetails] = useState({});
     const [detailLoading, setDetailLoading] = useState(null);
 
-    useEffect(() => { fetchCourses(); }, []);
+    // İstatistikler kurs kartlarındaki tamamlanma özeti için sayfa açılışında da çekilir
+    useEffect(() => { fetchCourses(); fetchStats(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => { if (activeTab === 'stats') fetchStats(); }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedBranch, statusFilter]);
+
+    // Sürükle-bırak: 6px eşiği — normal tıklamalar sürükleme sayılmasın
+    const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
     const fetchCourses = async () => {
         try { const { data } = await api.get('/academy/courses'); setCourses(data.courses); }
@@ -159,15 +185,15 @@ export default function AcademyAdmin() {
         try { await api.put(`/academy/courses/${course.id}`, { isPublished: !course.isPublished }); setCourses(prev => prev.map(c => c.id === course.id ? { ...c, isPublished: !c.isPublished } : c)); toast.success(course.isPublished ? 'Kurs yayından kaldırıldı' : 'Kurs yayınlandı'); }
         catch { toast.error('İşlem başarısız'); }
     };
-    const moveCourse = async (index, direction) => {
-        const j = direction === 'up' ? index - 1 : index + 1;
-        if (j < 0 || j >= courses.length) return;
-        const yeni = [...courses];
-        [yeni[index], yeni[j]] = [yeni[j], yeni[index]];
+    const onCourseDragEnd = ({ active, over }) => {
+        if (!over || active.id === over.id) return;
+        const oldIndex = courses.findIndex(c => c.id === active.id);
+        const newIndex = courses.findIndex(c => c.id === over.id);
+        if (oldIndex < 0 || newIndex < 0) return;
+        const yeni = arrayMove(courses, oldIndex, newIndex);
         setCourses(yeni);
-        try {
-            await api.put('/academy/courses/reorder', { order: yeni.map((c, i) => ({ id: c.id, orderIndex: i })) });
-        } catch { toast.error('Sıralama güncellenemedi'); fetchCourses(); }
+        api.put('/academy/courses/reorder', { order: yeni.map((c, i) => ({ id: c.id, orderIndex: i })) })
+            .catch(() => { toast.error('Sıralama güncellenemedi'); fetchCourses(); });
     };
 
     // ── Dersler ──
@@ -177,20 +203,16 @@ export default function AcademyAdmin() {
         try { await api.delete(`/academy/lessons/${courseId}/${lesson.id}`); toast.success('Ders silindi'); fetchLessons(courseId); fetchCourses(); }
         catch { toast.error('Ders silinemedi'); }
     };
-    const moveLesson = async (courseId, index, direction) => {
-        const lessons = [...(courseLessons[courseId] || [])];
-        const j = direction === 'up' ? index - 1 : index + 1;
-        if (j < 0 || j >= lessons.length) return;
-        [lessons[index], lessons[j]] = [lessons[j], lessons[index]];
-        setCourseLessons(prev => ({ ...prev, [courseId]: lessons }));
-        const order = lessons.map((l, idx) => ({ id: l.id, orderIndex: idx }));
-        try {
-            await api.put(`/academy/lessons/${courseId}/reorder`, { order });
-            // Başarıda toast yok — ardışık taşımada bildirim yağmuru olmasın
-        } catch {
-            toast.error('Sıralama güncellenemedi');
-            fetchLessons(courseId);
-        }
+    const onLessonDragEnd = (courseId, { active, over }) => {
+        if (!over || active.id === over.id) return;
+        const lessons = courseLessons[courseId] || [];
+        const oldIndex = lessons.findIndex(l => l.id === active.id);
+        const newIndex = lessons.findIndex(l => l.id === over.id);
+        if (oldIndex < 0 || newIndex < 0) return;
+        const yeni = arrayMove(lessons, oldIndex, newIndex);
+        setCourseLessons(prev => ({ ...prev, [courseId]: yeni }));
+        api.put(`/academy/lessons/${courseId}/reorder`, { order: yeni.map((l, idx) => ({ id: l.id, orderIndex: idx })) })
+            .catch(() => { toast.error('Sıralama güncellenemedi'); fetchLessons(courseId); });
     };
 
     // ── İstatistik detayı ──
@@ -218,6 +240,15 @@ export default function AcademyAdmin() {
         if (Array.isArray(c.targetRoles) && c.targetRoles.length > 0 && !c.targetRoles.includes(user.role)) return false;
         if (Array.isArray(c.targetSubeler) && c.targetSubeler.length > 0 && !c.targetSubeler.includes(user.subeSlug)) return false;
         return true;
+    };
+
+    // Kurs kartındaki tamamlanma özeti: hedef kitledeki kaç kullanıcı kursu bitirdi
+    const kursOzet = (c) => {
+        if (!statsFetched || !c.isPublished || !(c.lessonCount > 0)) return null;
+        const hedef = stats.filter(u => u && u.role !== 'admin' && kursGorunur(c, u));
+        if (hedef.length === 0) return null;
+        const tamamlayan = hedef.filter(u => (u.byCourse?.[c.id]?.count || 0) >= c.lessonCount).length;
+        return `${tamamlayan}/${hedef.length} kullanıcı tamamladı`;
     };
 
     const exportCsv = (rows) => {
@@ -289,102 +320,159 @@ export default function AcademyAdmin() {
                             </Button>
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-3">
-                            {courses.map((course, courseIndex) => (
-                                <Card key={course.id} className="py-0 gap-0">
-                                    <div className="flex cursor-pointer items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/30" onClick={() => toggleCourse(course.id)}>
-                                        {expandedCourse === course.id
-                                            ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-                                            : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <span className="text-sm font-medium text-foreground">{course.title}</span>
-                                                <Badge variant="secondary" className={course.isPublished ? ROZET.yesil : ROZET.notr}>
-                                                    {course.isPublished ? 'Yayında' : 'Taslak'}
-                                                </Badge>
-                                                {Array.isArray(course.targetRoles) && course.targetRoles.length === 1 && (
-                                                    <Badge variant="secondary" className={ROZET.mavi}>
-                                                        {course.targetRoles[0] === 'calisan' ? 'Sadece çalışanlar' : 'Sadece şube sahipleri'}
-                                                    </Badge>
-                                                )}
-                                                {Array.isArray(course.targetSubeler) && course.targetSubeler.length > 0 && (
-                                                    <Badge variant="secondary" className={ROZET.mavi}>{course.targetSubeler.length} şube</Badge>
-                                                )}
-                                            </div>
-                                            {course.description && <p className="text-xs text-muted-foreground truncate mt-0.5">{course.description}</p>}
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-xs text-muted-foreground hidden sm:inline whitespace-nowrap">{course.lessonCount || 0} ders</span>
-                                            <div className="flex gap-0.5" onClick={e => e.stopPropagation()}>
-                                                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => moveCourse(courseIndex, 'up')} disabled={courseIndex === 0} title="Yukarı taşı">
-                                                    <ArrowUp className="size-3.5" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => moveCourse(courseIndex, 'down')} disabled={courseIndex === courses.length - 1} title="Aşağı taşı">
-                                                    <ArrowDown className="size-3.5" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => togglePublish(course)} title={course.isPublished ? 'Yayından kaldır' : 'Yayınla'}>
-                                                    {course.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => openCourseModal(course)} title="Düzenle">
-                                                    <Pencil className="size-4" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive" onClick={() => deleteCourse(course)} title="Sil">
-                                                    <Trash2 className="size-4" />
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Dersler */}
-                                    {expandedCourse === course.id && (
-                                        <div className="border-t">
-                                            <div className="flex items-center justify-between bg-muted/30 px-4 py-2">
-                                                <span className="text-xs font-medium text-muted-foreground">Ders İçerikleri</span>
-                                                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setLessonSheet({ open: true, courseId: course.id, lesson: null })}>
-                                                    <Plus data-icon="inline-start" /> Ders Ekle
-                                                </Button>
-                                            </div>
-                                            {!courseLessons[course.id] ? (
-                                                <div className="py-6 flex justify-center"><Spinner className="size-5 text-muted-foreground" /></div>
-                                            ) : courseLessons[course.id].length === 0 ? (
-                                                <p className="py-8 text-center text-xs text-muted-foreground">Bu kursta henüz ders yok</p>
-                                            ) : (
-                                                <div className="flex flex-col divide-y divide-border">
-                                                    {courseLessons[course.id].map((lesson, i) => {
-                                                        const tip = DERS_TIPI[lesson.lessonType] || DERS_TIPI.video;
-                                                        return (
-                                                            <div key={lesson.id} className="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/30">
-                                                                <div className={`w-1 self-stretch shrink-0 rounded-md ${tip.bar}`} />
-                                                                <span className="w-5 text-center text-xs text-muted-foreground shrink-0">{i + 1}</span>
-                                                                <tip.Icon className="size-4 shrink-0 text-muted-foreground" />
-                                                                <div className="min-w-0 flex-1">
-                                                                    <div className="text-sm font-medium text-foreground leading-none truncate">{lesson.title}</div>
-                                                                    <div className="text-xs text-muted-foreground leading-none mt-1">{tip.etiket}</div>
-                                                                </div>
-                                                                <div className={`flex gap-0.5 ${HOVER_ACTIONS}`}>
-                                                                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => moveLesson(course.id, i, 'up')} disabled={i === 0} title="Yukarı taşı">
-                                                                        <ArrowUp className="size-3.5" />
-                                                                    </Button>
-                                                                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => moveLesson(course.id, i, 'down')} disabled={i === courseLessons[course.id].length - 1} title="Aşağı taşı">
-                                                                        <ArrowDown className="size-3.5" />
-                                                                    </Button>
-                                                                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => setLessonSheet({ open: true, courseId: course.id, lesson })} title="Düzenle">
-                                                                        <Pencil className="size-3.5" />
-                                                                    </Button>
-                                                                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive" onClick={() => deleteLesson(course.id, lesson)} title="Sil">
-                                                                        <Trash2 className="size-3.5" />
-                                                                    </Button>
-                                                                </div>
+                        <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={onCourseDragEnd}>
+                            <SortableContext items={courses.map(c => c.id)} strategy={verticalListSortingStrategy}>
+                                <div className="flex flex-col gap-3">
+                                    {courses.map((course) => (
+                                        <Sortable id={course.id} key={course.id}>
+                                            {({ ref, style, grip, isDragging }) => (
+                                                <Card ref={ref} style={style} className={cn('py-0 gap-0', isDragging && 'relative z-10 opacity-80')}>
+                                                    <div className="flex cursor-pointer items-center gap-2 px-3 py-3.5 transition-colors hover:bg-muted/30" onClick={() => toggleCourse(course.id)}>
+                                                        <button
+                                                            {...grip}
+                                                            onClick={e => e.stopPropagation()}
+                                                            className="cursor-grab active:cursor-grabbing touch-none p-1 text-muted-foreground/50 hover:text-foreground shrink-0"
+                                                            title="Sürükleyerek sırala"
+                                                        >
+                                                            <GripVertical className="size-4" />
+                                                        </button>
+                                                        {expandedCourse === course.id
+                                                            ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                                                            : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
+                                                        <div className="min-w-0 flex-1 pl-1">
+                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                <span className="text-sm font-medium text-foreground">{course.title}</span>
+                                                                {Array.isArray(course.targetRoles) && course.targetRoles.length === 1 && (
+                                                                    <Badge variant="secondary" className={ROZET.mavi}>
+                                                                        {course.targetRoles[0] === 'calisan' ? 'Sadece çalışanlar' : 'Sadece şube sahipleri'}
+                                                                    </Badge>
+                                                                )}
+                                                                {Array.isArray(course.targetSubeler) && course.targetSubeler.length > 0 && (
+                                                                    <Badge variant="secondary" className={ROZET.mavi}>{course.targetSubeler.length} şube</Badge>
+                                                                )}
                                                             </div>
-                                                        );
-                                                    })}
-                                                </div>
+                                                            {course.description && <p className="text-xs text-muted-foreground truncate mt-0.5">{course.description}</p>}
+                                                        </div>
+                                                        <div className="flex items-center gap-4 shrink-0">
+                                                            <span className="text-xs text-muted-foreground hidden md:inline whitespace-nowrap">
+                                                                {course.lessonCount || 0} ders{kursOzet(course) ? ` · ${kursOzet(course)}` : ''}
+                                                            </span>
+                                                            <label className="flex items-center gap-1.5 cursor-pointer" onClick={e => e.stopPropagation()} title={course.isPublished ? 'Yayından kaldır' : 'Yayınla'}>
+                                                                <Switch size="sm" checked={!!course.isPublished} onCheckedChange={() => togglePublish(course)} />
+                                                                <span className={cn('text-xs whitespace-nowrap', course.isPublished ? 'font-medium text-green-600 dark:text-green-400' : 'text-muted-foreground')}>
+                                                                    {course.isPublished ? 'Yayında' : 'Taslak'}
+                                                                </span>
+                                                            </label>
+                                                            <div onClick={e => e.stopPropagation()}>
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" title="Diğer işlemler">
+                                                                            <MoreHorizontal className="size-4" />
+                                                                        </Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent align="end">
+                                                                        <DropdownMenuGroup>
+                                                                            <DropdownMenuItem onClick={() => openCourseModal(course)}>
+                                                                                <Pencil /> Kursu Düzenle
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem onClick={() => setLessonSheet({ open: true, courseId: course.id, lesson: null })}>
+                                                                                <Plus /> Ders Ekle
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem variant="destructive" onClick={() => deleteCourse(course)}>
+                                                                                <Trash2 /> Kursu Sil
+                                                                            </DropdownMenuItem>
+                                                                        </DropdownMenuGroup>
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Dersler */}
+                                                    {expandedCourse === course.id && (
+                                                        <div className="border-t">
+                                                            <div className="flex items-center justify-between bg-muted/30 px-4 py-2">
+                                                                <span className="text-xs font-medium text-muted-foreground">Ders İçerikleri — düzenlemek için derse tıklayın</span>
+                                                                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setLessonSheet({ open: true, courseId: course.id, lesson: null })}>
+                                                                    <Plus data-icon="inline-start" /> Ders Ekle
+                                                                </Button>
+                                                            </div>
+                                                            {!courseLessons[course.id] ? (
+                                                                <div className="py-6 flex justify-center"><Spinner className="size-5 text-muted-foreground" /></div>
+                                                            ) : courseLessons[course.id].length === 0 ? (
+                                                                <p className="py-8 text-center text-xs text-muted-foreground">Bu kursta henüz ders yok</p>
+                                                            ) : (
+                                                                <DndContext sensors={dndSensors} collisionDetection={closestCenter} onDragEnd={(e) => onLessonDragEnd(course.id, e)}>
+                                                                    <SortableContext items={courseLessons[course.id].map(l => l.id)} strategy={verticalListSortingStrategy}>
+                                                                        <div className="flex flex-col divide-y divide-border">
+                                                                            {courseLessons[course.id].map((lesson, i) => {
+                                                                                const tip = DERS_TIPI[lesson.lessonType] || DERS_TIPI.video;
+                                                                                const thumb = videoThumb(lesson);
+                                                                                return (
+                                                                                    <Sortable id={lesson.id} key={lesson.id}>
+                                                                                        {({ ref: lref, style: lstyle, grip: lgrip, isDragging: lDragging }) => (
+                                                                                            <div
+                                                                                                ref={lref}
+                                                                                                style={lstyle}
+                                                                                                className={cn('group flex items-center gap-3 bg-card px-3 py-2.5 transition-colors hover:bg-muted/30 cursor-pointer', lDragging && 'relative z-10 opacity-80')}
+                                                                                                onClick={() => setLessonSheet({ open: true, courseId: course.id, lesson })}
+                                                                                            >
+                                                                                                <button
+                                                                                                    {...lgrip}
+                                                                                                    onClick={e => e.stopPropagation()}
+                                                                                                    className="cursor-grab active:cursor-grabbing touch-none p-1 text-muted-foreground/50 hover:text-foreground shrink-0"
+                                                                                                    title="Sürükleyerek sırala"
+                                                                                                >
+                                                                                                    <GripVertical className="size-4" />
+                                                                                                </button>
+                                                                                                <div className={`w-1 self-stretch shrink-0 rounded-md ${tip.bar}`} />
+                                                                                                <span className="w-5 text-center text-xs text-muted-foreground shrink-0">{i + 1}</span>
+                                                                                                {thumb ? (
+                                                                                                    <img src={thumb} alt="" className="h-9 w-14 rounded-md object-cover shrink-0" loading="lazy" />
+                                                                                                ) : (
+                                                                                                    <tip.Icon className="size-4 shrink-0 text-muted-foreground" />
+                                                                                                )}
+                                                                                                <div className="min-w-0 flex-1">
+                                                                                                    <div className="text-sm font-medium text-foreground leading-none truncate">{lesson.title}</div>
+                                                                                                    <div className="text-xs text-muted-foreground leading-none mt-1">{tip.etiket}</div>
+                                                                                                </div>
+                                                                                                <div onClick={e => e.stopPropagation()}>
+                                                                                                    <DropdownMenu>
+                                                                                                        <DropdownMenuTrigger asChild>
+                                                                                                            <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" title="Diğer işlemler">
+                                                                                                                <MoreHorizontal className="size-4" />
+                                                                                                            </Button>
+                                                                                                        </DropdownMenuTrigger>
+                                                                                                        <DropdownMenuContent align="end">
+                                                                                                            <DropdownMenuGroup>
+                                                                                                                <DropdownMenuItem onClick={() => setLessonSheet({ open: true, courseId: course.id, lesson })}>
+                                                                                                                    <Pencil /> Düzenle
+                                                                                                                </DropdownMenuItem>
+                                                                                                                <DropdownMenuItem variant="destructive" onClick={() => deleteLesson(course.id, lesson)}>
+                                                                                                                    <Trash2 /> Sil
+                                                                                                                </DropdownMenuItem>
+                                                                                                            </DropdownMenuGroup>
+                                                                                                        </DropdownMenuContent>
+                                                                                                    </DropdownMenu>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </Sortable>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </SortableContext>
+                                                                </DndContext>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </Card>
                                             )}
-                                        </div>
-                                    )}
-                                </Card>
-                            ))}
-                        </div>
+                                        </Sortable>
+                                    ))}
+                                </div>
+                            </SortableContext>
+                        </DndContext>
                     )}
                 </TabsContent>
 
