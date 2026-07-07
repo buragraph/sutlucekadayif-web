@@ -246,7 +246,7 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
                                         <div className="text-xs font-medium text-foreground truncate">{fileName || 'Dosya başarıyla yüklendi'}</div>
                                         <div className="text-[10px] text-emerald-600 font-medium">Yükleme Tamamlandı ✓</div>
                                     </div>
-                                    <Button variant="outline" size="icon" className="size-7 bg-white shrink-0 hover:border-destructive hover:text-destructive" onClick={() => { setFileUrl(''); setFileName(''); }}>
+                                    <Button variant="outline" size="icon" className="size-7 bg-background shrink-0 hover:border-destructive hover:text-destructive" onClick={() => { setFileUrl(''); setFileName(''); }}>
                                         <X className="size-3.5" />
                                     </Button>
                                 </div>

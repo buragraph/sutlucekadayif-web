@@ -190,7 +190,7 @@ export default function CourseDetail() {
                         {currentLesson && (
                             <>
                                 {/* Video / PDF Viewer */}
-                                <div className={`overflow-hidden rounded-xl border bg-black shadow-md ${currentLesson.lessonType === 'video' || currentLesson.lessonType === 'pdf' ? '' : 'flex-1 min-h-0 flex flex-col'}`}>
+                                <div className={`overflow-hidden rounded-xl border bg-black ${currentLesson.lessonType === 'video' || currentLesson.lessonType === 'pdf' ? '' : 'flex-1 min-h-0 flex flex-col'}`}>
                                     {currentLesson.lessonType === 'video' ? (
                                         currentLesson.videoUrl ? (
                                             <VideoPlayer
@@ -337,7 +337,7 @@ export default function CourseDetail() {
                                     <div className="text-sm font-medium text-foreground">Toplam İlerleme</div>
                                     <div className={`text-lg font-bold leading-none ${progressPct === 100 ? 'text-emerald-600' : 'text-primary'}`}>%{progressPct}</div>
                                 </div>
-                                <div className="h-2 overflow-hidden rounded-full bg-muted shadow-inner">
+                                <div className="h-2 overflow-hidden rounded-full bg-muted">
                                     <div className="h-full rounded-full bg-primary transition-all duration-700 ease-out" style={{ width: `${progressPct}%` }} />
                                 </div>
                                 <div className="text-xs font-medium text-muted-foreground flex items-center justify-between">

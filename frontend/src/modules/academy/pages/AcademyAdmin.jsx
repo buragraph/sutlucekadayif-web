@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Pencil, Trash2, ChevronDown, ChevronRight, Video, FileText, Eye, EyeOff, Users, BarChart3, Search, Check, HelpCircle, ArrowUp, ArrowDown, RefreshCw, Download, UserX } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, ChevronDown, ChevronRight, Video, FileText, Eye, EyeOff, Users, BarChart3, Search, Check, HelpCircle, ArrowUp, ArrowDown, RefreshCw, Download, UserX, BookOpen } from 'lucide-react';
 import api from '../../../services/api';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import LessonEditorSheet from '../components/LessonEditorSheet';
@@ -10,11 +10,28 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Spinner } from '@/components/ui/spinner';
 
 const ROL_ADLARI = { admin: 'Admin', sube_sahibi: 'Şube Sahibi', calisan: 'Çalışan' };
+
+// Yumuşak (soft) rozet stilleri — tasarım referansındaki badge dili
+const ROZET = {
+    yesil: 'rounded-md border-green-600/50 bg-green-50 px-2 py-0.5 font-medium text-[10px] text-green-600 dark:border-green-800/50 dark:bg-green-500/10 dark:text-green-400',
+    mavi: 'rounded-md border-blue-600/50 bg-blue-50 px-2 py-0.5 font-medium text-[10px] text-blue-600 dark:border-blue-800/50 dark:bg-blue-500/10 dark:text-blue-400',
+    kirmizi: 'rounded-md border-destructive/50 bg-destructive/10 px-2 py-0.5 font-medium text-[10px] text-destructive',
+    notr: 'rounded-md px-2 py-0.5 font-medium text-[10px]',
+};
+
+// Ders tipi göstergesi: sol renk çubuğu + ikon + etiket
+const DERS_TIPI = {
+    video: { bar: 'bg-blue-500', Icon: Video, etiket: 'Video' },
+    pdf: { bar: 'bg-amber-500', Icon: FileText, etiket: 'PDF' },
+    quiz: { bar: 'bg-emerald-500', Icon: HelpCircle, etiket: 'Sınav' },
+};
 
 // Dokunmatik cihazda hover olmadığından aksiyon butonları her zaman görünür;
 // fare kullanan cihazlarda hover'da belirir
@@ -231,135 +248,118 @@ export default function AcademyAdmin() {
     if (loading) return <div className="flex flex-col items-center justify-center gap-3 py-16"><Spinner className="size-8" /><p className="text-sm text-muted-foreground">Yükleniyor...</p></div>;
 
     return (
-        <div className="flex flex-1 flex-col gap-4 w-full h-full min-h-0">
-            {/* Page Header */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
+        <div className="flex flex-col gap-4 w-full h-full min-h-0">
+            {/* Sayfa başlığı */}
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between shrink-0">
                 <div className="flex items-center gap-3">
-                    <Button variant="outline" size="icon" className="size-8 shrink-0 shadow-sm" onClick={() => navigate('/admin/akademi')}>
-                        <ArrowLeft className="size-4" />
+                    <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={() => navigate('/admin/akademi')}>
+                        <ArrowLeft />
                     </Button>
-                    <div>
+                    <div className="space-y-1">
                         <h1 className="text-3xl leading-none tracking-tight text-foreground">Akademi Yönetimi</h1>
-                        <p className="text-xs text-muted-foreground mt-0.5">Eğitim içeriklerini ve kullanıcı istatistiklerini yönetin.</p>
+                        <p className="text-sm text-muted-foreground">Eğitim içeriklerini ve kullanıcı istatistiklerini yönetin.</p>
                     </div>
                 </div>
                 {activeTab === 'courses' && (
-                    <Button size="sm" className="h-8 shadow-sm bg-primary hover:bg-primary/90 text-primary-foreground text-xs" onClick={() => openCourseModal()}>
-                        <Plus className="size-3.5 mr-1.5" /> Yeni Kurs
+                    <Button size="sm" onClick={() => openCourseModal()}>
+                        <Plus data-icon="inline-start" /> Yeni Kurs
                     </Button>
                 )}
             </div>
 
-            {/* Tabs */}
-            <div className="flex gap-4 shrink-0 border-b border-border/60">
-                <button
-                    className={`flex items-center gap-2 px-1 py-2 text-sm font-medium transition-colors relative ${activeTab === 'courses' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                    onClick={() => setActiveTab('courses')}
-                >
-                    <Video className="size-4" /> Kurslar
-                    {activeTab === 'courses' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />}
-                </button>
-                <button
-                    className={`flex items-center gap-2 px-1 py-2 text-sm font-medium transition-colors relative ${activeTab === 'stats' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                    onClick={() => setActiveTab('stats')}
-                >
-                    <BarChart3 className="size-4" /> Kullanıcı İstatistikleri
-                    {activeTab === 'stats' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />}
-                </button>
-            </div>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col gap-4">
+                <div className="border-b border-border shrink-0">
+                    <TabsList variant="line">
+                        <TabsTrigger value="courses"><BookOpen data-icon="inline-start" /> Kurslar</TabsTrigger>
+                        <TabsTrigger value="stats"><BarChart3 data-icon="inline-start" /> Kullanıcı İstatistikleri</TabsTrigger>
+                    </TabsList>
+                </div>
 
-            {/* Content Area */}
-            <div className="flex-1 min-h-0 overflow-y-auto pb-4">
-                {/* Courses Tab */}
-                {activeTab === 'courses' && (
-                    <>
-                        {courses.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground border border-dashed rounded-lg bg-card">
-                                <span className="text-4xl opacity-50">📚</span>
-                                <div className="text-center">
-                                    <p className="text-sm font-medium text-foreground">Henüz kurs eklenmemiş</p>
-                                    <p className="text-xs text-muted-foreground mt-1">İlk kursunuzu oluşturarak eğitime başlayın.</p>
-                                </div>
-                                <Button size="sm" variant="outline" className="mt-1 text-xs" onClick={() => openCourseModal()}>
-                                    <Plus className="size-3.5 mr-1.5" /> Yeni Kurs
-                                </Button>
+                {/* ── Kurslar ── */}
+                <TabsContent value="courses" className="flex-1 min-h-0 overflow-y-auto pb-4">
+                    {courses.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground border border-dashed rounded-xl">
+                            <BookOpen className="size-10 text-muted-foreground/40" />
+                            <div className="text-center">
+                                <p className="text-sm font-medium text-foreground">Henüz kurs eklenmemiş</p>
+                                <p className="text-xs text-muted-foreground mt-1">İlk kursunuzu oluşturarak eğitime başlayın.</p>
                             </div>
-                        ) : (
-                            <div className="space-y-3">
-                                {courses.map((course, courseIndex) => (
-                                    <div key={course.id} className={`rounded-xl border bg-card transition-all overflow-hidden ${expandedCourse === course.id ? 'border-border shadow-sm' : 'hover:border-primary/20'}`}>
-                                        <div className="flex cursor-pointer items-center gap-3 p-4" onClick={() => toggleCourse(course.id)}>
-                                            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/50 text-muted-foreground transition-transform">
-                                                {expandedCourse === course.id ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <div className="flex flex-wrap items-center gap-2 mb-1">
-                                                    <span className="text-sm font-semibold text-foreground">{course.title}</span>
-                                                    <Badge variant={course.isPublished ? 'default' : 'secondary'} className={`text-[10px] font-medium ${course.isPublished ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' : ''}`}>
-                                                        {course.isPublished ? 'Yayında' : 'Taslak'}
+                            <Button size="sm" variant="outline" onClick={() => openCourseModal()}>
+                                <Plus data-icon="inline-start" /> Yeni Kurs
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            {courses.map((course, courseIndex) => (
+                                <Card key={course.id} className="py-0 gap-0">
+                                    <div className="flex cursor-pointer items-center gap-3 px-4 py-3.5 transition-colors hover:bg-muted/30" onClick={() => toggleCourse(course.id)}>
+                                        {expandedCourse === course.id
+                                            ? <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                                            : <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="text-sm font-medium text-foreground">{course.title}</span>
+                                                <Badge variant="secondary" className={course.isPublished ? ROZET.yesil : ROZET.notr}>
+                                                    {course.isPublished ? 'Yayında' : 'Taslak'}
+                                                </Badge>
+                                                {Array.isArray(course.targetRoles) && course.targetRoles.length === 1 && (
+                                                    <Badge variant="secondary" className={ROZET.mavi}>
+                                                        {course.targetRoles[0] === 'calisan' ? 'Sadece çalışanlar' : 'Sadece şube sahipleri'}
                                                     </Badge>
-                                                    {Array.isArray(course.targetRoles) && course.targetRoles.length === 1 && (
-                                                        <Badge variant="outline" className="text-[10px] font-medium border-blue-200 text-blue-700 bg-blue-50">
-                                                            {course.targetRoles[0] === 'calisan' ? 'Sadece çalışanlar' : 'Sadece şube sahipleri'}
-                                                        </Badge>
-                                                    )}
-                                                    {Array.isArray(course.targetSubeler) && course.targetSubeler.length > 0 && (
-                                                        <Badge variant="outline" className="text-[10px] font-medium border-blue-200 text-blue-700 bg-blue-50">
-                                                            {course.targetSubeler.length} şube
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                                {course.description && <p className="text-xs text-muted-foreground line-clamp-1">{course.description}</p>}
+                                                )}
+                                                {Array.isArray(course.targetSubeler) && course.targetSubeler.length > 0 && (
+                                                    <Badge variant="secondary" className={ROZET.mavi}>{course.targetSubeler.length} şube</Badge>
+                                                )}
                                             </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-xs font-medium text-muted-foreground bg-muted/50 px-2 py-1 rounded-md hidden sm:inline">{course.lessonCount || 0} ders</span>
-                                                <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                                                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => moveCourse(courseIndex, 'up')} disabled={courseIndex === 0} title="Yukarı taşı">
-                                                        <ArrowUp className="size-3.5" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => moveCourse(courseIndex, 'down')} disabled={courseIndex === courses.length - 1} title="Aşağı taşı">
-                                                        <ArrowDown className="size-3.5" />
-                                                    </Button>
-                                                    <div className="w-px h-4 bg-border mx-1 self-center" />
-                                                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => togglePublish(course)} title={course.isPublished ? 'Yayından kaldır' : 'Yayınla'}>
-                                                        {course.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => openCourseModal(course)} title="Düzenle">
-                                                        <Pencil className="size-4" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive" onClick={() => deleteCourse(course)} title="Sil">
-                                                        <Trash2 className="size-4" />
-                                                    </Button>
-                                                </div>
+                                            {course.description && <p className="text-xs text-muted-foreground truncate mt-0.5">{course.description}</p>}
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-xs text-muted-foreground hidden sm:inline whitespace-nowrap">{course.lessonCount || 0} ders</span>
+                                            <div className="flex gap-0.5" onClick={e => e.stopPropagation()}>
+                                                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => moveCourse(courseIndex, 'up')} disabled={courseIndex === 0} title="Yukarı taşı">
+                                                    <ArrowUp className="size-3.5" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => moveCourse(courseIndex, 'down')} disabled={courseIndex === courses.length - 1} title="Aşağı taşı">
+                                                    <ArrowDown className="size-3.5" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => togglePublish(course)} title={course.isPublished ? 'Yayından kaldır' : 'Yayınla'}>
+                                                    {course.isPublished ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => openCourseModal(course)} title="Düzenle">
+                                                    <Pencil className="size-4" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive" onClick={() => deleteCourse(course)} title="Sil">
+                                                    <Trash2 className="size-4" />
+                                                </Button>
                                             </div>
                                         </div>
+                                    </div>
 
-                                        {/* Lessons Area */}
-                                        {expandedCourse === course.id && (
-                                            <div className="border-t bg-muted/10 px-4 py-4 rounded-b-xl">
-                                                <div className="mb-3 flex items-center justify-between">
-                                                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5"><Video className="size-3.5" /> Ders İçerikleri</h4>
-                                                    <Button variant="outline" size="sm" className="h-7 text-xs bg-card shadow-sm" onClick={() => setLessonSheet({ open: true, courseId: course.id, lesson: null })}>
-                                                        <Plus className="size-3 mr-1" /> Ders Ekle
-                                                    </Button>
-                                                </div>
-                                                {!courseLessons[course.id] ? (
-                                                    <div className="py-6 flex justify-center"><Spinner className="size-5 text-muted-foreground" /></div>
-                                                ) : courseLessons[course.id].length === 0 ? (
-                                                    <div className="py-8 text-center border border-dashed rounded-lg bg-card">
-                                                        <p className="text-xs font-medium text-muted-foreground">Bu kursta henüz ders yok</p>
-                                                    </div>
-                                                ) : (
-                                                    <div className="space-y-1.5">
-                                                        {courseLessons[course.id].map((lesson, i) => (
-                                                            <div key={lesson.id} className="group flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5 hover:shadow-sm transition-all">
-                                                                <div className="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground shrink-0">{i + 1}</div>
-                                                                <div className={`flex size-8 shrink-0 items-center justify-center rounded-md ${lesson.lessonType === 'video' ? 'bg-blue-50 text-blue-600' : lesson.lessonType === 'pdf' ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                                                                    {lesson.lessonType === 'video' ? <Video className="size-4" /> : lesson.lessonType === 'pdf' ? <FileText className="size-4" /> : <HelpCircle className="size-4" />}
-                                                                </div>
+                                    {/* Dersler */}
+                                    {expandedCourse === course.id && (
+                                        <div className="border-t">
+                                            <div className="flex items-center justify-between bg-muted/30 px-4 py-2">
+                                                <span className="text-xs font-medium text-muted-foreground">Ders İçerikleri</span>
+                                                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setLessonSheet({ open: true, courseId: course.id, lesson: null })}>
+                                                    <Plus data-icon="inline-start" /> Ders Ekle
+                                                </Button>
+                                            </div>
+                                            {!courseLessons[course.id] ? (
+                                                <div className="py-6 flex justify-center"><Spinner className="size-5 text-muted-foreground" /></div>
+                                            ) : courseLessons[course.id].length === 0 ? (
+                                                <p className="py-8 text-center text-xs text-muted-foreground">Bu kursta henüz ders yok</p>
+                                            ) : (
+                                                <div className="flex flex-col divide-y divide-border">
+                                                    {courseLessons[course.id].map((lesson, i) => {
+                                                        const tip = DERS_TIPI[lesson.lessonType] || DERS_TIPI.video;
+                                                        return (
+                                                            <div key={lesson.id} className="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/30">
+                                                                <div className={`w-1 self-stretch shrink-0 rounded-md ${tip.bar}`} />
+                                                                <span className="w-5 text-center text-xs text-muted-foreground shrink-0">{i + 1}</span>
+                                                                <tip.Icon className="size-4 shrink-0 text-muted-foreground" />
                                                                 <div className="min-w-0 flex-1">
-                                                                    <div className="text-sm font-medium text-foreground truncate">{lesson.title}</div>
-                                                                    <div className="text-[11px] font-medium text-muted-foreground mt-0.5">{lesson.lessonType === 'video' ? 'Video İçerik' : lesson.lessonType === 'pdf' ? 'PDF Doküman' : 'Sınav'}</div>
+                                                                    <div className="text-sm font-medium text-foreground leading-none truncate">{lesson.title}</div>
+                                                                    <div className="text-xs text-muted-foreground leading-none mt-1">{tip.etiket}</div>
                                                                 </div>
                                                                 <div className={`flex gap-0.5 ${HOVER_ACTIONS}`}>
                                                                     <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => moveLesson(course.id, i, 'up')} disabled={i === 0} title="Yukarı taşı">
@@ -368,7 +368,6 @@ export default function AcademyAdmin() {
                                                                     <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => moveLesson(course.id, i, 'down')} disabled={i === courseLessons[course.id].length - 1} title="Aşağı taşı">
                                                                         <ArrowDown className="size-3.5" />
                                                                     </Button>
-                                                                    <div className="w-px h-4 bg-border mx-1 self-center" />
                                                                     <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" onClick={() => setLessonSheet({ open: true, courseId: course.id, lesson })} title="Düzenle">
                                                                         <Pencil className="size-3.5" />
                                                                     </Button>
@@ -377,260 +376,265 @@ export default function AcademyAdmin() {
                                                                     </Button>
                                                                 </div>
                                                             </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </>
-                )}
-
-                {/* Stats Tab */}
-                {activeTab === 'stats' && (
-                    <div>
-                        {statsLoading ? (
-                            <div className="flex flex-col items-center justify-center gap-3 py-16"><Spinner className="size-8" /><p className="text-sm text-muted-foreground">İstatistikler yükleniyor...</p></div>
-                        ) : !stats || stats.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground border border-dashed rounded-lg bg-card">
-                                <BarChart3 className="size-10 text-muted-foreground/40" />
-                                <div className="text-center">
-                                    <p className="text-sm font-medium text-foreground">Kullanıcı istatistiği yok</p>
-                                    <p className="text-xs text-muted-foreground mt-1">Sistemde henüz kayıtlı kullanıcı bulunmuyor.</p>
-                                </div>
-                            </div>
-                        ) : (() => {
-                            const validStats = Array.isArray(stats) ? stats.filter(Boolean) : [];
-                            const branches = [...new Set(validStats.map(s => s.subeSlug).filter(Boolean))]
-                                .sort((a, b) => (subeAdi(a) || '').localeCompare(subeAdi(b) || '', 'tr'));
-                            const baslamayanSayisi = validStats.filter(u => (u.totalCompleted || 0) === 0).length;
-                            const filteredStats = validStats.filter(user => {
-                                if (searchQuery) {
-                                    const q = searchQuery.toLowerCase();
-                                    if (!(user.displayName || '').toLowerCase().includes(q) && !(user.email || '').toLowerCase().includes(q)) return false;
-                                }
-                                if (selectedBranch && user.subeSlug !== selectedBranch) return false;
-                                if (statusFilter === 'notstarted' && (user.totalCompleted || 0) > 0) return false;
-                                if (statusFilter === 'started' && (user.totalCompleted || 0) === 0) return false;
-                                return true;
-                            });
-                            const totalPages = Math.ceil(filteredStats.length / itemsPerPage) || 1;
-                            const currentStats = filteredStats.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
-                            return (
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                        {[{ val: validStats.length, label: 'Kayıtlı Kullanıcı', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-100' },
-                                          { val: baslamayanSayisi, label: 'Hiç Başlamayan', icon: UserX, color: 'text-red-600', bg: 'bg-red-50 border-red-100' },
-                                          { val: validStats.reduce((s, u) => s + (u.totalCompleted || 0), 0), label: 'Tamamlanan Ders', icon: Check, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-100' },
-                                          { val: courses.length, label: 'Toplam Kurs', icon: Video, color: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-100' }].map(s => (
-                                            <div key={s.label} className={`rounded-xl border ${s.bg} p-4 flex items-center gap-4`}>
-                                                <div className={`flex size-12 items-center justify-center rounded-lg bg-white shadow-sm border ${s.color}`}>
-                                                    <s.icon className="size-6" />
-                                                </div>
-                                                <div>
-                                                    <div className="text-2xl font-bold text-foreground leading-none mb-1">{s.val}</div>
-                                                    <div className="text-xs font-medium text-muted-foreground">{s.label}</div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-card p-3 rounded-lg border">
-                                        <div className="relative flex-1">
-                                            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                                            <Input placeholder="İsim veya e-posta ile ara..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 h-9" />
-                                        </div>
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <select className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[150px]" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}>
-                                                <option value="">Tüm Şubeler</option>
-                                                {branches.map(b => <option key={b} value={b}>{subeAdi(b)}</option>)}
-                                            </select>
-                                            <select className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[140px]" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
-                                                <option value="">Tüm Durumlar</option>
-                                                <option value="notstarted">Hiç Başlamayanlar</option>
-                                                <option value="started">Başlayanlar</option>
-                                            </select>
-                                            {(searchQuery || selectedBranch || statusFilter) && <Badge variant="secondary" className="h-6">Sonuç: {filteredStats.length}</Badge>}
-                                            <div className="w-px h-5 bg-border mx-1 hidden sm:block" />
-                                            <Button variant="outline" size="sm" className="h-9 text-xs" onClick={() => fetchStats(true)} title="İstatistikleri yenile">
-                                                <RefreshCw className="size-3.5 mr-1.5" /> Yenile
-                                            </Button>
-                                            <Button variant="outline" size="sm" className="h-9 text-xs" onClick={() => exportCsv(filteredStats)} disabled={filteredStats.length === 0} title="Filtrelenmiş listeyi CSV olarak indir">
-                                                <Download className="size-3.5 mr-1.5" /> CSV
-                                            </Button>
-                                        </div>
-                                    </div>
-
-                                    <div className="rounded-xl border bg-card overflow-hidden">
-                                        <div className="overflow-x-auto">
-                                            <Table>
-                                                <TableHeader className="bg-muted/30">
-                                                    <TableRow>
-                                                        <TableHead className="py-3 font-semibold min-w-[220px] pl-6">Kullanıcı</TableHead>
-                                                        <TableHead className="py-3 font-semibold w-[140px]">Şube</TableHead>
-                                                        <TableHead className="py-3 font-semibold w-[110px]">Rol</TableHead>
-                                                        <TableHead className="py-3 font-semibold min-w-[180px]">İlerleme</TableHead>
-                                                        <TableHead className="text-right py-3 font-semibold w-[150px]">Son Aktivite</TableHead>
-                                                        <TableHead className="w-[44px] pr-4" />
-                                                    </TableRow>
-                                                </TableHeader>
-                                                <TableBody>
-                                                    {currentStats.map(user => {
-                                                        const displayChar = (user.displayName || user.email || '?')[0]?.toUpperCase() || '?';
-                                                        const basladi = (user.totalCompleted || 0) > 0;
-                                                        // Payda: yalnızca bu kullanıcıya görünen (yayında + hedefinde) kursların dersleri
-                                                        const kisiToplamDers = courses.filter(c => kursGorunur(c, user)).reduce((s, c) => s + (c.lessonCount || 0), 0);
-                                                        const genelPct = kisiToplamDers > 0 ? Math.min(100, Math.round(((user.totalCompleted || 0) / kisiToplamDers) * 100)) : 0;
-                                                        const acik = expandedUser === user.userId;
-                                                        const detay = userDetails[user.userId];
-                                                        const sinavlar = (detay || []).filter(d => d.lessonType === 'quiz');
-                                                        // Detayda kullanıcıya görünen kurslar + (artık görünmese de) ilerlemesi olanlar
-                                                        const detayKurslari = courses.filter(c => kursGorunur(c, user) || (user.byCourse?.[c.id]?.count || 0) > 0);
-                                                        return (
-                                                            <Fragment key={user.userId}>
-                                                                <TableRow className="hover:bg-muted/10 cursor-pointer" onClick={() => toggleUserDetail(user.userId)}>
-                                                                    <TableCell className="py-3 pl-6">
-                                                                        <div className="flex items-center gap-3">
-                                                                            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary ring-1 ring-primary/20">{displayChar}</div>
-                                                                            <div className="min-w-0">
-                                                                                <div className="text-sm font-medium text-foreground truncate">{user.displayName || 'İsimsiz Kullanıcı'}</div>
-                                                                                <div className="text-[11px] text-muted-foreground truncate">{user.email || '—'}</div>
-                                                                            </div>
-                                                                        </div>
-                                                                    </TableCell>
-                                                                    <TableCell className="py-3">
-                                                                        {user.subeSlug ? <Badge variant="outline" className="text-[10px] font-medium border-muted-foreground/20">{subeAdi(user.subeSlug)}</Badge> : <span className="text-xs text-muted-foreground">—</span>}
-                                                                    </TableCell>
-                                                                    <TableCell className="py-3 text-xs text-muted-foreground">{ROL_ADLARI[user.role] || user.role || '—'}</TableCell>
-                                                                    <TableCell className="py-3">
-                                                                        {basladi ? (
-                                                                            <div className="flex items-center gap-3">
-                                                                                <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted/50 ring-1 ring-inset ring-muted shrink-0">
-                                                                                    <div className="h-full rounded-full bg-primary" style={{ width: `${genelPct}%` }} />
-                                                                                </div>
-                                                                                <span className="text-xs font-medium text-foreground whitespace-nowrap">{user.totalCompleted} / {kisiToplamDers} ders</span>
-                                                                            </div>
-                                                                        ) : (
-                                                                            <Badge variant="outline" className="text-[10px] font-medium border-red-200 text-red-600 bg-red-50">Başlamadı</Badge>
-                                                                        )}
-                                                                    </TableCell>
-                                                                    <TableCell className="text-right text-xs text-muted-foreground py-3">{formatDate(user.lastActivity)}</TableCell>
-                                                                    <TableCell className="py-3 pr-4 text-muted-foreground">
-                                                                        {acik ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                                {acik && (
-                                                                    <TableRow className="bg-muted/10 hover:bg-muted/10">
-                                                                        <TableCell colSpan={6} className="py-4 px-6">
-                                                                            {detailLoading === user.userId ? (
-                                                                                <div className="flex justify-center py-4"><Spinner className="size-5 text-muted-foreground" /></div>
-                                                                            ) : (
-                                                                                <div className="grid gap-5 lg:grid-cols-2">
-                                                                                    <div>
-                                                                                        <h5 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5">Kurs Bazlı İlerleme</h5>
-                                                                                        <div className="space-y-2">
-                                                                                            {detayKurslari.map(c => {
-                                                                                                const count = user.byCourse?.[c.id]?.count || 0;
-                                                                                                const total = c.lessonCount || 0;
-                                                                                                const pct = total > 0 ? Math.min(100, Math.round((count / total) * 100)) : 0;
-                                                                                                return (
-                                                                                                    <div key={c.id} className="flex items-center gap-3">
-                                                                                                        <span className="text-xs text-foreground w-44 truncate shrink-0" title={c.title}>{c.title}</span>
-                                                                                                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/50 ring-1 ring-inset ring-muted">
-                                                                                                            <div className={`h-full rounded-full ${pct === 100 ? 'bg-emerald-500' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
-                                                                                                        </div>
-                                                                                                        <span className="text-[11px] font-medium text-muted-foreground w-16 text-right shrink-0">
-                                                                                                            {count > 0 ? `${count}/${total} (%${pct})` : '—'}
-                                                                                                        </span>
-                                                                                                    </div>
-                                                                                                );
-                                                                                            })}
-                                                                                            {detayKurslari.length === 0 && <p className="text-xs text-muted-foreground">Bu kullanıcıya atanmış kurs yok.</p>}
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <h5 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2.5">Sınav Sonuçları</h5>
-                                                                                        {sinavlar.length === 0 ? (
-                                                                                            <p className="text-xs text-muted-foreground">Tamamlanmış sınav yok.</p>
-                                                                                        ) : (
-                                                                                            <div className="space-y-1.5">
-                                                                                                {sinavlar.map(s => (
-                                                                                                    <div key={s.lessonId} className="flex items-center justify-between gap-3 rounded-md border bg-card px-3 py-2">
-                                                                                                        <div className="min-w-0">
-                                                                                                            <div className="text-xs font-medium text-foreground truncate">{s.lessonTitle}</div>
-                                                                                                            <div className="text-[10px] text-muted-foreground truncate">{s.courseTitle} · {formatDate(s.completedAt)}</div>
-                                                                                                        </div>
-                                                                                                        <Badge className={`shrink-0 border-0 shadow-none text-[10px] px-2 ${(s.score ?? 0) >= 85 ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                                                                            %{s.score ?? '—'}
-                                                                                                        </Badge>
-                                                                                                    </div>
-                                                                                                ))}
-                                                                                            </div>
-                                                                                        )}
-                                                                                    </div>
-                                                                                </div>
-                                                                            )}
-                                                                        </TableCell>
-                                                                    </TableRow>
-                                                                )}
-                                                            </Fragment>
                                                         );
                                                     })}
-                                                </TableBody>
-                                            </Table>
-                                        </div>
-                                    </div>
-
-                                    {totalPages > 1 && (
-                                        <div className="flex items-center justify-between bg-card p-3 rounded-lg border">
-                                            <p className="text-xs text-muted-foreground ml-1">
-                                                Toplam {filteredStats.length} kayıttan {(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, filteredStats.length)} arası gösteriliyor
-                                            </p>
-                                            <div className="flex items-center gap-1">
-                                                <Button variant="outline" size="sm" className="h-8" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Önceki</Button>
-                                                <div className="flex items-center gap-1 px-2">
-                                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                                                        <button
-                                                            key={page}
-                                                            onClick={() => setCurrentPage(page)}
-                                                            className={`size-7 text-xs font-medium rounded-md flex items-center justify-center transition-colors ${currentPage === page ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`}
-                                                        >
-                                                            {page}
-                                                        </button>
-                                                    ))}
                                                 </div>
-                                                <Button variant="outline" size="sm" className="h-8" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Sonraki</Button>
-                                            </div>
+                                            )}
                                         </div>
                                     )}
+                                </Card>
+                            ))}
+                        </div>
+                    )}
+                </TabsContent>
+
+                {/* ── İstatistikler ── */}
+                <TabsContent value="stats" className="flex-1 min-h-0 overflow-y-auto pb-4">
+                    {statsLoading ? (
+                        <div className="flex flex-col items-center justify-center gap-3 py-16"><Spinner className="size-8" /><p className="text-sm text-muted-foreground">İstatistikler yükleniyor...</p></div>
+                    ) : !stats || stats.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground border border-dashed rounded-xl">
+                            <BarChart3 className="size-10 text-muted-foreground/40" />
+                            <div className="text-center">
+                                <p className="text-sm font-medium text-foreground">Kullanıcı istatistiği yok</p>
+                                <p className="text-xs text-muted-foreground mt-1">Sistemde henüz kayıtlı kullanıcı bulunmuyor.</p>
+                            </div>
+                        </div>
+                    ) : (() => {
+                        const validStats = Array.isArray(stats) ? stats.filter(Boolean) : [];
+                        const branches = [...new Set(validStats.map(s => s.subeSlug).filter(Boolean))]
+                            .sort((a, b) => (subeAdi(a) || '').localeCompare(subeAdi(b) || '', 'tr'));
+                        const baslamayanSayisi = validStats.filter(u => (u.totalCompleted || 0) === 0).length;
+                        const toplamTamamlanan = validStats.reduce((s, u) => s + (u.totalCompleted || 0), 0);
+                        const toplamDersSayisi = courses.reduce((s, c) => s + (c.lessonCount || 0), 0);
+                        const filteredStats = validStats.filter(user => {
+                            if (searchQuery) {
+                                const q = searchQuery.toLowerCase();
+                                if (!(user.displayName || '').toLowerCase().includes(q) && !(user.email || '').toLowerCase().includes(q)) return false;
+                            }
+                            if (selectedBranch && user.subeSlug !== selectedBranch) return false;
+                            if (statusFilter === 'notstarted' && (user.totalCompleted || 0) > 0) return false;
+                            if (statusFilter === 'started' && (user.totalCompleted || 0) === 0) return false;
+                            return true;
+                        });
+                        const totalPages = Math.ceil(filteredStats.length / itemsPerPage) || 1;
+                        const currentStats = filteredStats.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+                        const kpiKartlari = [
+                            { label: 'Kayıtlı Kullanıcı', val: validStats.length, aciklama: 'eğitim hedef kitlesi', Icon: Users },
+                            { label: 'Hiç Başlamayan', val: baslamayanSayisi, aciklama: 'hiç ders tamamlamadı', Icon: UserX },
+                            { label: 'Tamamlanan Ders', val: toplamTamamlanan, aciklama: 'tüm kullanıcıların toplamı', Icon: Check },
+                            { label: 'Toplam Kurs', val: courses.length, aciklama: `${toplamDersSayisi} ders içerik`, Icon: BookOpen },
+                        ];
+
+                        return (
+                            <div className="flex flex-col gap-4">
+                                {/* KPI kartları */}
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                    {kpiKartlari.map(k => (
+                                        <Card key={k.label} size="sm">
+                                            <CardHeader>
+                                                <CardTitle className="text-sm">{k.label}</CardTitle>
+                                                <CardAction><k.Icon className="size-4 text-muted-foreground" /></CardAction>
+                                            </CardHeader>
+                                            <CardContent className="flex flex-col gap-1">
+                                                <span className="text-3xl text-foreground leading-none tracking-tight">{k.val}</span>
+                                                <span className="text-xs text-muted-foreground">{k.aciklama}</span>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
                                 </div>
-                            );
-                        })()}
-                    </div>
-                )}
-            </div>
+
+                                {/* Filtre çubuğu */}
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                    <div className="relative flex-1">
+                                        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                                        <Input placeholder="İsim veya e-posta ile ara..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-9 h-8" />
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <select className="h-8 rounded-md border border-input bg-background px-3 text-sm min-w-[140px]" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)}>
+                                            <option value="">Tüm Şubeler</option>
+                                            {branches.map(b => <option key={b} value={b}>{subeAdi(b)}</option>)}
+                                        </select>
+                                        <select className="h-8 rounded-md border border-input bg-background px-3 text-sm min-w-[130px]" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                                            <option value="">Tüm Durumlar</option>
+                                            <option value="notstarted">Hiç Başlamayanlar</option>
+                                            <option value="started">Başlayanlar</option>
+                                        </select>
+                                        {(searchQuery || selectedBranch || statusFilter) && <Badge variant="secondary" className="h-6">Sonuç: {filteredStats.length}</Badge>}
+                                        <Button variant="outline" size="sm" className="h-8" onClick={() => fetchStats(true)} title="İstatistikleri yenile">
+                                            <RefreshCw data-icon="inline-start" /> Yenile
+                                        </Button>
+                                        <Button variant="outline" size="sm" className="h-8" onClick={() => exportCsv(filteredStats)} disabled={filteredStats.length === 0} title="Filtrelenmiş listeyi CSV olarak indir">
+                                            <Download data-icon="inline-start" /> CSV
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                {/* Kullanıcı tablosu */}
+                                <Card className="py-0 gap-0">
+                                    <div className="overflow-x-auto">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow className="hover:bg-transparent">
+                                                    <TableHead className="py-3 min-w-[220px] pl-4">Kullanıcı</TableHead>
+                                                    <TableHead className="py-3 w-[140px]">Şube</TableHead>
+                                                    <TableHead className="py-3 w-[110px]">Rol</TableHead>
+                                                    <TableHead className="py-3 min-w-[180px]">İlerleme</TableHead>
+                                                    <TableHead className="text-right py-3 w-[150px]">Son Aktivite</TableHead>
+                                                    <TableHead className="w-[40px] pr-4" />
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {currentStats.map(user => {
+                                                    const displayChar = (user.displayName || user.email || '?')[0]?.toUpperCase() || '?';
+                                                    const basladi = (user.totalCompleted || 0) > 0;
+                                                    // Payda: yalnızca bu kullanıcıya görünen (yayında + hedefinde) kursların dersleri
+                                                    const kisiToplamDers = courses.filter(c => kursGorunur(c, user)).reduce((s, c) => s + (c.lessonCount || 0), 0);
+                                                    const genelPct = kisiToplamDers > 0 ? Math.min(100, Math.round(((user.totalCompleted || 0) / kisiToplamDers) * 100)) : 0;
+                                                    const acik = expandedUser === user.userId;
+                                                    const detay = userDetails[user.userId];
+                                                    const sinavlar = (detay || []).filter(d => d.lessonType === 'quiz');
+                                                    // Detayda kullanıcıya görünen kurslar + (artık görünmese de) ilerlemesi olanlar
+                                                    const detayKurslari = courses.filter(c => kursGorunur(c, user) || (user.byCourse?.[c.id]?.count || 0) > 0);
+                                                    return (
+                                                        <Fragment key={user.userId}>
+                                                            <TableRow className="cursor-pointer hover:bg-muted/30" onClick={() => toggleUserDetail(user.userId)}>
+                                                                <TableCell className="py-2.5 pl-4">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground">{displayChar}</div>
+                                                                        <div className="min-w-0">
+                                                                            <div className="text-sm font-medium text-foreground truncate">{user.displayName || 'İsimsiz Kullanıcı'}</div>
+                                                                            <div className="text-xs text-muted-foreground truncate">{user.email || '—'}</div>
+                                                                        </div>
+                                                                    </div>
+                                                                </TableCell>
+                                                                <TableCell className="py-2.5 text-xs text-muted-foreground">{user.subeSlug ? subeAdi(user.subeSlug) : '—'}</TableCell>
+                                                                <TableCell className="py-2.5 text-xs text-muted-foreground">{ROL_ADLARI[user.role] || user.role || '—'}</TableCell>
+                                                                <TableCell className="py-2.5">
+                                                                    {basladi ? (
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted shrink-0">
+                                                                                <div className="h-full rounded-full bg-primary" style={{ width: `${genelPct}%` }} />
+                                                                            </div>
+                                                                            <span className="text-xs text-foreground whitespace-nowrap">{user.totalCompleted} / {kisiToplamDers} ders</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <Badge variant="secondary" className={ROZET.kirmizi}>Başlamadı</Badge>
+                                                                    )}
+                                                                </TableCell>
+                                                                <TableCell className="text-right text-xs text-muted-foreground py-2.5">{formatDate(user.lastActivity)}</TableCell>
+                                                                <TableCell className="py-2.5 pr-4 text-muted-foreground">
+                                                                    {acik ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                                                                </TableCell>
+                                                            </TableRow>
+                                                            {acik && (
+                                                                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                                                                    <TableCell colSpan={6} className="py-4 px-6">
+                                                                        {detailLoading === user.userId ? (
+                                                                            <div className="flex justify-center py-4"><Spinner className="size-5 text-muted-foreground" /></div>
+                                                                        ) : (
+                                                                            <div className="grid gap-5 lg:grid-cols-2">
+                                                                                <div>
+                                                                                    <h5 className="text-xs font-medium text-muted-foreground mb-2.5">Kurs Bazlı İlerleme</h5>
+                                                                                    <div className="flex flex-col gap-2">
+                                                                                        {detayKurslari.map(c => {
+                                                                                            const count = user.byCourse?.[c.id]?.count || 0;
+                                                                                            const total = c.lessonCount || 0;
+                                                                                            const pct = total > 0 ? Math.min(100, Math.round((count / total) * 100)) : 0;
+                                                                                            return (
+                                                                                                <div key={c.id} className="flex items-center gap-3">
+                                                                                                    <span className="text-xs text-foreground w-44 truncate shrink-0" title={c.title}>{c.title}</span>
+                                                                                                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                                                                                                        <div className={`h-full rounded-full ${pct === 100 ? 'bg-green-600 dark:bg-green-400' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
+                                                                                                    </div>
+                                                                                                    <span className="text-xs text-muted-foreground w-16 text-right shrink-0">
+                                                                                                        {count > 0 ? `${count}/${total} (%${pct})` : '—'}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                            );
+                                                                                        })}
+                                                                                        {detayKurslari.length === 0 && <p className="text-xs text-muted-foreground">Bu kullanıcıya atanmış kurs yok.</p>}
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <h5 className="text-xs font-medium text-muted-foreground mb-2.5">Sınav Sonuçları</h5>
+                                                                                    {sinavlar.length === 0 ? (
+                                                                                        <p className="text-xs text-muted-foreground">Tamamlanmış sınav yok.</p>
+                                                                                    ) : (
+                                                                                        <div className="flex flex-col gap-1.5">
+                                                                                            {sinavlar.map(s => (
+                                                                                                <div key={s.lessonId} className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
+                                                                                                    <div className="min-w-0">
+                                                                                                        <div className="text-xs font-medium text-foreground truncate">{s.lessonTitle}</div>
+                                                                                                        <div className="text-[10px] text-muted-foreground truncate">{s.courseTitle} · {formatDate(s.completedAt)}</div>
+                                                                                                    </div>
+                                                                                                    <Badge variant="secondary" className={(s.score ?? 0) >= 85 ? ROZET.yesil : ROZET.mavi}>
+                                                                                                        %{s.score ?? '—'}
+                                                                                                    </Badge>
+                                                                                                </div>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            )}
+                                                        </Fragment>
+                                                    );
+                                                })}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </Card>
+
+                                {totalPages > 1 && (
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs text-muted-foreground">
+                                            Toplam {filteredStats.length} kayıttan {(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, filteredStats.length)} arası gösteriliyor
+                                        </p>
+                                        <div className="flex items-center gap-1">
+                                            <Button variant="outline" size="sm" className="h-8" onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}>Önceki</Button>
+                                            <div className="flex items-center gap-1 px-2">
+                                                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                                    <button
+                                                        key={page}
+                                                        onClick={() => setCurrentPage(page)}
+                                                        className={`size-7 text-xs font-medium rounded-md flex items-center justify-center transition-colors ${currentPage === page ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'}`}
+                                                    >
+                                                        {page}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <Button variant="outline" size="sm" className="h-8" onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>Sonraki</Button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+                </TabsContent>
+            </Tabs>
 
             {/* Kurs Modalı */}
             <Dialog open={showCourseModal} onOpenChange={(open) => !open && requestCloseCourseModal()}>
-                <DialogContent className="sm:max-w-lg p-0 gap-0 border overflow-hidden">
-                    <DialogHeader className="px-5 py-4 border-b bg-card">
+                <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden">
+                    <DialogHeader className="px-5 py-4 border-b">
                         <DialogTitle className="text-sm font-medium">{editingCourse ? 'Kurs Düzenle' : 'Yeni Kurs'}</DialogTitle>
                     </DialogHeader>
                     <div className="px-5 py-4 flex flex-col gap-4 overflow-y-auto max-h-[65vh]">
-                        <div className="space-y-1.5">
+                        <div className="flex flex-col gap-1.5">
                             <Label className="text-xs font-medium">Kurs Başlığı</Label>
                             <Input value={courseForm.title} onChange={e => setCourseForm(f => ({ ...f, title: e.target.value }))} placeholder="Örn: Kadayıf Ustalık Eğitimi" autoFocus className="h-9" />
                         </div>
-                        <div className="space-y-1.5">
+                        <div className="flex flex-col gap-1.5">
                             <Label className="text-xs font-medium">Açıklama</Label>
                             <Textarea value={courseForm.description} onChange={e => setCourseForm(f => ({ ...f, description: e.target.value }))} placeholder="Kısa açıklama girin..." rows={3} className="resize-none" />
                         </div>
 
-                        <div className="space-y-2 border-t pt-4">
+                        <div className="flex flex-col gap-2 border-t pt-4">
                             <Label className="text-xs font-medium">Hedef Kitle</Label>
                             <p className="text-[10px] text-muted-foreground -mt-1">Kurs yalnızca seçilen rollere ve şubelere görünür. Adminler her kursu görür.</p>
                             <div className="flex items-center gap-5 pt-1">
@@ -645,7 +649,7 @@ export default function AcademyAdmin() {
                             </div>
                         </div>
 
-                        <div className="space-y-2">
+                        <div className="flex flex-col gap-2">
                             <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
                                 <Checkbox checked={courseForm.tumSubeler} onCheckedChange={(v) => setCourseForm(f => ({ ...f, tumSubeler: !!v }))} />
                                 Tüm şubeler
@@ -673,7 +677,7 @@ export default function AcademyAdmin() {
                             )}
                         </div>
                     </div>
-                    <DialogFooter className="px-5 py-3 border-t bg-card/50 m-0">
+                    <DialogFooter className="px-5 py-3 border-t m-0">
                         <Button variant="outline" size="sm" onClick={requestCloseCourseModal}>İptal</Button>
                         <Button onClick={saveCourse} size="sm">{editingCourse ? 'Değişiklikleri Kaydet' : 'Kursu Oluştur'}</Button>
                     </DialogFooter>

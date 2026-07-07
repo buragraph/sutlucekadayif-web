@@ -41,7 +41,7 @@ export default function AcademyDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">Eğitim içeriklerine göz atın ve kendinizi geliştirin.</p>
                 </div>
                 {role === 'admin' && (
-                    <Button size="sm" className="h-8 shadow-sm text-xs" variant="outline" onClick={() => navigate('/admin/akademi/yonetim')}>
+                    <Button size="sm" className="h-8 text-xs" variant="outline" onClick={() => navigate('/admin/akademi/yonetim')}>
                         <Settings className="size-3.5 mr-1.5" />
                         Akademi Yönetimi
                     </Button>
@@ -71,7 +71,7 @@ export default function AcademyDashboard() {
                         return (
                             <div
                                 key={course.id}
-                                className="group cursor-pointer flex flex-col overflow-hidden rounded-xl border bg-card hover:shadow-md transition-shadow"
+                                className="group cursor-pointer flex flex-col overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10 transition-colors hover:ring-foreground/25"
                                 onClick={() => navigate(`/admin/akademi/kurs/${course.id}`)}
                             >
                                 <div className="relative aspect-[16/9] bg-muted/50 border-b shrink-0">
