@@ -26,9 +26,10 @@ import { Spinner } from '@/components/ui/spinner';
 const ROL_ADLARI = { admin: 'Admin', sube_sahibi: 'Şube Sahibi', calisan: 'Çalışan' };
 
 // Yumuşak (soft) rozet stilleri — tasarım referansındaki badge dili
-// Kart kenar çizgisi: ortak Card'ın ring-foreground/10'u bu ekranda fazla silik
-// kaldığından bir ton koyusu kullanılıyor
-const KART = 'ring-foreground/20';
+// Kart kenar çizgisi: ortak Card'ın ring'i dışa çizildiğinden kaydırma
+// konteynerinin kenarına yaslanan kartlarda kırpılıyordu (kenarların bir kısmı
+// görünmüyordu) — ring-inset içe çizer, kırpılmaz. Ton da bir kademe koyu.
+const KART = 'ring-inset ring-foreground/20';
 
 const ROZET = {
     yesil: 'rounded-md border-green-600/50 bg-green-50 px-2 py-0.5 font-medium text-[10px] text-green-600 dark:border-green-800/50 dark:bg-green-500/10 dark:text-green-400',

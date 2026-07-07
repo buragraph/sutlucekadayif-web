@@ -71,7 +71,7 @@ export default function AcademyDashboard() {
                         return (
                             <div
                                 key={course.id}
-                                className="group cursor-pointer flex flex-col overflow-hidden rounded-xl bg-card ring-1 ring-foreground/20 transition-colors hover:ring-foreground/35"
+                                className="group cursor-pointer flex flex-col overflow-hidden rounded-xl bg-card ring-1 ring-inset ring-foreground/20 transition-colors hover:ring-foreground/35"
                                 onClick={() => navigate(`/admin/akademi/kurs/${course.id}`)}
                             >
                                 <div className="relative aspect-[16/9] bg-muted/50 border-b shrink-0">
