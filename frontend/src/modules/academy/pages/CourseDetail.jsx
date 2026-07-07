@@ -41,7 +41,7 @@ export default function CourseDetail() {
                 const firstUncompleted = c.lessons.find(l => !progressRes.data.completed?.[l.id]);
                 setCurrentLesson(firstUncompleted || c.lessons[0]);
             }
-        } catch (err) {
+        } catch {
             toast.error('Kurs verileri yüklenemedi');
         } finally {
             setLoading(false);
@@ -78,7 +78,7 @@ export default function CourseDetail() {
                     setCurrentLesson(lessons[idx + 1]);
                 }
             }
-        } catch (err) {
+        } catch {
             toast.error('İşlem başarısız');
         } finally {
             setCompleting(false);

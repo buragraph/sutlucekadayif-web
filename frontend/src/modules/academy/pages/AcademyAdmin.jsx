@@ -26,6 +26,10 @@ import { Spinner } from '@/components/ui/spinner';
 const ROL_ADLARI = { admin: 'Admin', sube_sahibi: 'Şube Sahibi', calisan: 'Çalışan' };
 
 // Yumuşak (soft) rozet stilleri — tasarım referansındaki badge dili
+// Kart kenar çizgisi: ortak Card'ın ring-foreground/10'u bu ekranda fazla silik
+// kaldığından bir ton koyusu kullanılıyor
+const KART = 'ring-foreground/20';
+
 const ROZET = {
     yesil: 'rounded-md border-green-600/50 bg-green-50 px-2 py-0.5 font-medium text-[10px] text-green-600 dark:border-green-800/50 dark:bg-green-500/10 dark:text-green-400',
     mavi: 'rounded-md border-blue-600/50 bg-blue-50 px-2 py-0.5 font-medium text-[10px] text-blue-600 dark:border-blue-800/50 dark:bg-blue-500/10 dark:text-blue-400',
@@ -309,7 +313,7 @@ export default function AcademyAdmin() {
                 {/* ── Kurslar ── */}
                 <TabsContent value="courses" className="flex-1 min-h-0 overflow-y-auto pb-4">
                     {courses.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground border border-dashed rounded-xl">
+                        <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground border border-dashed border-foreground/20 rounded-xl">
                             <BookOpen className="size-10 text-muted-foreground/40" />
                             <div className="text-center">
                                 <p className="text-sm font-medium text-foreground">Henüz kurs eklenmemiş</p>
@@ -326,7 +330,7 @@ export default function AcademyAdmin() {
                                     {courses.map((course) => (
                                         <Sortable id={course.id} key={course.id}>
                                             {({ ref, style, grip, isDragging }) => (
-                                                <Card ref={ref} style={style} className={cn('py-0 gap-0', isDragging && 'relative z-10 opacity-80')}>
+                                                <Card ref={ref} style={style} className={cn('py-0 gap-0', KART, isDragging && 'relative z-10 opacity-80')}>
                                                     <div className="flex cursor-pointer items-center gap-2 px-3 py-3.5 transition-colors hover:bg-muted/30" onClick={() => toggleCourse(course.id)}>
                                                         <button
                                                             {...grip}
@@ -481,7 +485,7 @@ export default function AcademyAdmin() {
                     {statsLoading ? (
                         <div className="flex flex-col items-center justify-center gap-3 py-16"><Spinner className="size-8" /><p className="text-sm text-muted-foreground">İstatistikler yükleniyor...</p></div>
                     ) : !stats || stats.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground border border-dashed rounded-xl">
+                        <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground border border-dashed border-foreground/20 rounded-xl">
                             <BarChart3 className="size-10 text-muted-foreground/40" />
                             <div className="text-center">
                                 <p className="text-sm font-medium text-foreground">Kullanıcı istatistiği yok</p>
@@ -520,7 +524,7 @@ export default function AcademyAdmin() {
                                 {/* KPI kartları */}
                                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                                     {kpiKartlari.map(k => (
-                                        <Card key={k.label} size="sm">
+                                        <Card key={k.label} size="sm" className={KART}>
                                             <CardHeader>
                                                 <CardTitle className="text-sm">{k.label}</CardTitle>
                                                 <CardAction><k.Icon className="size-4 text-muted-foreground" /></CardAction>
@@ -560,7 +564,7 @@ export default function AcademyAdmin() {
                                 </div>
 
                                 {/* Kullanıcı tablosu */}
-                                <Card className="py-0 gap-0">
+                                <Card className={cn('py-0 gap-0', KART)}>
                                     <div className="overflow-x-auto">
                                         <Table>
                                             <TableHeader>
