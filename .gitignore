@@ -37,3 +37,6 @@ graphify-out/
 
 # Claude Code lokal izinler
 .claude/settings.local.json
+
+# SAST tarama çıktıları (utkusen/sast-skills)
+sast/
