@@ -1,10 +1,29 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { uploadFile, deleteFile, urlToKey, r2, BUCKET, PUBLIC_URL } from '../config/r2.js';
+import { uploadFile, deleteFile, urlToKey, isKeyAllowed, r2, BUCKET, PUBLIC_URL } from '../config/r2.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
+import { db } from '../config/firebase.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import crypto from 'crypto';
+
+// POST /api/upload/image için izinli R2 klasör önekleri. Yalnızca mevcut
+// çağıranların gönderdiği ('urunler') değer whitelist'te — bilinmeyen/keyfi
+// değer (ör. "dekontlar/x", "../../y") sanitize edilip varsayılana düşer.
+const ALLOWED_UPLOAD_FOLDERS = new Set(['urunler']);
+
+// GET /api/upload/dekont/* sunumunda depolanan (yükleme anında saldırgan
+// tarafından ayarlanabilen) ContentType'a GÜVENİLMEZ — uzantıdan sabit,
+// güvenli bir tip türetilir. Böylece stored `text/html` ContentType ile
+// tarayıcının `nosniff` altında HTML/JS render etmesi (stored XSS) engellenir.
+const SAFE_DEKONT_CONTENT_TYPES = {
+    '.pdf': 'application/pdf',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+};
 
 const router = Router();
 
@@ -45,9 +64,9 @@ router.get(
         const key = req.params[0];
         if (!key) return res.status(400).json({ error: 'Key gerekli' });
 
-        // Hassas prefix'ler public proxy'den ASLA servis edilmez — dekontlar
-        // (banka makbuzları) yetki gerektirir, /dekont/* endpoint'inden gider.
-        if (key.startsWith('dekontlar/')) {
+        // Pozitif allow-list — yalnızca izinli önekler (urunler/, menu/, academy/)
+        // servis edilir; dekontlar/ ve tanımsız her şey reddedilir (bkz. r2.js isKeyAllowed).
+        if (!isKeyAllowed(key)) {
             return res.status(403).json({ error: 'Bu kaynağa erişim yetkiniz yok' });
         }
 
@@ -111,7 +130,17 @@ router.get(
 
         try {
             const result = await r2.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
-            res.set('Content-Type', result.ContentType || 'application/octet-stream');
+
+            // Depolanan ContentType yükleme sırasında saldırgan tarafından
+            // ayarlanmış olabilir — güvenmek yerine uzantıdan sabit tip türet.
+            const ext = (dosya.match(/\.[^.]+$/)?.[0] || '').toLowerCase();
+            const safeContentType = SAFE_DEKONT_CONTENT_TYPES[ext] || 'application/octet-stream';
+            res.set('Content-Type', safeContentType);
+            // Tarayıcı hiçbir koşulda içeriği inline render etmesin (HTML/JS dahil) —
+            // görsel/PDF yine indirilebilir kalır, sadece inline gösterim engellenir.
+            const safeFilename = dosya.replace(/["\r\n]/g, '');
+            res.set('Content-Disposition', `attachment; filename="${safeFilename}"`);
+            res.set('X-Content-Type-Options', 'nosniff');
             res.set('Cache-Control', 'private, no-store');
             result.Body.pipe(res);
         } catch (err) {
@@ -139,7 +168,11 @@ router.post(
 
         const originalSize = req.file.buffer.length;
         const optimized = await optimizeImage(req.file.buffer);
-        const folder = req.body.folder || 'urunler';
+        // Sanitize: yalnızca izinli sabit klasör adları kabul edilir — aksi halde
+        // req.body.folder doğrudan R2 key prefix'ine girip key injection'a
+        // (ör. "dekontlar/..", "../../..") yol açardı.
+        const requestedFolder = req.body.folder;
+        const folder = ALLOWED_UPLOAD_FOLDERS.has(requestedFolder) ? requestedFolder : 'urunler';
         const fileName = `${folder}/${crypto.randomUUID()}.webp`;
 
         const url = await uploadFile(optimized, fileName, 'image/webp');
@@ -163,12 +196,38 @@ router.delete(
         const { url } = req.body;
         if (!url) return res.status(400).json({ error: 'URL gerekli' });
 
+        // urlToKey artık PUBLIC_URL öneki yoksa null döner (bkz. r2.js) — bilinmeyen
+        // domain/URL şekli key sanılıp silinemez.
         const key = urlToKey(url);
-        // Hassas dosyalar (dekontlar) ürün-görseli silme yolundan silinemez
-        if (key && key.startsWith('dekontlar/')) {
+        if (!key) return res.status(400).json({ error: 'Geçersiz görsel URL\'i' });
+
+        // Pozitif allow-list: dekontlar/ HER ZAMAN reddedilir; yalnızca
+        // urunler/, menu/, academy/ önekleri (+ traversal koruması) geçer.
+        if (!isKeyAllowed(key, { forDelete: true })) {
             return res.status(403).json({ error: 'Bu dosya bu işlemle silinemez' });
         }
-        if (key) await deleteFile(key);
+
+        // Admin olmayanlar (sube_sahibi) yalnızca KENDİ şubelerinin ürün
+        // görsellerini silebilir. `urunler/{uuid}.webp` key şablonu şube bilgisi
+        // taşımadığından, sahiplik çağıranın kendi şube-özel ürün koleksiyonunda
+        // bu görsele referans veren bir kayıt olup olmadığına bakılarak
+        // doğrulanır (tek indeksli `where` sorgusu — döngüde get yok).
+        // menu/ ve academy/ önekleri şube-bazlı değildir → admin dışına kapalı.
+        if (req.user.role !== 'admin') {
+            if (!key.startsWith('urunler/') || !req.user.subeSlug) {
+                return res.status(403).json({ error: 'Bu dosyayı silme yetkiniz yok' });
+            }
+            const ownSnap = await db.collection('subeler').doc(req.user.subeSlug)
+                .collection('urunler')
+                .where('gorsel', '==', url)
+                .limit(1)
+                .get();
+            if (ownSnap.empty) {
+                return res.status(403).json({ error: 'Bu dosyayı silme yetkiniz yok' });
+            }
+        }
+
+        await deleteFile(key);
 
         res.json({ success: true });
     })

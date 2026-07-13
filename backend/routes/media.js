@@ -3,7 +3,7 @@ import { db } from '../config/firebase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import admin from 'firebase-admin';
-import { deleteFile, urlToKey } from '../config/r2.js';
+import { deleteFile, urlToKey, isKeyAllowed } from '../config/r2.js';
 
 const router = Router();
 
@@ -228,11 +228,14 @@ router.post(
         }
 
         // Önce R2 dosyalarını sil (paralel, best-effort)
+        // Pozitif allow-list: dekontlar/ ve tanımsız önekler asla silinmez —
+        // aksi halde `url` alanı doğrulanmadan yazıldığı için (bkz. POST /api/media)
+        // keyfi bir "medya" kaydı üzerinden dekont/menu dosyaları toplu silinebilirdi.
         const docs = await Promise.all(ids.map((id) => db.collection('medya').doc(id).get()));
         await Promise.all(docs.map(async (d) => {
             if (!d.exists) return;
             const key = urlToKey(d.data().url);
-            if (key) {
+            if (key && isKeyAllowed(key, { forDelete: true })) {
                 try { await deleteFile(key); } catch (e) { console.error('[Media] R2 silme hatası:', e.message); }
             }
         }));
@@ -351,11 +354,12 @@ router.delete(
             return res.status(404).json({ error: 'Medya bulunamadı' });
         }
 
-        // R2'den dosyayı sil
+        // R2'den dosyayı sil — pozitif allow-list (dekontlar/ ve tanımsız
+        // önekler asla silinmez, bkz. bulk-delete'teki gerekçe).
         const { url } = doc.data();
         if (url) {
             const key = urlToKey(url);
-            if (key) {
+            if (key && isKeyAllowed(key, { forDelete: true })) {
                 try { await deleteFile(key); } catch (err) { console.error('R2 silme hatası:', err.message); }
             }
         }

@@ -20,7 +20,18 @@ export async function regenerateMenuJson(subeSlug) {
             return;
         }
 
-        const sube = { id: subeDoc.id, ...subeDoc.data() };
+        // Yalnızca menüde gösterilen GÜVENLİ alanlar yazılır — bu JSON R2'de
+        // auth'suz proxy üzerinden servis edildiği için VKN, fatura_adresi,
+        // yetkili_adi, telefon gibi PII buraya ASLA yazılmaz. Public
+        // `/api/menu/:subeSlug` endpoint'iyle (menu.js) AYNI projeksiyon.
+        const sd = subeDoc.data();
+        const sube = {
+            id: subeDoc.id,
+            slug: subeDoc.id,
+            ad: sd.ad || subeDoc.id,
+            il: sd.il || null,
+            ilce: sd.ilce || null,
+        };
         const kategoriler = [];
         katSnap.forEach((d) => kategoriler.push({ id: d.id, ...d.data() }));
 
