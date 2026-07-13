@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../../../config/firebase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
-import { deleteFile, urlToKey } from '../../../config/r2.js';
+import { deleteFile, urlToKey, isKeyAllowed } from '../../../config/r2.js';
 import { stripQuizAnswers, courseVisibleToUser } from '../utils.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import { syncUserProgressStats, invalidateStatsCache } from './progress.js';
@@ -176,8 +176,10 @@ router.delete('/:id', verifyToken, requirePermission('academy.manage'), asyncHan
         const url = d.data().videoUrl || d.data().pdfUrl;
         if (!url) return;
         try {
+            // Ders create/update'te doğrulanmış olsa da savunma-derinliği: cascade
+            // silmede de allow-list dışı/dekontlar/ key'i asla silme.
             const key = urlToKey(url);
-            if (key) await deleteFile(key);
+            if (key && isKeyAllowed(key, { forDelete: true })) await deleteFile(key);
         } catch (e) { console.error('[Academy] R2 dosya silinemedi:', e.message); }
     }));
 

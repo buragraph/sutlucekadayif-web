@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../../../config/firebase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
-import { deleteFile, urlToKey } from '../../../config/r2.js';
+import { deleteFile, urlToKey, isKeyAllowed, PUBLIC_URL } from '../../../config/r2.js';
 import { stripQuizAnswers, courseVisibleToUser } from '../utils.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import { syncUserProgressStats, invalidateStatsCache } from './progress.js';
@@ -42,11 +42,28 @@ async function deleteLessonFile(data) {
     const url = data?.videoUrl || data?.pdfUrl;
     if (!url) return;
     try {
+        // Allow-list dışı/dekontlar/ key'i asla silme (bkz. backend/config/r2.js isKeyAllowed)
         const key = urlToKey(url);
-        if (key) await deleteFile(key);
+        if (key && isKeyAllowed(key, { forDelete: true })) await deleteFile(key);
     } catch (e) {
         console.error('[Academy] R2 dosya silinemedi:', e.message);
     }
+}
+
+/**
+ * Ders `videoUrl`/`pdfUrl` alanı yazılırken doğrulama. R2 `PUBLIC_URL` önekiyle
+ * başlayan bir URL ise key `academy/` allow-list prefix'inde olmalı (aksi halde
+ * cascade silmede sonradan reddedilecek/asla silinemeyecek çöp bir değer
+ * saklanır). Harici URL'ler (ör. YouTube video linki) R2'de olmadığından bu
+ * kontrolden muaf — serbest bırakılır.
+ */
+function isValidLessonMediaUrl(url) {
+    if (!url) return true;
+    if (PUBLIC_URL && url.startsWith(`${PUBLIC_URL}/`)) {
+        const key = urlToKey(url);
+        return !!key && isKeyAllowed(key);
+    }
+    return true;
 }
 
 /**
@@ -86,8 +103,15 @@ router.post('/:courseId', verifyToken, requirePermission('academy.manage'), asyn
     if (!title?.trim()) return res.status(400).json({ error: 'Ders başlığı gerekli' });
     if (!['video', 'pdf', 'quiz'].includes(lessonType)) return res.status(400).json({ error: 'Geçerli ders tipi: video, pdf veya quiz' });
     if (lessonType === 'quiz') {
-        if (typeof passingScore !== 'number' || passingScore < 0 || passingScore > 100) return res.status(400).json({ error: 'Geçerli bir geçme notu (0-100) gerekli' });
+        // passingScore >= 1 zorunlu: 0 herkesi otomatik geçirir (bkz. Bulgu #22)
+        if (typeof passingScore !== 'number' || passingScore < 1 || passingScore > 100) return res.status(400).json({ error: 'Geçerli bir geçme notu (1-100) gerekli' });
         if (!Array.isArray(questions) || questions.length === 0) return res.status(400).json({ error: 'Sınav için en az bir soru gerekli' });
+    }
+    if (lessonType === 'video' && videoUrl && !isValidLessonMediaUrl(videoUrl)) {
+        return res.status(400).json({ error: 'Geçersiz video dosyası URL\'i' });
+    }
+    if (lessonType === 'pdf' && pdfUrl && !isValidLessonMediaUrl(pdfUrl)) {
+        return res.status(400).json({ error: 'Geçersiz PDF dosyası URL\'i' });
     }
 
     // Sıralama için mevcut ders sayısı
@@ -169,8 +193,14 @@ router.put('/:courseId/:lessonId', verifyToken, requirePermission('academy.manag
             updateData.videoUrl = '';
         }
     }
-    if (videoUrl !== undefined && lessonType !== 'quiz' && lessonType !== 'pdf') updateData.videoUrl = videoUrl;
-    if (pdfUrl !== undefined && lessonType !== 'quiz' && lessonType !== 'video') updateData.pdfUrl = pdfUrl;
+    if (videoUrl !== undefined && lessonType !== 'quiz' && lessonType !== 'pdf') {
+        if (videoUrl && !isValidLessonMediaUrl(videoUrl)) return res.status(400).json({ error: 'Geçersiz video dosyası URL\'i' });
+        updateData.videoUrl = videoUrl;
+    }
+    if (pdfUrl !== undefined && lessonType !== 'quiz' && lessonType !== 'video') {
+        if (pdfUrl && !isValidLessonMediaUrl(pdfUrl)) return res.status(400).json({ error: 'Geçersiz PDF dosyası URL\'i' });
+        updateData.pdfUrl = pdfUrl;
+    }
     if (orderIndex !== undefined) updateData.orderIndex = orderIndex;
 
     // Eğer quiz güncelleniyorsa validasyonlar (eğer title vs gelmediyse diye eski tipini kontrol et)
@@ -179,7 +209,7 @@ router.put('/:courseId/:lessonId', verifyToken, requirePermission('academy.manag
         const finalPassing = passingScore !== undefined ? passingScore : doc.data().passingScore;
         const finalQuestions = questions !== undefined ? questions : doc.data().questions;
         
-        if (typeof finalPassing !== 'number' || finalPassing < 0 || finalPassing > 100) return res.status(400).json({ error: 'Geçerli bir geçme notu (0-100) gerekli' });
+        if (typeof finalPassing !== 'number' || finalPassing < 1 || finalPassing > 100) return res.status(400).json({ error: 'Geçerli bir geçme notu (1-100) gerekli' });
         if (!Array.isArray(finalQuestions) || finalQuestions.length === 0) return res.status(400).json({ error: 'Sınav için en az bir soru gerekli' });
         
         if (passingScore !== undefined) updateData.passingScore = passingScore;

@@ -3,6 +3,7 @@ import { db, auth } from '../../../config/firebase.js';
 import { verifyToken } from '../../../middleware/auth.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import { getKonumListe, syncAllKonumlar } from '../../../shared/konum-store.js';
+import { courseVisibleToUser } from '../utils.js';
 
 const router = Router();
 
@@ -224,8 +225,11 @@ router.post('/quiz/:courseId/:lessonId/submit', verifyToken, asyncHandler(async 
         return res.status(400).json({ error: 'Cevaplar geçerli bir formatta gönderilmelidir.' });
     }
 
-    // Dersi getir
-    const lessonSnap = await db.collection('academy_courses').doc(courseId).collection('lessons').doc(lessonId).get();
+    // Dersi + kursu tek round-trip'te getir (görünürlük kontrolü için ikisi de gerekli)
+    const courseRef = db.collection('academy_courses').doc(courseId);
+    const lessonRef = courseRef.collection('lessons').doc(lessonId);
+    const [courseSnap, lessonSnap] = await db.getAll(courseRef, lessonRef);
+
     if (!lessonSnap.exists) return res.status(404).json({ error: 'Sınav bulunamadı' });
     const lessonData = lessonSnap.data();
 
@@ -233,8 +237,21 @@ router.post('/quiz/:courseId/:lessonId/submit', verifyToken, asyncHandler(async 
         return res.status(400).json({ error: 'Bu içerik bir sınav değil.' });
     }
 
-    const { passingScore = 70, questions = [] } = lessonData;
-    
+    // Kurs yayında değilse veya kullanıcının hedef kitlesi dışındaysa sınav
+    // gönderimi kabul edilmesin (bkz. Bulgu #19)
+    if (req.user.role !== 'admin') {
+        const course = courseSnap.exists ? courseSnap.data() : null;
+        if (!course || !course.isPublished || !courseVisibleToUser(course, req.user)) {
+            return res.status(403).json({ error: 'Bu kursa erişim yetkiniz yok' });
+        }
+    }
+
+    let { passingScore, questions = [] } = lessonData;
+    // Savunmacı varsayılan: passingScore tanımsız/geçersiz/0 ise herkesi
+    // otomatik geçirmesin (bkz. Bulgu #22) — create/update artık >=1 zorluyor
+    // ama eski/bozuk kayıtlara karşı burada da güvenli değer kullan.
+    if (typeof passingScore !== 'number' || passingScore < 1) passingScore = 70;
+
     if (questions.length === 0) {
         return res.status(400).json({ error: 'Bu sınavda hiç soru yok.' });
     }
@@ -312,12 +329,26 @@ router.post('/:courseId/:lessonId', verifyToken, asyncHandler(async (req, res) =
     const { courseId, lessonId } = req.params;
     const userId = req.user.uid;
 
+    // Ders + kurs tek round-trip'te getir: (1) ders GERÇEKTEN var mı (uydurma
+    // lessonId ile sahte tamamlama engellensin — Bulgu #11), (2) kurs yayında +
+    // kullanıcının hedef kitlesinde mi (Bulgu #19 ile aynı görünürlük kuralı)
+    const courseRef = db.collection('academy_courses').doc(courseId);
+    const lessonRef = courseRef.collection('lessons').doc(lessonId);
+    const [courseSnap, lessonSnap] = await db.getAll(courseRef, lessonRef);
+
+    if (!lessonSnap.exists) return res.status(404).json({ error: 'Ders bulunamadı' });
+
     // Quiz dersleri yalnızca sınavı geçerek (/quiz/.../submit) tamamlanabilir —
     // bu genel endpoint ile quiz'i atlayıp tamamlandı işaretlemeyi engelle
-    const lessonSnap = await db.collection('academy_courses').doc(courseId)
-        .collection('lessons').doc(lessonId).get();
-    if (lessonSnap.exists && lessonSnap.data().lessonType === 'quiz') {
+    if (lessonSnap.data().lessonType === 'quiz') {
         return res.status(400).json({ error: 'Sınavlar yalnızca sınavı geçerek tamamlanır.' });
+    }
+
+    if (req.user.role !== 'admin') {
+        const course = courseSnap.exists ? courseSnap.data() : null;
+        if (!course || !course.isPublished || !courseVisibleToUser(course, req.user)) {
+            return res.status(403).json({ error: 'Bu kursa erişim yetkiniz yok' });
+        }
     }
 
     const ref = db.collection('academy_progress')

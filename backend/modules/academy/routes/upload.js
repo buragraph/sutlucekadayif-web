@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { uploadFile, deleteFile, urlToKey } from '../../../config/r2.js';
+import { uploadFile, deleteFile, urlToKey, isKeyAllowed } from '../../../config/r2.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import crypto from 'crypto';
@@ -69,8 +69,14 @@ router.delete(
         const { url } = req.body;
         if (!url) return res.status(400).json({ error: 'URL gerekli' });
 
+        // Pozitif allow-list (urunler/, menu/, academy/) dışına ve dekontlar/'a
+        // asla izin verme — bkz. backend/config/r2.js isKeyAllowed
         const key = urlToKey(url);
-        if (key) await deleteFile(key);
+        if (!key) return res.status(400).json({ error: 'Geçersiz dosya URL\'i' });
+        if (!isKeyAllowed(key, { forDelete: true })) {
+            return res.status(403).json({ error: 'Bu dosyayı silme yetkiniz yok' });
+        }
+        await deleteFile(key);
 
         res.json({ success: true });
     })
