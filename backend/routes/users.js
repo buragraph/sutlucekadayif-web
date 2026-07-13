@@ -152,7 +152,7 @@ router.put(
             // Custom claims ata (tümünü ezdiği için veritabanından güncel hali okuyup atıyoruz)
             const doc = await db.collection('kullanici_sube').doc(uid).get();
             const data = doc.data() || {};
-            await auth.setCustomUserClaims(uid, { role: data.role || 'sube_sahibi', subeSlug: data.sube_slug || null });
+            await auth.setCustomUserClaims(uid, { role: data.role || 'calisan', subeSlug: data.sube_slug || null });
         }
 
         res.json({ success: true });

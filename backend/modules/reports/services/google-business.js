@@ -52,12 +52,13 @@ async function getOAuthClient() {
 
 // ── Public API ──
 
-export async function getGoogleAuthUrl() {
+export async function getGoogleAuthUrl(state) {
   const oauth2Client = await getOAuthClient();
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
     scope: SCOPES,
+    state,
   });
 }
 

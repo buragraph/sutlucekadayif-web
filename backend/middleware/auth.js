@@ -23,7 +23,7 @@ export const verifyToken = async (req, res, next) => {
             uid: decodedToken.uid,
             email: decodedToken.email,
             subeSlug: decodedToken.subeSlug || null,
-            role: decodedToken.role || 'sube_sahibi',
+            role: decodedToken.role || 'calisan',
         };
 
         next();

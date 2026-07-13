@@ -37,7 +37,17 @@ router.get(
     verifyToken,
     requirePermission('branches.view'),
     asyncHandler(async (req, res) => {
-        const snap = await db.collection('subeler').get();
+        // Admin tüm şubeleri görür; sube_sahibi yalnızca kendi şubesini (konumlar
+        // endpoint'iyle aynı rol bazlı filtre — bkz. GET /api/branches/konumlar)
+        let snap;
+        if (req.user.role === 'admin') {
+            snap = await db.collection('subeler').get();
+        } else if (req.user.subeSlug) {
+            const doc = await db.collection('subeler').doc(req.user.subeSlug).get();
+            snap = { docs: doc.exists ? [doc] : [] };
+        } else {
+            snap = { docs: [] };
+        }
         const promises = snap.docs.map(async (d) => {
             const countSnap = await d.ref.collection('urunler').count().get();
             return { id: d.id, slug: d.id, urunSayisi: countSnap.data().count, ...d.data() };

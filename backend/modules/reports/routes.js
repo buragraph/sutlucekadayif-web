@@ -5,6 +5,7 @@ import multer from 'multer';
 import { join, dirname, extname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync, readdirSync, unlinkSync, readFileSync, rmSync, writeFileSync, createWriteStream } from 'fs';
+import crypto from 'crypto';
 
 // Yeni modül yollarına göre servisleri dahil ediyoruz
 import { importMetaCsv, importGoogleCsv, importGoogleCsvBulk, importMetaCsvAutoMatch } from './services/import.js';
@@ -84,9 +85,33 @@ router.post('/save-settings', verifyToken, requirePermission('reports.manage'), 
 });
 
 // Google OAuth Yönlendirmeleri
+// CSRF koruması: callback tarayıcı redirect'i olduğu için auth zincirinden geçemez
+// (token taşımaz) — bunun yerine başlatmada üretilen kısa ömürlü `state` nonce'ı
+// callback'te birebir doğrulanır. Tek instance için basit in-memory Map yeterli.
+const GOOGLE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 dakika
+const googleOAuthStates = new Map(); // state -> expiresAt
+
+function issueGoogleOAuthState() {
+  const now = Date.now();
+  for (const [s, exp] of googleOAuthStates) {
+    if (exp < now) googleOAuthStates.delete(s);
+  }
+  const state = crypto.randomBytes(32).toString('hex');
+  googleOAuthStates.set(state, now + GOOGLE_OAUTH_STATE_TTL_MS);
+  return state;
+}
+
+function consumeGoogleOAuthState(state) {
+  if (!state || !googleOAuthStates.has(state)) return false;
+  const valid = googleOAuthStates.get(state) >= Date.now();
+  googleOAuthStates.delete(state); // tek kullanımlık — replay'i engelle
+  return valid;
+}
+
 router.get('/auth/google', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
-    const url = await getGoogleAuthUrl();
+    const state = issueGoogleOAuthState();
+    const url = await getGoogleAuthUrl(state);
     res.redirect(url);
   } catch (err) {
     console.error('[Reports]', err);
@@ -96,6 +121,9 @@ router.get('/auth/google', verifyToken, requirePermission('reports.manage'), asy
 
 router.get('/auth/google/callback', async (req, res) => {
   try {
+    if (!consumeGoogleOAuthState(req.query.state)) {
+      return res.status(400).send('Geçersiz veya süresi dolmuş istek (state doğrulaması başarısız).');
+    }
     await handleGoogleCallback(req.query.code);
     res.send('<script>window.close();</script>');
   } catch (err) {
@@ -721,7 +749,8 @@ router.put('/sube/:kod/donem/overrides', verifyToken, requirePermission('reports
     res.json({ success: true });
   } catch (err) {
     console.error('[Reports]', err);
-    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
+    // updateOverrides gibi doğrulama hataları status taşır (ör. 400) — onurla
+    res.status(err.status || 500).json({ error: err.message || 'Sunucu hatası oluştu' });
   }
 });
 
