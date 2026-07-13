@@ -1,6 +1,19 @@
 // Rapor HTML şablonu — Puppeteer ile PDF'e dönüştürülecek
 // Tek sayfa, mobil dikey format (1080x1920 oranı)
 
+// Serbest-metin alanları (şube adı, dönem etiketi vb.) HTML'e kaçışsız gömülmesin
+// diye (Bulgu #14) — bugün bu alanları yalnızca admin yazıyor olsa da savunma
+// derinliği için escape edilir; sayısal formatlayıcılar zaten güvenli, dokunulmadı.
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatNumber(n) {
   if (n === null || n === undefined) return '-';
   return new Intl.NumberFormat('tr-TR').format(Math.round(n));
@@ -376,10 +389,10 @@ export function generateReportHtml(data) {
   <!-- HEADER -->
   <div class="header">
     <div class="subtitle">Aylık Reklam Performans Raporu</div>
-    <h1>Sütlüce Kadayıf<br><span class="branch">${sube.ad.replace(/Sütlüce Kadayıf\s*/i, '') || sube.kod}</span></h1>
+    <h1>Sütlüce Kadayıf<br><span class="branch">${escapeHtml(sube.ad.replace(/Sütlüce Kadayıf\s*/i, '') || sube.kod)}</span></h1>
     <div class="period-badge">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      <span>${donem.label}</span>
+      <span>${escapeHtml(donem.label)}</span>
     </div>
   </div>
 

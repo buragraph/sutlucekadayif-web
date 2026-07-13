@@ -16,6 +16,47 @@ const router = Router();
 const MAX_KAMPANYA = 6;
 const BUTCE_DOC_REF = db.collection('reports').doc('butce');
 
+// ── Doğrulama yardımcıları (Bulgu #4, #15, #18, #20, #21) ──
+
+// Gerçekçi kampanya bütçelerinin çok üzerinde bir üst sınır — yanlışlıkla/kötü
+// niyetle girilen astronomik tutarları ("999999999" vb.) reddetmek için.
+const TAVAN_TUTAR = 10_000_000;
+
+// Kayan nokta karşılaştırmasında tolerans (ör. "1000" vs 1000.0000000001)
+const BAKIYE_EPSILON = 0.01;
+
+// Sonlu, verilen aralıkta bir sayı mı? (string/NaN/negatif/aşırı büyük tutarları eler)
+function isGecerliTutar(deger, { min = 0.01, max = TAVAN_TUTAR } = {}) {
+  const n = Number(deger);
+  return Number.isFinite(n) && n >= min && n <= max;
+}
+
+// Seçilen bakiye, kampanyanın sunduğu menü seçeneklerinden biri mi? (Bulgu #4)
+function bakiyeMenudeVarMi(deger, bakiyeSecenekleri) {
+  const n = Number(deger);
+  if (!Number.isFinite(n)) return false;
+  return Array.isArray(bakiyeSecenekleri) && bakiyeSecenekleri.some(
+    (o) => Math.abs(Number(o?.bakiye) - n) < BAKIYE_EPSILON
+  );
+}
+
+// Katı YYYY-MM-DD biçimi + takvimde gerçekten var olan bir tarih mi? (Bulgu #21)
+const TARIH_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+function isGecerliTarih(str) {
+  if (typeof str !== 'string' || !TARIH_REGEX.test(str)) return false;
+  const d = new Date(`${str}T00:00:00Z`);
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === str;
+}
+
+// Dekont dosyasının depolanan Content-Type'ı UZANTIDAN türetilir — istemcinin
+// gönderdiği (sahtelenebilir) mimetype'a asla güvenilmez (Bulgu #9-yazma).
+const DEKONT_CONTENT_TYPES = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+};
+
 // Dekont upload — memoryStorage, max 5MB, pdf/jpg/jpeg/png
 const dekontUpload = multer({
   storage: multer.memoryStorage(),
@@ -90,52 +131,80 @@ router.post(
       if (!baslik || !donem_baslangic || !donem_bitis || !son_tarih || !bakiye_secenekleri) {
         return res.status(400).json({ error: 'Zorunlu alanlar eksik.' });
       }
+      // Tarih formatı/aralık doğrulama (Bulgu #21) — bozuk formatlı tarih dönem
+      // gizli-yazma ve gönderim-kapısı sözlüksel karşılaştırmasını sessizce bozardı
+      if (!isGecerliTarih(donem_baslangic) || !isGecerliTarih(donem_bitis) || !isGecerliTarih(son_tarih)) {
+        return res.status(400).json({ error: 'Tarih alanları geçerli bir YYYY-MM-DD tarihi olmalıdır.' });
+      }
+      if (donem_baslangic > donem_bitis) {
+        return res.status(400).json({ error: 'Dönem başlangıcı, bitiş tarihinden sonra olamaz.' });
+      }
 
-      // İki okuma bağımsız — paralel çek (1 RTT tasarrufu)
-      const [doc, subeler] = await Promise.all([getButceDoc(), getAllSubeler()]);
-      const kampanyalar = doc.kampanyalar || {};
-
-      // Aynı döneme ait kampanya varsa ezme — yanıtlar sıfırlanır, veri kaybolur
+      // Şube listesi kampanya dokümanından bağımsız — transaction dışında çekilebilir
+      const subeler = await getAllSubeler();
       const kampanyaId = `${donem_baslangic}_${donem_bitis}`;
-      if (kampanyalar[kampanyaId]) {
-        return res.status(400).json({ error: 'Bu döneme ait bir kampanya zaten var. Önce onu silin veya düzenleyin.' });
+
+      // Bulgu #10 TOCTOU düzeltmesi: "aynı dönem var mı" kontrolü + yeni kampanya
+      // yazımı + tavan aşımında en eskiyi silme tek transaction'da yapılır — iki
+      // eşzamanlı oluşturma isteği artık aynı bayat sayıyı okuyup tavanı aşamaz
+      // veya yanlış "en eski" kampanyayı silemez (Firestore transaction'ı çakışan
+      // yazımda otomatik retry eder).
+      let yeniKampanya;
+      let eskiKampanya = null;
+      try {
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(BUTCE_DOC_REF);
+          const kampanyalar = snap.exists ? (snap.data().kampanyalar || {}) : {};
+
+          // Aynı döneme ait kampanya varsa ezme — yanıtlar sıfırlanır, veri kaybolur
+          if (kampanyalar[kampanyaId]) {
+            const e = new Error('Bu döneme ait bir kampanya zaten var. Önce onu silin veya düzenleyin.');
+            e.status = 400;
+            throw e;
+          }
+
+          // Yanitlar map oluştur — tüm şubeler "bekliyor"
+          const yanitlar = {};
+          for (const sube of subeler) {
+            yanitlar[sube.kod] = bosYanit();
+          }
+
+          yeniKampanya = {
+            baslik,
+            donem_baslangic,
+            donem_bitis,
+            son_tarih,
+            durum: 'aktif',
+            bakiye_secenekleri,
+            iban: iban || '',
+            alici_adi: alici_adi || '',
+            odeme_notu: odeme_notu || '',
+            yanitlar,
+            createdAt: new Date().toISOString(),
+          };
+
+          const updates = { [`kampanyalar.${kampanyaId}`]: yeniKampanya };
+
+          // Max 6 kampanya kontrolü — aynı transaction'da okunan güncel sayıya göre;
+          // en eskisini sil. FieldValue.delete() şart: dot-path update anahtarı siler.
+          if (Object.keys(kampanyalar).length >= MAX_KAMPANYA) {
+            const entries = Object.entries(kampanyalar)
+              .sort((a, b) => new Date(a[1].createdAt) - new Date(b[1].createdAt));
+            const [eskiId, eski] = entries[0];
+            updates[`kampanyalar.${eskiId}`] = admin.firestore.FieldValue.delete();
+            eskiKampanya = eski;
+          }
+
+          if (snap.exists) tx.update(BUTCE_DOC_REF, updates);
+          else tx.set(BUTCE_DOC_REF, { kampanyalar: { [kampanyaId]: yeniKampanya } });
+        });
+      } catch (e) {
+        if (e.status) return res.status(e.status).json({ error: e.message });
+        throw e;
       }
 
-      // Yanitlar map oluştur — tüm şubeler "bekliyor"
-      const yanitlar = {};
-      for (const sube of subeler) {
-        yanitlar[sube.kod] = bosYanit();
-      }
-
-      const yeniKampanya = {
-        baslik,
-        donem_baslangic,
-        donem_bitis,
-        son_tarih,
-        durum: 'aktif',
-        bakiye_secenekleri,
-        iban: iban || '',
-        alici_adi: alici_adi || '',
-        odeme_notu: odeme_notu || '',
-        yanitlar,
-        createdAt: new Date().toISOString(),
-      };
-
-      // Önce yeni kampanyayı yaz — sil-sonra-yaz sırasında yazma başarısız olursa
-      // eski kampanya geri dönüşsüz kaybolurdu; bu sırada en kötü durumda doküman
-      // geçici olarak tavan+1 kampanya taşır. Yalnızca yeni anahtar yazılır — tüm
-      // map'i yazmak, okuma ile yazma arasındaki eşzamanlı şube yanıtlarını ezer.
-      await BUTCE_DOC_REF.set({ kampanyalar: { [kampanyaId]: yeniKampanya } }, { merge: true });
-
-      // Max 6 kampanya kontrolü — en eskisini sil.
-      // FieldValue.delete() şart: merge'li set anahtar SİLEMEZ, kampanya dokümanda kalır.
-      if (Object.keys(kampanyalar).length >= MAX_KAMPANYA) {
-        const entries = Object.entries(kampanyalar)
-          .sort((a, b) => new Date(a[1].createdAt) - new Date(b[1].createdAt));
-        const [eskiId, eskiKampanya] = entries[0];
-
-        await BUTCE_DOC_REF.update({ [`kampanyalar.${eskiId}`]: admin.firestore.FieldValue.delete() });
-        // R2 dekont temizliği doküman yazımını bloklamasın, hatası oluşturmayı düşürmesin
+      // R2 dekont temizliği doküman yazımını bloklamasın, hatası oluşturmayı düşürmesin
+      if (eskiKampanya) {
         deleteDekontlar(eskiKampanya).catch((e) => console.error('[Budget] Eski kampanya dekont temizliği:', e.message));
       }
 
@@ -262,6 +331,11 @@ router.put(
       const { id } = req.params;
       const { baslik, son_tarih, bakiye_secenekleri, iban, alici_adi, odeme_notu } = req.body;
 
+      // Tarih formatı doğrulama (Bulgu #21) — gönderilmişse geçerli YYYY-MM-DD olmalı
+      if (son_tarih !== undefined && !isGecerliTarih(son_tarih)) {
+        return res.status(400).json({ error: 'Son tarih geçerli bir YYYY-MM-DD tarihi olmalıdır.' });
+      }
+
       const doc = await getButceDoc();
       if (!doc.kampanyalar?.[id]) {
         return res.status(404).json({ error: 'Kampanya bulunamadı.' });
@@ -336,37 +410,73 @@ router.post(
       const updates = {};
       const onaylananSubeler = [];
 
-      // Gönderilmiş yanıtların dönem verilerini tek toplu okumayla al (döngüde tekil get yok)
+      // Gönderilmiş yanıtlar arasından, tutarı hâlâ menü seçeneklerinden biri ve
+      // sonlu/pozitif/tavan altında olanlar onaya alınır (Bulgu #4 savunma
+      // derinliği — submit-zamanı kontrolünden geçmemiş eski/bozuk veri onaya girmesin).
       const gonderilenler = Object.entries(yanitlar).filter(([, y]) => y.durum === 'gonderildi');
+      const yazimHatalari = [];
+      const uygunSubeKodlari = [];
+      for (const [subeKod, yanit] of gonderilenler) {
+        if (bakiyeMenudeVarMi(yanit.secilen_bakiye, kampanya.bakiye_secenekleri) && isGecerliTutar(yanit.secilen_bakiye)) {
+          uygunSubeKodlari.push(subeKod);
+        } else {
+          yazimHatalari.push(`${subeKod}: geçersiz bakiye tutarı`);
+        }
+      }
+
+      // Gönderilmiş yanıtların dönem verilerini tek toplu okumayla al (döngüde tekil get yok)
       const donemVeriler = await getDonemVeriMap(
-        gonderilenler.map(([kod]) => kod),
+        uygunSubeKodlari,
         kampanya.donem_baslangic,
         kampanya.donem_bitis
       );
 
       try {
-        // Bütçeler paralel yazılır — her upsertButce yalnızca kendi şubesinin iki
-        // dokümanına dokunan ayrı bir transaction (skipBump ortak versiyon dokümanı
-        // çakışmasını da önler); sıralı await N×RTT bekletiyordu
-        const yazimlar = await Promise.allSettled(gonderilenler.map(([subeKod, yanit]) => {
+        // Bulgu #18 TOCTOU düzeltmesi: her şube için "durum hâlâ gonderildi mi" +
+        // "güncel secilen_bakiye" tek transaction'da okunup durum ONAYLANDI'ya
+        // çevrilir — okuma ile dönem yazımı arasında şube yeniden gönderim yapsa
+        // bile eski/tutarsız değer donmaz; sonraki gönderim mevcut 'onaylandi'
+        // guard'ına (bkz. /butce-gonder) çarpar ve reddedilir.
+        const yazimlar = await Promise.allSettled(uygunSubeKodlari.map(async (subeKod) => {
+          const guncelBakiye = await db.runTransaction(async (tx) => {
+            const snap = await tx.get(BUTCE_DOC_REF);
+            const guncelYanit = snap.data()?.kampanyalar?.[id]?.yanitlar?.[subeKod];
+            if (!guncelYanit || guncelYanit.durum !== 'gonderildi') {
+              return null; // eşzamanlı işlemle durum değişmiş — atla
+            }
+            tx.update(BUTCE_DOC_REF, { [`kampanyalar.${id}.yanitlar.${subeKod}.durum`]: 'onaylandi' });
+            return guncelYanit.secilen_bakiye;
+          });
+
+          if (guncelBakiye === null) {
+            throw new Error('durum eşzamanlı işlemle değişti');
+          }
+
           const donemVeri = donemVeriler[subeKod] || {};
-          return upsertButce(
-            subeKod,
-            kampanya.donem_baslangic,
-            kampanya.donem_bitis,
-            yanit.secilen_bakiye,
-            donemVeri.devredilen_miktar || 0,
-            donemVeri.merkez_destegi || 0,
-            { skipBump: true } // versiyon toplu yazım sonunda bir kez artırılır
-          );
+          try {
+            await upsertButce(
+              subeKod,
+              kampanya.donem_baslangic,
+              kampanya.donem_bitis,
+              guncelBakiye,
+              donemVeri.devredilen_miktar || 0,
+              donemVeri.merkez_destegi || 0,
+              { skipBump: true } // versiyon toplu yazım sonunda bir kez artırılır
+            );
+          } catch (yazimErr) {
+            // Dönem yazımı başarısız oldu — durumu geri al ki "onaylandı" görünüp
+            // bütçesi aslında yazılmamış bir şube kalmasın; şube yeniden gönderebilir
+            // veya admin tekrar dener.
+            await BUTCE_DOC_REF.update({ [`kampanyalar.${id}.yanitlar.${subeKod}.durum`]: 'gonderildi' }).catch(() => {});
+            throw yazimErr;
+          }
+          return subeKod;
         }));
 
-        const yazimHatalari = [];
         yazimlar.forEach((sonuc, i) => {
-          const subeKod = gonderilenler[i][0];
+          const subeKod = uygunSubeKodlari[i];
           if (sonuc.status === 'fulfilled') {
             onaylananSubeler.push(subeKod);
-            updates[`kampanyalar.${id}.yanitlar.${subeKod}.durum`] = 'onaylandi';
           } else {
             yazimHatalari.push(`${subeKod}: ${sonuc.reason?.message || 'yazılamadı'}`);
           }
@@ -378,8 +488,9 @@ router.post(
         // Kampanya durumunu tamamlandı yap — yalnızca tüm liste işlenince
         updates[`kampanyalar.${id}.durum`] = 'tamamlandi';
       } finally {
-        // Kısmi hatada da: yazılmış şubelerin yanıt durumu Firestore'a işlensin ve
-        // versiyon ilerlesin — yoksa dönem dokümanına yazılan bütçelerle ekran ayrışır
+        // Kısmi hatada da: durum flip'i her şube için kendi transaction'ında zaten
+        // işlendi (yukarıda); burada yalnızca kampanya seviyesi durum güncellenir ve
+        // versiyon ilerletilir — yoksa dönem dokümanına yazılan bütçelerle ekran ayrışır
         // (bayat cache + 'gonderildi' görünen onaylılar → çift onay riski)
         if (Object.keys(updates).length > 0) await BUTCE_DOC_REF.update(updates);
         if (onaylananSubeler.length > 0) {
@@ -443,12 +554,28 @@ router.post(
       // KDV dahil tutar: admin elle girdiyse yanıta yaz (yoksa istemci bakiyeden hesaplar)
       const adminKdv = kdv !== undefined && kdv !== null && kdv !== '' ? Number(kdv) : null;
 
+      // Admin-taraflı tutar doğrulama (Bulgu #4/#15) — string/NaN/negatif/aşırı
+      // büyük tutar dönem bütçesine yazılmasın
+      if (adminBakiye !== null && !isGecerliTutar(adminBakiye)) {
+        return res.status(400).json({ error: 'Geçerli bir bakiye tutarı girin.' });
+      }
+      if (adminMerkez !== null && !isGecerliTutar(adminMerkez, { min: 0 })) {
+        return res.status(400).json({ error: 'Geçerli bir merkez desteği tutarı girin.' });
+      }
+      if (adminKdv !== null && !isGecerliTutar(adminKdv)) {
+        return res.status(400).json({ error: 'Geçerli bir KDV dahil tutar girin.' });
+      }
+
       // Bakiye girilmemişse: yalnızca "gönderildi" ya da zaten "onaylandi" (güncelleme) ise devam
       if (adminBakiye === null && yanit?.durum !== 'gonderildi' && yanit?.durum !== 'onaylandi') {
         return res.status(400).json({ error: 'Onaylamak için bir bakiye girin (bu şube henüz bildirim göndermemiş).' });
       }
 
       const finalBakiye = adminBakiye !== null ? adminBakiye : Number(yanit?.secilen_bakiye || 0);
+      // Eski/bozuk veri (bu doğrulamadan önce yazılmış) onaya girmesin
+      if (!isGecerliTutar(finalBakiye)) {
+        return res.status(400).json({ error: 'Onaylanacak bakiye tutarı geçersiz — admin bir bakiye girerek düzeltin.' });
+      }
 
       // Bütçeyi dönem dokümanına yaz (devredilen korunur; merkez verildiyse güncellenir)
       const donemVeri = await getDonemVeri(subeKod, kampanya.donem_baslangic, kampanya.donem_bitis) || {};
@@ -599,6 +726,12 @@ router.get(
         return res.status(403).json({ error: 'Bu şubeye erişim yetkiniz yok' });
       }
       const hedefKod = subeKod || (!isAdmin ? req.user.subeSlug : null);
+      // Bulgu #5: subeSlug claim'i boş/eksik bir non-admin, hedefKod hesaplaması
+      // sonunda null kalırsa aşağıdaki else dalı getAllSubeler() ile TÜM şubelerin
+      // bütçesini dönerdi — yalnızca admin kapsamsız (tüm şube) sorguya erişebilir.
+      if (!isAdmin && !hedefKod) {
+        return res.status(403).json({ error: 'Bu bilgiye erişim yetkiniz yok' });
+      }
       const scope = hedefKod || 'all';
 
       // Cache kontrol — veri versiyonu + kapsam eşleşiyorsa servis et
@@ -795,13 +928,6 @@ router.post(
         return res.status(400).json({ error: 'Seçilen bakiye ve KDV dahil tutar zorunludur.' });
       }
 
-      const numBakiye = Number(secilen_bakiye);
-      const numKdvTutar = Number(kdv_dahil_tutar);
-
-      if (isNaN(numBakiye) || isNaN(numKdvTutar)) {
-        return res.status(400).json({ error: 'Seçilen bakiye ve KDV dahil tutar geçerli bir sayı olmalıdır.' });
-      }
-
       const doc = await getButceDoc();
       const kampanya = doc.kampanyalar?.[kampanyaId];
 
@@ -825,12 +951,31 @@ router.post(
       // Not: yanıt kaydı yoksa (kampanya oluşturulduktan SONRA eklenen şube) reddetme;
       // aşağıdaki yazma dot-path ile girdiyi kendisi oluşturur.
 
+      // Bulgu #4: seçilen bakiye kampanyanın sunduğu menü seçeneklerinden biri
+      // olmalı (kayan nokta toleransıyla) — menü dışı/uydurma bir tutar yazılamaz.
+      if (!bakiyeMenudeVarMi(secilen_bakiye, kampanya.bakiye_secenekleri)) {
+        return res.status(400).json({ error: 'Seçilen bakiye bu kampanyanın sunduğu seçeneklerden biri değil.' });
+      }
+
+      const numBakiye = Number(secilen_bakiye);
+      const numKdvTutar = Number(kdv_dahil_tutar);
+
+      // Sonlu + pozitif + makul üst sınır kontrolü (Bulgu #4, #20) — multipart'tan
+      // string geldiği için yalnızca isNaN yetmez; işaret/aralık da doğrulanmalı
+      if (!isGecerliTutar(numBakiye) || !isGecerliTutar(numKdvTutar)) {
+        return res.status(400).json({ error: 'Seçilen bakiye ve KDV dahil tutar geçerli, pozitif bir sayı olmalıdır.' });
+      }
+
       // Dekont upload
       let dekontUrl = null;
       if (req.file) {
         const ext = req.file.originalname.split('.').pop().toLowerCase();
         const key = `dekontlar/${kampanyaId}/${subeKod}.${ext}`;
-        dekontUrl = await uploadFile(req.file.buffer, key, req.file.mimetype);
+        // Bulgu #9-yazma: depolanan Content-Type saldırgan-kontrollü
+        // req.file.mimetype'tan DEĞİL, sunucu tarafında uzantıdan türetilir —
+        // aksi halde sahte Content-Type ile dekontu açan admin'e stored XSS mümkün olur.
+        const contentType = DEKONT_CONTENT_TYPES[ext] || 'application/octet-stream';
+        dekontUrl = await uploadFile(req.file.buffer, key, contentType);
         // Yeniden gönderimde uzantı değiştiyse eski dekont R2'de öksüz kalmasın
         if (mevcutYanit?.dekont_url) {
           const eskiKey = urlToKey(mevcutYanit.dekont_url);

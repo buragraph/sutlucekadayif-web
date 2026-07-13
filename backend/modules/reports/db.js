@@ -231,10 +231,29 @@ export async function upsertToplamErisim(subeKod, donemBaslangic, donemBitis, to
   await applyDonemWrite(subeKod, donemBaslangic, donemBitis, { erisim: toplamErisim }, { skipBump });
 }
 
+// veri_overrides YALNIZCA bu bütçe alanlarını tutar (bkz. CLAUDE.md kural #2).
+// Her biri sonlu ve negatif olmayan bir sayı olmalı — string/NaN/negatif değer
+// aggregate hesaplarını (toplamButce vb.) bozar (Bulgu #15).
+const BUTCE_OVERRIDE_ALANLARI = ['planlananButce', 'devredilenMiktar', 'merkezDestegi'];
+
 /**
  * Override'ları dönem dokümanına yazar.
  */
 export async function updateOverrides(subeKod, donemBaslangic, donemBitis, overrides, { donemVar = null } = {}) {
+  // Yazılmadan önce bütçe alanlarını doğrula — tip/işaret/sonluluk kontrolü
+  // olmadan Firestore'a string/NaN/negatif tutar yazılmasın.
+  for (const alan of BUTCE_OVERRIDE_ALANLARI) {
+    if (overrides && overrides[alan] !== undefined) {
+      const n = Number(overrides[alan]);
+      if (!Number.isFinite(n) || n < 0) {
+        const err = new Error(`Geçersiz override tutarı: ${alan}`);
+        err.status = 400;
+        throw err;
+      }
+      overrides[alan] = n; // string/gevşek tip geldiyse normalize et
+    }
+  }
+
   const docId = donemDocId(donemBaslangic, donemBitis);
   const docRef = db.collection('subeler').doc(subeKod).collection('donemler').doc(docId);
   // Varlık bilgisi çağırandan geçilebilir (handler dokümanı zaten okumuş oluyor) — +1 read önlenir
