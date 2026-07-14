@@ -26,7 +26,11 @@ const TAVAN_TUTAR = 10_000_000;
 const BAKIYE_EPSILON = 0.01;
 
 // Sonlu, verilen aralıkta bir sayı mı? (string/NaN/negatif/aşırı büyük tutarları eler)
-function isGecerliTutar(deger, { min = 0.01, max = TAVAN_TUTAR } = {}) {
+// min varsayılan 0: sıfır MEŞRU bir tutardır (destek-yalnızca/bakiyesiz dönem,
+// merkez desteği silme). Güvenlik hedefi negatif/NaN/aşırı büyük değerleri elemek —
+// sıfır şişirme/gizleme yapmaz. Şube gönderiminde secilen_bakiye ayrıca menü
+// seçeneklerine (bakiyeMenudeVarMi) karşı doğrulanır.
+function isGecerliTutar(deger, { min = 0, max = TAVAN_TUTAR } = {}) {
   const n = Number(deger);
   return Number.isFinite(n) && n >= min && n <= max;
 }
