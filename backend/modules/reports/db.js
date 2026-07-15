@@ -235,17 +235,23 @@ export async function upsertToplamErisim(subeKod, donemBaslangic, donemBitis, to
 // Her biri sonlu ve negatif olmayan bir sayı olmalı — string/NaN/negatif değer
 // aggregate hesaplarını (toplamButce vb.) bozar (Bulgu #15).
 const BUTCE_OVERRIDE_ALANLARI = ['planlananButce', 'devredilenMiktar', 'merkezDestegi'];
+// devredilenMiktar önceki dönemden devreden EKSİ bakiye olabilir → negatif meşru.
+// planlananButce ve merkezDestegi ise negatif olamaz (güvenlik: negatif tutar
+// aşımı gizler/şişirir). Tüm alanlar sonlu ve makul büyüklükte olmalı.
+const OVERRIDE_NEGATIF_IZINLI = new Set(['devredilenMiktar']);
+const OVERRIDE_TAVAN = 10_000_000;
 
 /**
  * Override'ları dönem dokümanına yazar.
  */
 export async function updateOverrides(subeKod, donemBaslangic, donemBitis, overrides, { donemVar = null } = {}) {
   // Yazılmadan önce bütçe alanlarını doğrula — tip/işaret/sonluluk kontrolü
-  // olmadan Firestore'a string/NaN/negatif tutar yazılmasın.
+  // olmadan Firestore'a string/NaN/aşırı büyük tutar yazılmasın.
   for (const alan of BUTCE_OVERRIDE_ALANLARI) {
     if (overrides && overrides[alan] !== undefined) {
       const n = Number(overrides[alan]);
-      if (!Number.isFinite(n) || n < 0) {
+      const altSinir = OVERRIDE_NEGATIF_IZINLI.has(alan) ? -OVERRIDE_TAVAN : 0;
+      if (!Number.isFinite(n) || n < altSinir || n > OVERRIDE_TAVAN) {
         const err = new Error(`Geçersiz override tutarı: ${alan}`);
         err.status = 400;
         throw err;
