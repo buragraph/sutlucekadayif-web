@@ -23,6 +23,24 @@ function turkishToSlug(text) {
     .replace(/[^a-z0-9]/g, '').trim();
 }
 
+/**
+ * Kampanya/adset prefix slug'ından şube bulur.
+ * Şube kodları alt çizgi/tire içerebildiğinden (ör. `tuzla_aydinli`,
+ * `kocaeli-merkez`) HER İKİ taraf da `turkishToSlug` ile normalize edilip TAM
+ * karşılaştırılır — böylece "tuzlaaydinli" kendi şubesine eşleşir, alt-dize
+ * olduğu "tuzla"ya değil. Bulanık (includes) eşleşme yalnızca TEK aday varsa
+ * uygulanır: iç içe slug'larda (tuzla ⊂ tuzlaaydinli) yanlış şubeye yazmayı önler.
+ */
+function subeBulSlug(mevcutSubeler, slug) {
+  const tam = mevcutSubeler.find(s => turkishToSlug(s.kod) === slug);
+  if (tam) return tam;
+  const adaylar = mevcutSubeler.filter(s => {
+    const k = turkishToSlug(s.kod);
+    return k && (k.includes(slug) || slug.includes(k));
+  });
+  return adaylar.length === 1 ? adaylar[0] : null;
+}
+
 function getActionValue(actions, actionType) {
   if (!actions) return 0;
   const found = actions.find(a => a.action_type === actionType);
@@ -156,8 +174,7 @@ export async function importFromMetaApi(accessToken, since, until, targetSubeKod
     const prefix = extractPrefix(adsetName);
     if (!prefix || prefix.length < 2) { hatalar.push({ adset: adsetName, error: 'Şube prefix çıkarılamadı' }); continue; }
     const slug = turkishToSlug(prefix);
-    let sube = mevcutSubeler.find(s => s.kod === slug);
-    if (!sube) sube = mevcutSubeler.find(s => s.kod.includes(slug) || slug.includes(s.kod));
+    let sube = subeBulSlug(mevcutSubeler, slug);
     if (!sube) {
       // Hedefli çekimde eşleşmeyen prefix için yeni şube AÇMA — çöp kayıt oluşur
       if (targetSubeKod) { hatalar.push({ adset: adsetName, error: 'Şube eşleşmedi (hedefli çekim)' }); continue; }
@@ -207,8 +224,7 @@ export async function previewMetaInsights(accessToken, since, until) {
     if (!prefix || prefix.length < 2) continue;
     const slug = turkishToSlug(prefix);
     if (!prefixMap[slug]) {
-      let eslesen = mevcutSubeler.find(s => s.kod === slug);
-      if (!eslesen) eslesen = mevcutSubeler.find(s => s.kod.includes(slug) || slug.includes(s.kod));
+      const eslesen = subeBulSlug(mevcutSubeler, slug);
       prefixMap[slug] = { prefix, slug, eslesenKod: eslesen?.kod || null, eslesenAd: eslesen?.ad || null, kayitSayisi: 0, reklamSetleri: [] };
     }
     prefixMap[slug].kayitSayisi++;
