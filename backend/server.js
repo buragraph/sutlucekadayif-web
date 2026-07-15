@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import { Readable } from 'node:stream';
 
 // Route imports
 import menuRouter from './modules/qr-menu/routes/menu.js';
@@ -81,6 +82,23 @@ app.use(cors({
     exposedHeaders: ['Content-Disposition']
 }));
 app.use(express.json({ limit: '1mb' }));
+
+// ─── Multipart shim (Firebase Functions) ───
+// firebase-functions gelen isteğin gövdesini `req.rawBody`'ye okuyup akışı
+// tüketiyor; multer/busboy sonradan tükenmiş `req` akışını okuyunca "Unexpected
+// end of form" ile 500 veriyor (prod'da tüm dosya yüklemeleri bozuluyordu).
+// multer içeride `req.pipe(busboy)` yaptığından, multipart isteklerde req.pipe'ı
+// rawBody'den taze bir akışa yönlendiriyoruz. Lokal dev'de rawBody olmadığından
+// (düz Express) bu shim devreye girmez; normal streaming çalışır.
+app.use((req, res, next) => {
+    const ctype = req.headers['content-type'] || '';
+    if (req.rawBody && ctype.startsWith('multipart/form-data')) {
+        // [req.rawBody] — Buffer'ı diziye sar: Readable.from(buffer) baytları tek
+        // tek yayınlar; [buffer] tek parça olarak akıtır (busboy bunu bekler)
+        req.pipe = (dest, opts) => Readable.from([req.rawBody]).pipe(dest, opts);
+    }
+    next();
+});
 
 // ─── Routes ───
 // Genel
