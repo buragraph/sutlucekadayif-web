@@ -71,6 +71,46 @@ export async function updateSube(kod, ad, adres, link) {
   return { id: kod, kod, ...data };
 }
 
+// ── Şube notu (yalnızca yönetici) ──
+//
+// AYRI KOLEKSİYONDA tutulur, şube dokümanında DEĞİL. Sebep: /sube/:kod ve
+// /dashboard-bundle uçları şube dokümanını `...sube` ile olduğu gibi yayıyor ve
+// bu uçlara `reports.view` ile şube sahibi de erişiyor. Not şube dokümanında
+// dursaydı, şube sahibi kendi hakkında yazılmış yönetici notunu görürdü.
+// Ayrı koleksiyon bu sızıntıyı yapısal olarak imkânsız kılar — ileride biri
+// şube dokümanına yeni bir alan eklese bile not tarafı etkilenmez.
+//
+// Not: bumpDataVersion ÇAĞRILMAZ. Not rapor verisi değil; versiyonu ilerletmek
+// tüm kullanıcıların dashboard cache'ini boş yere düşürürdü.
+
+const NOT_LIMIT = 5000;
+
+export async function getSubeNot(kod) {
+  const doc = await db.collection('sube_notlari').doc(kod).get();
+  if (!doc.exists) return { not: '', guncelleyen: null, guncellemeZamani: null };
+  const d = doc.data();
+  return {
+    not: d.not || '',
+    guncelleyen: d.guncelleyen || null,
+    guncellemeZamani: d.guncellemeZamani || null,
+  };
+}
+
+export async function saveSubeNot(kod, not, guncelleyen) {
+  const temiz = String(not ?? '').trim().slice(0, NOT_LIMIT);
+  const veri = {
+    not: temiz,
+    guncelleyen: guncelleyen || null,
+    guncellemeZamani: new Date().toISOString(),
+  };
+  await db.collection('sube_notlari').doc(kod).set(veri);
+  return veri;
+}
+
+export async function deleteSubeNot(kod) {
+  await db.collection('sube_notlari').doc(kod).delete();
+}
+
 export async function deleteSube(kod) {
   const docRef = db.collection('subeler').doc(kod);
   const doc = await docRef.get();
@@ -80,6 +120,8 @@ export async function deleteSube(kod) {
   await db.recursiveDelete(docRef.collection('donemler'));
 
   await docRef.delete();
+  // Not ayrı koleksiyonda durduğu için şube silinince öksüz kalır — temizle
+  await deleteSubeNot(kod);
   await bumpDataVersion();
   return true;
 }

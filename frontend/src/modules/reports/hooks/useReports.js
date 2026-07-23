@@ -526,4 +526,25 @@ export const reportsApi = {
         }));
         return data.sube;
     },
+
+    // ── Şube notu (yalnızca yönetici) ──
+    // Ayrı uçtan gelir; şube dokümanına dahil DEĞİL, çünkü o doküman şube
+    // sahibine de dönüyor (bkz. backend db.js açıklaması).
+    async getSubeNot(kod) {
+        const res = await authFetch(`${API}/sube/${kod}/not`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Not okunamadı');
+        return data;
+    },
+
+    async saveSubeNot(kod, not) {
+        const res = await authFetch(`${API}/sube/${kod}/not`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ not }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Not kaydedilemedi');
+        return data;
+    },
 };
