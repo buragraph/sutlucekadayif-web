@@ -509,7 +509,8 @@
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
-.pm-chip:hover {
+/* Aktif chip hariç — bkz. .pm-navtab'daki aynı özgüllük tuzağı */
+.pm-chip:not(.pm-chip--active):hover {
   border-color: var(--pm-dark);
   color: var(--pm-text);
 }
@@ -4226,7 +4227,11 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   cursor: pointer;
   transition: background var(--pm-transition), color var(--pm-transition);
 }
-.pm-navtab:hover { color: var(--pm-dark); }
+/* Hover YALNIZCA aktif olmayan sekmelere uygulanır. Düz `.pm-navtab:hover`
+   yazılırsa sözde-sınıf yüzünden `--active`'ten daha özgül olur ve aktif
+   sekmenin üzerine gelindiğinde metin de arka plan da koyu yeşile döner —
+   yazı görünmez olur. */
+.pm-navtab:not(.pm-navtab--active):hover { color: var(--pm-dark); }
 .pm-navtab--active { background: var(--pm-dark); color: var(--pm-cream); }
 
 /* ── Kategori bölümleri (scroll-spy hedefleri) ── */
