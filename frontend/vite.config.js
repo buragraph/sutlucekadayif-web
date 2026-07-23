@@ -13,6 +13,8 @@ export default defineConfig({
         },
     },
     server: {
+        // Dev sunucusu: ortamdan gelen PORT'u kullan (5173 doluysa araç başka port atar)
+        port: Number(process.env.PORT) || 5173,
         fs: {
             allow: ['..'],
         },
