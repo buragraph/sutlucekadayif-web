@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+/* ─── Marka tema tokenları (canlı siteden çıkarıldı) ─── */
+@theme {
+  --color-cream: #f0edea;      /* sayfa arka planı */
+  --color-ink: #111010;        /* başlık metni */
+  --color-body: #5d5d5d;       /* gövde metni */
+  --color-brand: #084529;      /* koyu yeşil (buton/vurgu) */
+  --color-brand-dark: #073621; /* buton hover */
+  --color-lime: #8cc63f;       /* logo "kadayıf" yeşili */
+
+  --font-serif: "Marcellus", ui-serif, Georgia, serif;
+  --font-sans: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ─── Temel stiller ───
+   @layer base içinde olmalı; katmansız yazılırsa Tailwind utility'lerini
+   (ör. yeşil zeminde text-white) ezer. */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-cream);
+    color: var(--color-body);
+    font-family: var(--font-sans);
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, h5 {
+    font-family: var(--font-serif);
+    color: var(--color-ink);
+    font-weight: 400;
+    line-height: 1.1;
+  }
+}

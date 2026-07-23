@@ -1,0 +1,154 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+// 81 il — İl seçimi dropdown'u için
+const iller = [
+  'Adana','Adıyaman','Afyonkarahisar','Ağrı','Amasya','Ankara','Antalya','Artvin',
+  'Aydın','Balıkesir','Bilecik','Bingöl','Bitlis','Bolu','Burdur','Bursa','Çanakkale',
+  'Çankırı','Çorum','Denizli','Diyarbakır','Edirne','Elazığ','Erzincan','Erzurum',
+  'Eskişehir','Gaziantep','Giresun','Gümüşhane','Hakkâri','Hatay','Isparta','Mersin',
+  'İstanbul','İzmir','Kars','Kastamonu','Kayseri','Kırklareli','Kırşehir','Kocaeli',
+  'Konya','Kütahya','Malatya','Manisa','Kahramanmaraş','Mardin','Muğla','Muş',
+  'Nevşehir','Niğde','Ordu','Rize','Sakarya','Samsun','Siirt','Sinop','Sivas',
+  'Tekirdağ','Tokat','Trabzon','Tunceli','Şanlıurfa','Uşak','Van','Yozgat','Zonguldak',
+  'Aksaray','Bayburt','Karaman','Kırıkkale','Batman','Şırnak','Bartın','Ardahan',
+  'Iğdır','Yalova','Karabük','Kilis','Osmaniye','Düzce',
+];
+---
+
+<Layout title="Franchise | Sütlüce Kadayıf">
+  <!-- Başlık -->
+  <section class="mx-auto max-w-3xl px-6 pt-16 text-center">
+    <p class="font-serif text-lg text-brand">Bize Katılın</p>
+    <h1 class="mt-2 text-4xl md:text-5xl">Franchise</h1>
+    <p class="mt-5 text-lg">Yoğun Franchise talepleriniz için çok teşekkür ederiz! 💚</p>
+    <p class="mx-auto mt-4 max-w-2xl text-lg leading-relaxed">
+      Güçlü marka yapımız ve özgün ürün konseptimizle, yatırımcılarımıza
+      sürdürülebilir bir iş modeli sunuyoruz. Başarı dolu bir lezzet hikayesinin
+      parçası olmak için başvuru formunu doldurun.
+    </p>
+  </section>
+
+  <!-- Başvuru formu -->
+  <section class="mx-auto max-w-2xl px-6 py-14">
+    <form
+      id="franchise-form"
+      class="rounded-3xl border border-ink/10 bg-white/50 p-6 md:p-10"
+      novalidate
+    >
+      <div class="grid gap-5 sm:grid-cols-2">
+        <div>
+          <label for="ad" class="mb-1.5 block text-sm font-medium text-ink">Ad</label>
+          <input id="ad" name="ad" type="text" required
+            class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand" />
+        </div>
+        <div>
+          <label for="soyad" class="mb-1.5 block text-sm font-medium text-ink">Soyad</label>
+          <input id="soyad" name="soyad" type="text" required
+            class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand" />
+        </div>
+        <div>
+          <label for="email" class="mb-1.5 block text-sm font-medium text-ink">E-posta</label>
+          <input id="email" name="email" type="email" required
+            class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand" />
+        </div>
+        <div>
+          <label for="telefon" class="mb-1.5 block text-sm font-medium text-ink">Telefon</label>
+          <input id="telefon" name="telefon" type="tel" required
+            class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand" />
+        </div>
+        <div>
+          <label for="il" class="mb-1.5 block text-sm font-medium text-ink">İl</label>
+          <select id="il" name="il" required
+            class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand">
+            <option value="" disabled selected>Seçiniz</option>
+            {iller.map((il) => <option value={il}>{il}</option>)}
+          </select>
+        </div>
+        <div>
+          <label for="ilce" class="mb-1.5 block text-sm font-medium text-ink">İlçe</label>
+          <input id="ilce" name="ilce" type="text"
+            class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand" />
+        </div>
+      </div>
+
+      <div class="mt-5">
+        <label for="mesaj" class="mb-1.5 block text-sm font-medium text-ink">Mesajınız (opsiyonel)</label>
+        <textarea id="mesaj" name="mesaj" rows="4"
+          class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand"></textarea>
+      </div>
+
+      <!-- honeypot (bot tuzağı) -->
+      <input type="text" name="website" tabindex="-1" autocomplete="off"
+        class="absolute left-[-9999px]" aria-hidden="true" />
+
+      <button type="submit"
+        class="mt-7 w-full rounded-full bg-brand px-8 py-3 font-semibold text-white transition-colors hover:bg-brand-dark">
+        Başvuruyu Gönder
+      </button>
+
+      <p id="form-durum" class="mt-4 hidden text-center text-sm"></p>
+    </form>
+  </section>
+</Layout>
+
+<script>
+  // Franchise başvurusu → CMS backend'i (POST /api/basvurular). Başvuru CMS'te
+  // "Franchise Başvuruları" ekranına düşer.
+  const API_BASE = import.meta.env.PUBLIC_API_URL || 'https://api-fyfp72cohq-uc.a.run.app/api';
+
+  const form = document.getElementById('franchise-form') as HTMLFormElement | null;
+  const durum = document.getElementById('form-durum');
+  const buton = form?.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+
+  function mesajGoster(metin: string, tur: 'basari' | 'hata') {
+    if (!durum) return;
+    durum.textContent = metin;
+    durum.className =
+      'mt-4 text-center text-sm ' + (tur === 'basari' ? 'text-brand' : 'text-red-600');
+    durum.classList.remove('hidden');
+  }
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = new FormData(form);
+    if (data.get('website')) return; // honeypot — bot
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    const payload = {
+      ad: data.get('ad'),
+      soyad: data.get('soyad'),
+      email: data.get('email'),
+      telefon: data.get('telefon'),
+      il: data.get('il'),
+      ilce: data.get('ilce'),
+      mesaj: data.get('mesaj'),
+    };
+
+    if (buton) {
+      buton.disabled = true;
+      buton.textContent = 'Gönderiliyor...';
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/basvurular`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('Başvuru gönderilemedi');
+      form.reset();
+      mesajGoster('Teşekkürler! Başvurunuz alındı, en kısa sürede sizinle iletişime geçeceğiz. 💚', 'basari');
+    } catch (err) {
+      mesajGoster('Bir sorun oluştu, lütfen daha sonra tekrar deneyin veya bizimle iletişime geçin.', 'hata');
+    } finally {
+      if (buton) {
+        buton.disabled = false;
+        buton.textContent = 'Başvuruyu Gönder';
+      }
+    }
+  });
+</script>

@@ -1,0 +1,172 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ParallaxBand from '../components/ParallaxBand.astro';
+---
+
+<Layout>
+  <!-- ─── Hero ─── -->
+  <section class="relative overflow-hidden">
+    <img
+      src="/img/coffee-leaf.svg"
+      alt=""
+      aria-hidden="true"
+      class="pointer-events-none absolute -left-6 top-1/2 hidden w-28 -translate-y-1/2 opacity-70 md:block"
+    />
+    <div class="mx-auto max-w-5xl px-6 pt-12 text-center md:pt-16">
+      <p class="font-serif text-lg text-brand md:text-xl">Her Mevsim Tatlı Bir Mola!</p>
+      <h1 class="mx-auto mt-3 max-w-3xl text-4xl leading-tight sm:text-5xl md:text-7xl">
+        Hafif, zarif ve modern bir tatlı deneyimi!
+      </h1>
+    </div>
+
+    <img
+      src="/img/hero.png"
+      alt="Sütlüce Kadayıf soğuk kadayıf çeşitleri"
+      class="mx-auto mt-4 w-full max-w-5xl"
+      fetchpriority="high"
+    />
+
+    <div class="mx-auto max-w-2xl px-6 pb-10 text-center">
+      <p class="text-base md:text-lg">
+        Geleneksel bir lezzeti modern bir yorumla sizlere sunduk, damaklarınızda iz bıraktık.
+      </p>
+      <p class="mt-1 font-semibold text-ink">En yakın lezzet durağımıza gitmek için</p>
+      <a
+        href="/lezzet-duraklarimiz"
+        class="mt-6 inline-block rounded-full bg-brand px-8 py-3 font-semibold text-white transition-colors hover:bg-brand-dark"
+      >şimdi tıklayın.</a>
+    </div>
+
+    <!-- Orijinaldeki gibi dikey ayraç çizgisi (aşağı akış göstergesi) -->
+    <div class="flex justify-center pt-6 pb-24">
+      <span class="block h-16 w-px bg-ink/25"></span>
+    </div>
+  </section>
+
+  <!-- ─── Parallax band 1 ─── -->
+  <ParallaxBand img="/img/banner-1.jpg" alt="Sütlüce Kadayıf soğuk kadayıf sofrası" />
+
+  <!-- ─── Hakkımızda tanıtım (orijinaldeki gibi ortalı) ─── -->
+  <section class="relative overflow-hidden bg-cream">
+    <!-- dekoratif çizimler -->
+    <img
+      src="/img/coffee-leaf.svg"
+      alt=""
+      aria-hidden="true"
+      class="pointer-events-none absolute left-8 top-28 hidden w-24 opacity-70 lg:block"
+    />
+    <img
+      src="/img/coffee-beans.svg"
+      alt=""
+      aria-hidden="true"
+      class="pointer-events-none absolute right-12 top-16 hidden w-28 opacity-70 lg:block"
+    />
+
+    <!-- üstteki dikey ayraç çizgisi -->
+    <div class="flex justify-center">
+      <span class="block h-24 w-px bg-ink/25"></span>
+    </div>
+
+    <div class="mx-auto max-w-3xl px-6 pb-24 pt-14 text-center">
+      <span class="mx-auto block h-px w-10 bg-ink/40"></span>
+      <p class="mt-6 text-sm font-semibold uppercase tracking-[0.2em] text-body">Sütlüce Kadayıf</p>
+      <h2 class="mx-auto mt-5 max-w-2xl text-3xl leading-snug md:text-5xl">
+        Geçmişin lezzetini bugünün zarafetiyle buluşturduk, her lokmada yenilik kattık.
+      </h2>
+      <a
+        href="/hakkimizda"
+        class="mt-9 inline-block rounded-full bg-brand px-8 py-3 font-semibold text-white transition-colors hover:bg-brand-dark"
+      >Hakkımızda</a>
+    </div>
+  </section>
+
+  <!-- ─── Parallax band 2 ─── -->
+  <ParallaxBand img="/img/banner-2.jpg" alt="Çikolatalı soğuk kadayıf" />
+
+  <!-- ─── Sayfa menüsü bölümü (orijinaldeki gibi: iki görsel + ortada menü) ─── -->
+  <section class="relative overflow-hidden bg-cream">
+    <!-- dekoratif köşe çizimleri -->
+    <img src="/img/coffee-leaf.svg" alt="" aria-hidden="true" class="pointer-events-none absolute left-8 top-16 hidden w-24 opacity-70 lg:block" />
+    <img src="/img/coffee-beans.svg" alt="" aria-hidden="true" class="pointer-events-none absolute right-12 top-14 hidden w-28 opacity-70 lg:block" />
+    <img src="/img/coffee-leaf.svg" alt="" aria-hidden="true" class="pointer-events-none absolute bottom-16 left-8 hidden w-24 opacity-70 lg:block" />
+    <img src="/img/coffee-beans.svg" alt="" aria-hidden="true" class="pointer-events-none absolute bottom-14 right-12 hidden w-28 opacity-70 lg:block" />
+
+    <!-- üst dikey ayraç çizgisi -->
+    <div class="flex justify-center">
+      <span class="block h-24 w-px bg-ink/25"></span>
+    </div>
+
+    <div class="mx-auto grid max-w-6xl items-center gap-10 px-6 py-8 md:grid-cols-[1fr_auto_1fr]">
+      <!-- sol görsel (alttan parallax) -->
+      <img
+        src="/img/konsept2.png"
+        alt="Sütlüce Kadayıf konsepti"
+        data-parallax="up"
+        class="parallax-side mx-auto aspect-[4/5] w-full max-w-[320px] rounded-md object-cover will-change-transform"
+        loading="lazy"
+      />
+
+      <!-- orta: menü linkleri -->
+      <nav class="text-center">
+        <span class="mx-auto mb-8 block h-px w-10 bg-ink/40"></span>
+        <ul class="space-y-4 font-serif text-3xl text-ink md:text-5xl">
+          <li><a href="/" class="transition-colors hover:text-brand">Anasayfa</a></li>
+          <li><a href="/urunlerimiz" class="transition-colors hover:text-brand">Ürünler</a></li>
+          <li><a href="/lezzet-duraklarimiz" class="transition-colors hover:text-brand">Lezzet Durakları</a></li>
+          <li><a href="/hakkimizda" class="transition-colors hover:text-brand">Hakkımızda</a></li>
+        </ul>
+      </nav>
+
+      <!-- sağ görsel (üstten parallax) -->
+      <img
+        src="/img/konsept-urun.png"
+        alt="Soğuk kadayıf konsepti"
+        data-parallax="down"
+        class="parallax-side mx-auto aspect-[4/5] w-full max-w-[320px] rounded-md object-cover will-change-transform"
+        loading="lazy"
+      />
+    </div>
+
+    <!-- alt dikey ayraç çizgisi -->
+    <div class="flex justify-center">
+      <span class="block h-24 w-px bg-ink/25"></span>
+    </div>
+  </section>
+
+  <!-- ─── Parallax band 3 ─── -->
+  <ParallaxBand img="/img/banner-3.jpg" alt="Fıstıklı çikolatalı soğuk kadayıf" />
+</Layout>
+
+<script>
+  // Menü bölümündeki yan görseller için zıt yönlü parallax:
+  // sol görsel alttan (yukarı doğru), sağ görsel üstten (aşağı doğru) akar.
+  const sides = document.querySelectorAll('.parallax-side');
+  const AMOUNT = 60; // px — kayma genliği
+  let ticking = false;
+
+  function update() {
+    const vh = window.innerHeight;
+    sides.forEach((el) => {
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom < -100 || rect.top > vh + 100) return; // görünür değilse atla
+      // p: görsel viewport'un altındayken 0, üstünden çıkarken 1
+      let p = (vh - rect.top) / (vh + rect.height);
+      if (p < 0) p = 0; else if (p > 1) p = 1;
+      const base = (1 - 2 * p) * AMOUNT;           // +A → -A
+      const dir = el.getAttribute('data-parallax') === 'down' ? -1 : 1;
+      el.style.transform = 'translate3d(0,' + (base * dir).toFixed(1) + 'px,0)';
+    });
+    ticking = false;
+  }
+
+  function onScroll() {
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(update);
+    }
+  }
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  update();
+</script>

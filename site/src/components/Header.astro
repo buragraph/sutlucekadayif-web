@@ -1,0 +1,78 @@
+---
+const nav = [
+  { t: 'Ana Sayfa', href: '/' },
+  { t: 'Ürünlerimiz', href: '/urunlerimiz' },
+  { t: 'Lezzet Durakları', href: '/lezzet-duraklarimiz' },
+  { t: 'Hakkımızda', href: '/hakkimizda' },
+];
+const path = Astro.url.pathname.replace(/\/$/, '') || '/';
+const aktif = (href) => (href === '/' ? path === '/' : path.startsWith(href));
+---
+
+<header class="sticky top-0 z-50 border-b border-ink/5 bg-cream/85 backdrop-blur">
+  <nav class="mx-auto flex w-full max-w-[1760px] items-center justify-between gap-4 px-6 py-3 lg:px-12">
+    <!-- Sol: menü (masaüstü) -->
+    <ul class="hidden flex-1 items-center gap-8 text-sm font-semibold text-brand lg:flex">
+      {nav.map((n) => (
+        <li>
+          <a
+            href={n.href}
+            class:list={[
+              'transition-opacity hover:opacity-70',
+              aktif(n.href) && 'opacity-100',
+            ]}
+          >{n.t}</a>
+        </li>
+      ))}
+    </ul>
+
+    <!-- Orta: logo -->
+    <a href="/" class="shrink-0" aria-label="Sütlüce Kadayıf ana sayfa">
+      <img src="/img/logo.png" alt="Sütlüce Kadayıf" class="h-11 w-auto md:h-14" />
+    </a>
+
+    <!-- Sağ: franchise (masaüstü) -->
+    <div class="hidden flex-1 justify-end lg:flex">
+      <a
+        href="/franchise"
+        class="rounded-full bg-brand px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-dark"
+      >Franchise</a>
+    </div>
+
+    <!-- Mobil: hamburger -->
+    <button
+      id="menu-toggle"
+      class="inline-flex items-center justify-center rounded-md p-2 text-ink lg:hidden"
+      aria-label="Menüyü aç/kapat"
+      aria-expanded="false"
+    >
+      <svg id="menu-open-icon" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
+      <svg id="menu-close-icon" class="hidden h-6 w-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+    </button>
+  </nav>
+
+  <!-- Mobil menü paneli -->
+  <div id="mobile-menu" class="hidden border-t border-ink/5 bg-cream lg:hidden">
+    <ul class="space-y-1 px-6 py-4 text-base font-medium text-ink">
+      {nav.map((n) => (
+        <li><a href={n.href} class="block py-2 hover:text-brand">{n.t}</a></li>
+      ))}
+      <li class="pt-2">
+        <a href="/franchise" class="inline-block rounded-full bg-brand px-6 py-2.5 text-sm font-semibold text-white">Franchise</a>
+      </li>
+    </ul>
+  </div>
+</header>
+
+<script>
+  const toggle = document.getElementById('menu-toggle');
+  const menu = document.getElementById('mobile-menu');
+  const openIcon = document.getElementById('menu-open-icon');
+  const closeIcon = document.getElementById('menu-close-icon');
+  toggle?.addEventListener('click', () => {
+    const acik = menu?.classList.toggle('hidden') === false;
+    toggle.setAttribute('aria-expanded', String(acik));
+    openIcon?.classList.toggle('hidden', acik);
+    closeIcon?.classList.toggle('hidden', !acik);
+  });
+</script>
