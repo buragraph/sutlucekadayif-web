@@ -116,20 +116,20 @@ router.get(
     asyncHandler(async (req, res) => {
         let query = db.collection(KOLEKSIYON);
 
+        // Şube sahibi yalnızca kendi şubesi — kapsam sorgu parametresinden değil
+        // token'daki subeSlug'dan gelir. Bu filtre `geri_bildirimler` üzerinde
+        // (subeSlug ASC, olusturmaZamani DESC) bileşik indeksi gerektirir;
+        // firestore.indexes.json'da tanımlı.
         if (req.user.role !== 'admin') {
             if (!req.user.subeSlug) {
                 return res.status(403).json({ error: 'Şubenize ait bir kayıt bulunamadı.' });
             }
             query = query.where('subeSlug', '==', req.user.subeSlug);
-        } else if (req.query.sube) {
-            query = query.where('subeSlug', '==', String(req.query.sube));
         }
 
-        const { durum } = req.query;
-        if (durum && DURUMLAR.includes(durum)) {
-            query = query.where('durum', '==', durum);
-        }
-
+        // Durum filtresi bilinçli olarak sunucuda yok — ekran tüm kayıtları çekip
+        // tarayıcıda filtreliyor; sunucu filtresi ek indeks isterdi, okuma
+        // tasarrufu sağlamazdı.
         const snap = await query.orderBy('olusturmaZamani', 'desc').get();
         const bildirimler = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 

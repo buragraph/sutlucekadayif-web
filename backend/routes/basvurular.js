@@ -96,13 +96,14 @@ router.get(
     verifyToken,
     requirePermission('basvurular.view'),
     asyncHandler(async (req, res) => {
-        let query = db.collection(KOLEKSIYON);
-        const { durum } = req.query;
-        if (durum && DURUMLAR.includes(durum)) {
-            query = query.where('durum', '==', durum);
-        }
+        // Durum filtresi bilinçli olarak sunucuda YOK: ekran zaten tüm kayıtları
+        // çekip tarayıcıda filtreliyor (sayaçlar da oradan). Sunucu tarafı filtre
+        // ek bileşik indeks gerektirir, karşılığında hiçbir okuma tasarrufu
+        // sağlamazdı. Hacim büyürse filtre + indeks + sayfalama birlikte eklenmeli.
         // ISO string alanı olduğundan sözlüksel sıralama = kronolojik sıralama
-        const snap = await query.orderBy('olusturmaZamani', 'desc').get();
+        const snap = await db.collection(KOLEKSIYON)
+            .orderBy('olusturmaZamani', 'desc')
+            .get();
         const basvurular = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
         // Özet sayaç (durum rozetleri için) — tek sorgudan türetilir, ek okuma yok
