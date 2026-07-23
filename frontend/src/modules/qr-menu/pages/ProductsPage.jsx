@@ -188,7 +188,7 @@ export default function ProductsPage() {
     const [viewMode, setViewMode] = useState('list');
     const [editingUrun, setEditingUrun] = useState(null);
     const [savingUrun, setSavingUrun] = useState(false);
-    const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr' });
+    const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kilitli: '' });
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [aiLoading, setAiLoading] = useState(false);
@@ -245,7 +245,7 @@ export default function ProductsPage() {
 
     function openEditUrun(urun) {
         setEditingUrun(urun);
-        setUrunForm({ ad: urun.ad, fiyat: urun.fiyat, kategori: urun.kategori || '', aciklama: urun.aciklama || '', sube_slug: urun.sube_slug || '', gorsel: urun.gorsel || '', etiket: urun.etiket || [], miktar: urun.miktar || '', birim: urun.birim || 'gr' });
+        setUrunForm({ ad: urun.ad, fiyat: urun.fiyat, kategori: urun.kategori || '', aciklama: urun.aciklama || '', sube_slug: urun.sube_slug || '', gorsel: urun.gorsel || '', etiket: urun.etiket || [], miktar: urun.miktar || '', birim: urun.birim || 'gr', kilitli: typeof urun.kilitli === 'boolean' ? (urun.kilitli ? 'evet' : 'hayir') : '' });
         setImageFile(null); setImagePreview(urun.gorsel || null);
         setViewMode('edit');
     }
@@ -257,6 +257,11 @@ export default function ProductsPage() {
         setSavingUrun(true);
         try {
             const payload = { ad: urunForm.ad, fiyat: Number(urunForm.fiyat), kategori: urunForm.kategori, aciklama: urunForm.aciklama, etiket: urunForm.etiket || [], miktar: urunForm.miktar ? Number(urunForm.miktar) : null, birim: urunForm.birim || '' };
+            // Ürün bazlı kilit — yalnızca admin gönderir. '' => null: bayrak
+            // kaldırılır, kilit yine kategoriden miras alınır.
+            if (role === 'admin') {
+                payload.kilitli = urunForm.kilitli === '' ? null : urunForm.kilitli === 'evet';
+            }
             const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
             if (selectedKat && (selectedKat.tur === 'sube_ozel') && urunForm.sube_slug) {
                 payload.sube_slug = urunForm.sube_slug;
@@ -340,8 +345,10 @@ export default function ProductsPage() {
     const totalPages = Math.ceil(sortedUrunler.length / ITEMS_PER_PAGE);
 
     // ── Toplu işlem yardımcıları ──
-    // Düzenlenebilir (kilitli olmayan) ürünler — şube sahibi ortak ürünleri seçemez
-    const seciliebilir = (u) => !(role !== 'admin' && (kategoriler.find(k => k.id === u.kategori)?.kilitli || u.tur !== 'sube_ozel'));
+    // Kilit kuralı sunucuda çözülür (bkz. backend urunKilitliMi) ve her ürüne
+    // `duzenlenemez` olarak gelir — burada YENİDEN HESAPLAMA, yoksa iki kopya
+    // ayrışır ve arayüz izin verirken backend 403 döner.
+    const seciliebilir = (u) => !u.duzenlenemez;
     const secilebilirSayfa = paginatedUrunler.filter(seciliebilir);
     const tumuSeciliMi = secilebilirSayfa.length > 0 && secilebilirSayfa.every(u => selectedIds.has(u.id));
     const selectedItems = () => urunler.filter(u => selectedIds.has(u.id)).map(u => ({ id: u.id, sube_slug: u.sube_slug }));
@@ -559,6 +566,29 @@ export default function ProductsPage() {
                                                 </select>
                                             </div>
                                         </div>
+
+                                        {/* Ürün bazlı kilit — yalnızca admin, yalnızca şubeye özel ürünlerde.
+                                            Ortak ürünlerde göstermiyoruz: onlar tek doküman olduğu için zaten
+                                            her zaman kilitli, bayrakla açılamaz. */}
+                                        {(() => {
+                                            const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
+                                            if (role !== 'admin' || !selectedKat || selectedKat.tur !== 'sube_ozel') return null;
+                                            const katKilitli = !!selectedKat.kilitli;
+                                            return (
+                                                <div className="space-y-1.5">
+                                                    <Label>Şube düzenleyebilsin mi?</Label>
+                                                    <select
+                                                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
+                                                        value={urunForm.kilitli}
+                                                        onChange={(e) => setUrunForm({ ...urunForm, kilitli: e.target.value })}
+                                                    >
+                                                        <option value="">Kategoriden miras ({katKilitli ? 'kilitli' : 'düzenlenebilir'})</option>
+                                                        <option value="hayir">Şube düzenleyebilir</option>
+                                                        <option value="evet">Kilitli — şube yalnızca mevcut/mevcut değil yapar</option>
+                                                    </select>
+                                                </div>
+                                            );
+                                        })()}
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1.5">
                                                 <Label>Miktar <span className="text-muted-foreground font-normal text-xs">(opsiyonel)</span></Label>
@@ -790,7 +820,7 @@ export default function ProductsPage() {
                                 {paginatedUrunler.map((urun) => {
                                     const mevcutDegil = urun.mevcut_degil || [];
                                     const buSubedeMevcut = !mevcutDegil.includes(subeSlug);
-                                    const isKilitli = role !== 'admin' && (kategoriler.find(k => k.id === urun.kategori)?.kilitli || urun.tur !== 'sube_ozel');
+                                    const isKilitli = !!urun.duzenlenemez; // sunucudan gelir
 
                                     return (
                                         <TableRow

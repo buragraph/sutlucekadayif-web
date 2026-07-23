@@ -38,12 +38,49 @@ async function findProduct(id, subeSlug) {
 }
 
 /**
- * Şube sahibi yalnızca KENDİ şubesinin özel ürününü değiştirebilir.
- * Ortak ürünler ve diğer şubelerin ürünleri yalnızca admin tarafından.
+ * Kategori kilit haritası — { kategoriId: true|false }.
+ * Küçük koleksiyon (birkaç doküman), istek başına TEK okuma. Admin için hiç
+ * okunmaz, çünkü admin zaten hiçbir zaman kilitli değildir.
  */
-function canMutateProduct(req, source, subeSlug) {
+async function katKilitHaritasi(req) {
+    if (req.user.role === 'admin') return {};
+    const snap = await db.collection('kategoriler').get();
+    const m = {};
+    snap.forEach((d) => { m[d.id] = !!d.data().kilitli; });
+    return m;
+}
+
+/**
+ * Ürün, ilgili kullanıcı için kilitli mi? — KİLİT KURALININ TEK KAYNAĞI.
+ *
+ * Hem mutasyon kontrolleri hem GET yanıtı bunu kullanır; GET her ürüne
+ * hesaplanmış `kilitli` alanını ekler, böylece arayüz kuralı YENİDEN YAZMAZ.
+ * (Kuralın iki kopyası olsaydı biri güncellenip diğeri unutulduğunda arayüz
+ * düzenlemeye izin verir, backend 403 dönerdi.)
+ *
+ * - Admin: asla kilitli değil.
+ * - Ortak ürün: HER ZAMAN kilitli. Tek doküman olduğu için bir şubenin
+ *   düzenlemesi tüm şubelerde değişirdi — yapısal kilit, bayrakla açılamaz.
+ *   Şube bu ürünlerde yalnızca mevcut/mevcut değil yapabilir.
+ * - Şubeye özel ürün: önce ürünün kendi `kilitli` bayrağı (ürün bazlı istisna),
+ *   bayrak yoksa kategorinin `kilitli` değeri miras alınır.
+ */
+function urunKilitliMi(user, urun, katKilit) {
+    if (user.role === 'admin') return false;
+    if (urun.tur !== 'sube_ozel') return true;
+    if (urun.sube_slug && urun.sube_slug !== user.subeSlug) return true;
+    if (typeof urun.kilitli === 'boolean') return urun.kilitli;
+    return !!katKilit[urun.kategori];
+}
+
+/**
+ * Şube sahibi yalnızca KENDİ şubesinin, kilitli OLMAYAN özel ürününü
+ * değiştirebilir. Ortak ürünler ve diğer şubelerin ürünleri yalnızca admin.
+ */
+function canMutateProduct(req, found, katKilit) {
     if (req.user.role === 'admin') return true;
-    return source === 'sube_ozel' && subeSlug === req.user.subeSlug;
+    const d = found.doc.data();
+    return !urunKilitliMi(req.user, { tur: found.source, sube_slug: found.subeSlug, ...d }, katKilit);
 }
 
 /**
@@ -98,7 +135,17 @@ router.get(
             });
         }
 
-        res.json({ urunler });
+        // Her ürüne, İSTEYEN KULLANICI için hesaplanmış kilit durumunu ekle.
+        // Arayüz kuralı yeniden hesaplamaz, bu alanı okur — kural tek yerde yaşar.
+        // Ham `kilitli` alanı korunur (admin formundaki anahtarın durumu odur);
+        // `duzenlenemez` ise kategori mirası + ortak/şube ayrımıyla çözülmüş sonuç.
+        const katKilit = await katKilitHaritasi(req);
+        const cikti = urunler.map((u) => ({
+            ...u,
+            duzenlenemez: urunKilitliMi(req.user, u, katKilit),
+        }));
+
+        res.json({ urunler: cikti });
     })
 );
 
@@ -112,7 +159,7 @@ router.post(
     verifyToken,
     requirePermission('products.create'),
     asyncHandler(async (req, res) => {
-        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim } = req.body;
+        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kilitli } = req.body;
 
         if (!ad || !ad.trim()) {
             return res.status(400).json({ error: 'Ürün adı zorunludur' });
@@ -150,6 +197,13 @@ router.post(
             birim: birim || '',
             createdAt: new Date().toISOString(),
         };
+
+        // Ürün bazlı kilit YALNIZCA admin tarafından belirlenir — aksi halde şube
+        // kendi ürününü kilitten çıkarırdı. Belirtilmezse alan hiç yazılmaz ve
+        // kilit kategoriden miras alınır.
+        if (req.user.role === 'admin' && kilitli !== undefined) {
+            productData.kilitli = Boolean(kilitli);
+        }
 
         let docRef;
 
@@ -213,10 +267,11 @@ router.put(
 
         const affected = [];
         let updated = 0;
+        const katKilit = await katKilitHaritasi(req); // döngü dışında tek okuma
         for (const it of items) {
             const lookupSlug = req.user.role === 'admin' ? it.sube_slug : req.user.subeSlug;
             const found = await findProduct(it.id, lookupSlug);
-            if (!found || !canMutateProduct(req, found.source, found.subeSlug)) continue;
+            if (!found || !canMutateProduct(req, found, katKilit)) continue;
 
             const cur = Number(found.doc.data().fiyat) || 0;
             let np = cur;
@@ -311,10 +366,11 @@ router.post(
         const affected = [];
         const katDec = {};
         let deleted = 0;
+        const katKilit = await katKilitHaritasi(req); // döngü dışında tek okuma
         for (const it of items) {
             const lookupSlug = req.user.role === 'admin' ? it.sube_slug : req.user.subeSlug;
             const found = await findProduct(it.id, lookupSlug);
-            if (!found || !canMutateProduct(req, found.source, found.subeSlug)) continue;
+            if (!found || !canMutateProduct(req, found, katKilit)) continue;
 
             await found.docRef.update({ deletedAt: new Date().toISOString() });
             const kat = found.doc.data().kategori;
@@ -341,15 +397,16 @@ router.put(
     requirePermission('products.edit'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
-        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim } = req.body;
+        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kilitli } = req.body;
 
         // Şube sahibi yalnızca kendi şubesinde arar (başka şubeyi hedefleyemez)
         const lookupSlug = req.user.role === 'admin' ? (sube_slug || req.body._subeSlug) : req.user.subeSlug;
         const found = await findProduct(id, lookupSlug);
+        const katKilit = await katKilitHaritasi(req);
         if (!found) {
             return res.status(404).json({ error: 'Ürün bulunamadı' });
         }
-        if (!canMutateProduct(req, found.source, found.subeSlug)) {
+        if (!canMutateProduct(req, found, katKilit)) {
             return res.status(403).json({ error: 'Bu ürünü değiştirme yetkiniz yok' });
         }
         const { docRef, doc } = found;
@@ -363,6 +420,13 @@ router.put(
         if (gorsel !== undefined) updateData.gorsel = gorsel;
         if (miktar !== undefined) updateData.miktar = miktar ? Number(miktar) : null;
         if (birim !== undefined) updateData.birim = birim;
+        // Kilit bayrağını yalnızca admin değiştirebilir (bkz. urunKilitliMi).
+        // null gönderilirse bayrak kaldırılır → kilit yine kategoriden miras alınır.
+        if (req.user.role === 'admin' && kilitli !== undefined) {
+            updateData.kilitli = kilitli === null
+                ? admin.firestore.FieldValue.delete()
+                : Boolean(kilitli);
+        }
 
         if (Object.keys(updateData).length === 0) {
             return res.json({ success: true });
@@ -404,10 +468,11 @@ router.delete(
 
         const lookupSlug = req.user.role === 'admin' ? subeSlug : req.user.subeSlug;
         const found = await findProduct(id, lookupSlug);
+        const katKilit = await katKilitHaritasi(req);
         if (!found) {
             return res.status(404).json({ error: 'Ürün bulunamadı' });
         }
-        if (!canMutateProduct(req, found.source, found.subeSlug)) {
+        if (!canMutateProduct(req, found, katKilit)) {
             return res.status(403).json({ error: 'Bu ürünü silme yetkiniz yok' });
         }
 
@@ -482,8 +547,9 @@ router.put(
 
         const lookupSlug = req.user.role === 'admin' ? subeSlug : req.user.subeSlug;
         const found = await findProduct(id, lookupSlug);
+        const katKilit = await katKilitHaritasi(req);
         if (!found) return res.status(404).json({ error: 'Ürün bulunamadı' });
-        if (!canMutateProduct(req, found.source, found.subeSlug)) {
+        if (!canMutateProduct(req, found, katKilit)) {
             return res.status(403).json({ error: 'Bu ürünü geri alma yetkiniz yok' });
         }
 
@@ -517,8 +583,9 @@ router.delete(
 
         const lookupSlug = req.user.role === 'admin' ? subeSlug : req.user.subeSlug;
         const found = await findProduct(id, lookupSlug);
+        const katKilit = await katKilitHaritasi(req);
         if (!found) return res.status(404).json({ error: 'Ürün bulunamadı' });
-        if (!canMutateProduct(req, found.source, found.subeSlug)) {
+        if (!canMutateProduct(req, found, katKilit)) {
             return res.status(403).json({ error: 'Bu ürünü silme yetkiniz yok' });
         }
 
