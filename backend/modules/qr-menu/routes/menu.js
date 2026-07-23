@@ -3,6 +3,7 @@ import { db } from '../../../config/firebase.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import { cacheMiddleware } from '../../../middleware/cache.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
+import { buildMenuData } from '../services/menu-builder.js';
 
 const router = Router();
 
@@ -36,64 +37,15 @@ router.get(
     asyncHandler(async (req, res) => {
         const { subeSlug } = req.params;
 
-        // Paralel sorgular — hız optimizasyonu
-        const [subeDoc, katSnap, ortakSnap, ozelSnap] = await Promise.all([
-            db.collection('subeler').doc(subeSlug).get(),
-            db.collection('kategoriler').orderBy('sira', 'asc').get(),
-            db.collection('ortak_urunler').get(),                                    // Ortak ürünler (ana collection)
-            db.collection('subeler').doc(subeSlug).collection('urunler').get(), // Şubeye özel (subcollection)
-        ]);
+        // PUBLIC endpoint — güvenli alan projeksiyonu buildMenuData içinde yapılır
+        // (R2 JSON cache'i ile TEK kaynak; bkz. services/menu-builder.js).
+        const menu = await buildMenuData(subeSlug);
 
-        if (!subeDoc.exists) {
+        if (!menu) {
             return res.status(404).json({ error: 'Şube bulunamadı' });
         }
-        // PUBLIC endpoint — yalnızca menüde gösterilen GÜVENLİ alanlar döner.
-        // VKN, fatura_adresi, yetkili_adi, telefon (PII) ve donem_ozetleri/toplam_*
-        // (reklam harcaması/performans) gibi hassas alanlar müşteriye SIZDIRILMAZ.
-        const sd = subeDoc.data();
-        const sube = {
-            id: subeDoc.id,
-            slug: subeDoc.id,
-            ad: sd.ad || subeDoc.id,
-            il: sd.il || null,
-            ilce: sd.ilce || null,
-        };
 
-        const kategoriler = [];
-        katSnap.forEach((d) => kategoriler.push({ id: d.id, ...d.data() }));
-
-        const tumUrunler = [];
-
-        // Ortak ürünleri filtrele: mevcut_degil'de bu şube varsa gösterme
-        ortakSnap.forEach((d) => {
-            const data = d.data();
-            if (data.deletedAt) return;
-            const mevcutDegil = data.mevcut_degil || [];
-            if (!mevcutDegil.includes(subeSlug)) {
-                tumUrunler.push({ id: d.id, ...data });
-            }
-        });
-
-        // Şubeye özel ürünler
-        ozelSnap.forEach((d) => {
-            const data = d.data();
-            if (data.deletedAt) return;
-            tumUrunler.push({ id: d.id, ...data });
-        });
-
-        // Kategoriye göre grupla
-        const urunlerByKategori = {};
-        tumUrunler.forEach((urun) => {
-            const kat = urun.kategori || 'diger';
-            if (!urunlerByKategori[kat]) urunlerByKategori[kat] = [];
-            urunlerByKategori[kat].push(urun);
-        });
-
-        res.json({
-            sube,
-            kategoriler,
-            urunlerByKategori,
-        });
+        res.json(menu);
     })
 );
 
