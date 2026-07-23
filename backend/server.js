@@ -14,6 +14,9 @@ import categoriesRouter from './routes/categories.js';
 import branchesRouter from './routes/branches.js';
 import onboardingRouter from './routes/onboarding.js';
 import profilRouter from './routes/profil.js';
+import basvurularRouter from './routes/basvurular.js';
+import geribildirimRouter from './routes/geribildirim.js';
+import isbasvuruRouter from './routes/isbasvuru.js';
 import uploadRouter from './routes/upload.js';
 import mediaRouter from './routes/media.js';
 import aiRouter from './routes/ai.js';
@@ -67,6 +70,9 @@ app.use(cors({
             'http://localhost:5173',
             'http://localhost:5174',
             'http://localhost:5175',
+            'http://localhost:4321', // Astro pazarlama sitesi (franchise formu)
+            'https://sutlucekadayif.com',
+            'https://www.sutlucekadayif.com',
         ];
         // Origin yoksa (server-to-server) veya listedeyse izin ver
         if (!origin || allowedOrigins.includes(origin)) {
@@ -108,6 +114,9 @@ app.use('/api/categories', categoriesRouter);
 app.use('/api/branches', branchesRouter);
 app.use('/api/onboarding', onboardingRouter);
 app.use('/api/profil', profilRouter);
+app.use('/api/basvurular', basvurularRouter);
+app.use('/api/geribildirim', geribildirimRouter);
+app.use('/api/isbasvuru', isbasvuruRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/media', mediaRouter);
 app.use('/api/ai', aiRouter);

@@ -20,6 +20,9 @@ import ReportsPage from './modules/reports/pages/ReportsPage';
 import BudgetCampaignsPage from './modules/reports/pages/BudgetCampaignsPage';
 import BudgetSubmitPage from './modules/reports/pages/BudgetSubmitPage';
 import BranchReklamPage from './modules/reports/pages/BranchReklamPage';
+import BasvurularPage from './modules/franchise/pages/BasvurularPage';
+import GeriBildirimPage from './modules/qr-menu/pages/GeriBildirimPage';
+import IsBasvurulariPage from './modules/qr-menu/pages/IsBasvurulariPage';
 
 export default function App() {
   return (
@@ -47,6 +50,9 @@ export default function App() {
             <Route path="/admin/subeler" element={<BranchesPage />} />
             <Route path="/admin/qr-menu/kategoriler" element={<CategoriesPage />} />
             <Route path="/admin/medya" element={<ProtectedRoute role="admin"><PhotoLibraryPage /></ProtectedRoute>} />
+            <Route path="/admin/basvurular" element={<ProtectedRoute role="admin"><BasvurularPage /></ProtectedRoute>} />
+            <Route path="/admin/geri-bildirim" element={<GeriBildirimPage />} />
+            <Route path="/admin/is-basvurulari" element={<IsBasvurulariPage />} />
             <Route path="/admin/akademi" element={<AcademyDashboard />} />
             <Route path="/admin/akademi/kurs/:courseId" element={<CourseDetail />} />
             <Route path="/admin/akademi/yonetim" element={<AcademyAdmin />} />

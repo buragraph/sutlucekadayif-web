@@ -231,6 +231,13 @@
   color: var(--pm-text-60);
   text-decoration: none;
   transition: color var(--pm-transition);
+  /* İletişim öğesi <button> — tarayıcı varsayılanlarını sıfırla ki
+     yanındaki <a> bağlantılarıyla birebir aynı görünsün */
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .pm-header__link:hover {
@@ -822,6 +829,9 @@
   border-radius: 999px;
   text-decoration: none;
   transition: all var(--pm-transition);
+  /* Artık <button> — tarayıcı varsayılanlarını sıfırla */
+  border: none;
+  cursor: pointer;
 }
 
 .pm-footer__card-btn:hover {
@@ -4006,6 +4016,110 @@ input[type=number] {
 }
 .pm-modal__price { font-size: 22px; font-weight: 700; color: var(--pm-dark); }
 .pm-modal__miktar { font-size: 14px; font-weight: 500; color: var(--pm-text-50); }
+
+/* ─── Şikayet & Geri Bildirim Formu (QR menü) ─── */
+.pm-form__sube {
+  margin: 2px 0 18px;
+  font-size: 13px;
+  color: var(--pm-text-50);
+}
+.pm-form__label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pm-dark);
+}
+.pm-form__opt { font-weight: 400; color: var(--pm-text-50); }
+.pm-form__input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(8, 69, 41, 0.16);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--pm-dark);
+  font-family: inherit;
+  font-size: 16px; /* iOS 16px altındaki alana odaklanınca sayfayı zoomlar — düşürme */
+  outline: none;
+  transition: border-color var(--pm-transition);
+}
+.pm-form__input:focus { border-color: var(--pm-green, #084529); }
+textarea.pm-form__input { resize: vertical; min-height: 90px; }
+
+.pm-form__chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.pm-form__chip {
+  padding: 7px 13px;
+  border: 1px solid rgba(8, 69, 41, 0.18);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--pm-text-60);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--pm-transition);
+}
+.pm-form__chip--active {
+  background: var(--pm-green, #084529);
+  border-color: var(--pm-green, #084529);
+  color: #fff;
+}
+
+.pm-form__row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* honeypot — kullanıcı görmez, ekran okuyucudan da uzak tutulur */
+.pm-form__hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+
+.pm-form__consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 18px 0 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--pm-text-60);
+  cursor: pointer;
+}
+.pm-form__consent input { margin-top: 2px; flex-shrink: 0; }
+.pm-form__consent a { color: var(--pm-green, #084529); text-decoration: underline; }
+
+.pm-form__error {
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.pm-form__submit {
+  width: 100%;
+  margin-top: 16px;
+  padding: 13px;
+  border: none;
+  border-radius: 999px;
+  background: var(--pm-green, #084529);
+  color: #fff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--pm-transition);
+}
+.pm-form__submit:disabled { opacity: 0.6; cursor: default; }
+
+.pm-form__success { text-align: center; padding: 8px 0; }
+.pm-form__success-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 14px;
+  border-radius: 999px;
+  background: rgba(8, 69, 41, 0.1);
+  color: var(--pm-green, #084529);
+  font-size: 26px;
+}
 
 @keyframes pmFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pmSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }

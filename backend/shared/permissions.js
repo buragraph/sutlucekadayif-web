@@ -56,6 +56,27 @@ const PERMISSIONS = {
     // manage: şube CRUD, veri içe aktarma, Meta/Google çekme, ayarlar (admin)
     'reports.view': ['admin', 'sube_sahibi'],
     'reports.manage': ['admin'],
+
+    // ── Franchise Başvuruları ──
+    // Pazarlama sitesinden gelen franchise talepleri şirket geneli veridir;
+    // yalnızca admin görüntüler/yönetir (POST /basvurular herkese açıktır).
+    'basvurular.view': ['admin'],
+    'basvurular.manage': ['admin'],
+
+    // ── Şikayet & Geri Bildirim (QR menüsü) ──
+    // Şube sahibi YALNIZCA kendi şubesinin kayıtlarını görür/günceller (kapsam
+    // backend'de token'daki subeSlug ile zorlanır). Silme yalnızca admin'de:
+    // şube kendi hakkındaki şikayeti kaldıramamalı.
+    'geribildirim.view': ['admin', 'sube_sahibi'],
+    'geribildirim.manage': ['admin', 'sube_sahibi'],
+    'geribildirim.delete': ['admin'],
+
+    // ── İş Başvuruları (QR menüsü) ──
+    // Başvuru hem ilgili şubeye hem merkeze düşer: şube sahibi kendi şubesine
+    // gelenleri görür/yönetir, admin tümünü. Silme yalnızca admin'de.
+    'isbasvuru.view': ['admin', 'sube_sahibi'],
+    'isbasvuru.manage': ['admin', 'sube_sahibi'],
+    'isbasvuru.delete': ['admin'],
 };
 
 /**

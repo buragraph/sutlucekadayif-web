@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom';
 import api from '../../../services/api';
 import { Search, ChevronUp, Instagram, MessageCircle, X } from 'lucide-react';
 import { proxyImageUrl, proxyR2Url } from '../../../utils/imageProxy';
+import GeriBildirimModal from '../components/GeriBildirimModal';
+import IsBasvuruModal from '../components/IsBasvuruModal';
 
 // Etiket etiketleri (kod → görünen ad)
 const TAG_LABELS = {
@@ -148,6 +150,8 @@ export default function MenuPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedUrun, setSelectedUrun] = useState(null);
     const [showScrollTop, setShowScrollTop] = useState(false);
+    const [showGeriBildirim, setShowGeriBildirim] = useState(false);
+    const [showIsBasvuru, setShowIsBasvuru] = useState(false);
 
     const tabRefs = useRef({});      // { katId: <button> }
     const navScrollRef = useRef(null);
@@ -271,13 +275,16 @@ export default function MenuPage() {
                             <span className="pm-header__branch-name">{sube?.ad || subeSlug}</span>
                         </div>
                         <span className="pm-header__divider" />
-                        <a href="tel:08503049722" className="pm-header__link">
+                        <button type="button" className="pm-header__link" onClick={() => setShowGeriBildirim(true)}>
                             <MessageCircle size={13} /> İletişim
-                        </a>
+                        </button>
                     </div>
                     <div className="pm-header__brand">
                         <img
-                            src={proxyImageUrl('https://qr.sutlucekadayif.com/wp-content/uploads/2025/09/Varlik-1.png')}
+                            /* Logo projede duruyor (public/Varlik-1.png) — eskiden WordPress'ten
+                               çekiliyordu; o site kapanınca tüm şubelerde logo kaybolurdu.
+                               Yerel dosya ayrıca proxy turunu da ortadan kaldırır. */
+                            src="/Varlik-1.png"
                             alt="Sütlüce Kadayıf"
                             className="pm-header__logo"
                             onError={e => { e.target.style.display = 'none'; }}
@@ -414,9 +421,9 @@ export default function MenuPage() {
                     <h3 className="pm-footer__card-title">İş başvurusu için:</h3>
                     <p className="pm-footer__card-subtitle">Sütlüce Kadayıf şubelerinde çalışmak ister misiniz?</p>
                     <p className="pm-footer__card-desc">Ekibimize katılmak için başvuru formunu doldurabilirsiniz.</p>
-                    <a href="https://qr.sutlucekadayif.com/is-basvurusu/" target="_blank" rel="noopener noreferrer" className="pm-footer__card-btn">
+                    <button type="button" className="pm-footer__card-btn" onClick={() => setShowIsBasvuru(true)}>
                         İş Başvurusu Yap
-                    </a>
+                    </button>
                 </div>
                 <div className="pm-footer__franchise">
                     <h2 className="pm-footer__title">Franchise Fırsatlarıyla Sütlüce Ailesine Katılın</h2>
@@ -433,6 +440,24 @@ export default function MenuPage() {
 
             {/* ─── Product Detail Modal ─── */}
             {selectedUrun && <ProductModal urun={selectedUrun} onClose={() => setSelectedUrun(null)} />}
+
+            {/* ─── Şikayet & Geri Bildirim Formu ─── */}
+            {showGeriBildirim && (
+                <GeriBildirimModal
+                    subeSlug={subeSlug}
+                    subeAd={sube?.ad}
+                    onClose={() => setShowGeriBildirim(false)}
+                />
+            )}
+
+            {/* ─── İş Başvurusu Formu ─── */}
+            {showIsBasvuru && (
+                <IsBasvuruModal
+                    subeSlug={subeSlug}
+                    subeAd={sube?.ad}
+                    onClose={() => setShowIsBasvuru(false)}
+                />
+            )}
 
             {/* ─── Scroll to Top ─── */}
             {showScrollTop && (

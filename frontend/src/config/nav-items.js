@@ -10,6 +10,9 @@ import {
     PieChart,
     Wallet,
     Megaphone,
+    Inbox,
+    MessageSquare,
+    BriefcaseBusiness,
 } from 'lucide-react';
 
 /**
@@ -37,6 +40,12 @@ export function getNavGroups(can, role) {
                         ...(can('categories.create')
                             ? [{ title: 'Kategoriler', url: '/admin/qr-menu/kategoriler', icon: FolderOpen }]
                             : []),
+                        ...(can('geribildirim.view')
+                            ? [{ title: 'Geri Bildirim', url: '/admin/geri-bildirim', icon: MessageSquare }]
+                            : []),
+                        ...(can('isbasvuru.view')
+                            ? [{ title: 'İş Başvuruları', url: '/admin/is-basvurulari', icon: BriefcaseBusiness }]
+                            : []),
                     ],
                 },
             ],
@@ -61,6 +70,10 @@ export function getNavGroups(can, role) {
 
         if (role === 'admin') {
             userItems.push({ title: 'Şubeler', url: '/admin/subeler', icon: Building2 });
+        }
+
+        if (can('basvurular.view')) {
+            userItems.push({ title: 'Franchise Başvuruları', url: '/admin/basvurular', icon: Inbox });
         }
 
         groups.push({
