@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../../../services/api';
-import { Search, ChevronUp, Instagram, MessageCircle, X } from 'lucide-react';
+import { Search, ChevronUp, Instagram, MessageCircle, X, Star } from 'lucide-react';
 import { proxyImageUrl, proxyR2Url } from '../../../utils/imageProxy';
 import GeriBildirimModal from '../components/GeriBildirimModal';
 import IsBasvuruModal from '../components/IsBasvuruModal';
@@ -215,7 +215,11 @@ export default function MenuPage() {
         return [...set].filter(e => TAG_LABELS[e]);
     }, [tumUrunler]);
 
-    const isFiltering = !!(searchQuery.trim() || activeTag);
+    // Arama, kategori/etiket gezinmesinden AYRI bir mod: arama sırasında
+    // kategori rayı gizlenir. Etiket seçimi ise rayın İÇİNDE yaşar — bu yüzden
+    // etiket aktifken ray görünür kalmalı, yoksa kullanıcı seçtiği etiketi
+    // kapatacak kontrolü ekranda bulamaz.
+    const aramaModu = !!searchQuery.trim();
 
     // Filtre modunda gösterilecek düz liste (arama > etiket)
     const filteredProducts = useMemo(() => {
@@ -255,11 +259,15 @@ export default function MenuPage() {
     }
 
     // Filtre başlığı
-    const filtreBaslik = searchQuery ? `"${searchQuery}"` : (activeTag ? TAG_LABELS[activeTag] : '');
+    // Gezinme modunda gösterilecek liste: etiket seçiliyse süzülmüş, değilse kategori
+    const aktifEtiketAdi = activeTag ? (TAG_LABELS[activeTag] || activeTag) : '';
 
     // Gezinme modunda gösterilecek tek kategori
     const activeKatObj = visibleKategoriler.find(k => k.id === activeKat);
     const activeProducts = urunlerByKategori[activeKat] || [];
+    // Ray artık iki tür seçim taşıyor: etiket seçiliyse süzülmüş liste gösterilir,
+    // değilse aktif kategorinin ürünleri.
+    const gosterilenUrunler = activeTag ? filteredProducts : activeProducts;
 
     return (
         <div className="pm">
@@ -315,7 +323,10 @@ export default function MenuPage() {
                     </div>
                 </section>
 
-                {/* ─── Arama + Etiket filtreleri ─── */}
+                {/* ─── Arama ─── */}
+                {/* Etiket filtreleri buradan kategori rayına taşındı: arama altında
+                    iki ayrı ama birbirine benzeyen pill sırası vardı, hangisinin ne
+                    yaptığı anlaşılmıyordu. Artık tek sıra. */}
                 <section className="pm-filter-section">
                     <div className="pm-header__search">
                         <Search size={17} className="pm-header__search-icon" />
@@ -332,28 +343,15 @@ export default function MenuPage() {
                             </button>
                         )}
                     </div>
-                    {mevcutEtiketler.length > 0 && (
-                        <div className="pm-tags">
-                            {mevcutEtiketler.map((tag) => (
-                                <button
-                                    key={tag}
-                                    className={`pm-tag-filter ${activeTag === tag ? 'pm-tag-filter--active' : ''}`}
-                                    onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-                                >
-                                    {TAG_LABELS[tag]}
-                                </button>
-                            ))}
-                        </div>
-                    )}
                 </section>
 
-                {isFiltering ? (
+                {aramaModu ? (
                     /* ═══ FİLTRE MODU — düz sonuç listesi ═══ */
                     <>
                         <section className="pm-section-header">
                             <div>
-                                <span className="pm-section-header__eyebrow">{searchQuery ? 'Arama sonuçları' : 'Filtre'}</span>
-                                <h3 className="pm-section-header__title">{filtreBaslik}</h3>
+                                <span className="pm-section-header__eyebrow">Arama sonuçları</span>
+                                <h3 className="pm-section-header__title">“{searchQuery.trim()}”</h3>
                             </div>
                             <span className="pm-section-header__count">{filteredProducts.length} ürün</span>
                         </section>
@@ -381,28 +379,58 @@ export default function MenuPage() {
                                     <button
                                         key={kat.id}
                                         ref={(el) => { tabRefs.current[kat.id] = el; }}
-                                        className={`pm-navtab ${activeKat === kat.id ? 'pm-navtab--active' : ''}`}
+                                        /* Etiket seçiliyken hiçbir kategori aktif görünmez:
+                                           o an listelenen şey kategori değil, etiket süzgeci. */
+                                        className={`pm-navtab ${!activeTag && activeKat === kat.id ? 'pm-navtab--active' : ''}`}
                                         onClick={() => selectKat(kat.id)}
                                     >
                                         {kat.ad}
                                     </button>
                                 ))}
+
+                                {/* Etiketler aynı rayda ama ayrışsın: önce ayırıcı, sonra
+                                    yıldız ikonlu ve daha hafif görünümlü çipler. */}
+                                {mevcutEtiketler.length > 0 && (
+                                    <>
+                                        <span className="pm-navbar__sep" aria-hidden="true" />
+                                        {mevcutEtiketler.map((tag) => (
+                                            <button
+                                                key={tag}
+                                                className={`pm-tagchip ${activeTag === tag ? 'pm-tagchip--active' : ''}`}
+                                                onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                                                aria-pressed={activeTag === tag}
+                                            >
+                                                <Star size={12} className="pm-tagchip__icon" />
+                                                {TAG_LABELS[tag] || tag}
+                                            </button>
+                                        ))}
+                                    </>
+                                )}
                             </div>
                         </nav>
 
                         <section className="pm-section-header">
                             <div>
-                                <span className="pm-section-header__eyebrow">Kategori</span>
-                                <h3 className="pm-section-header__title">{activeKatObj?.ad || 'Menü'}</h3>
+                                <span className="pm-section-header__eyebrow">{activeTag ? 'Filtre' : 'Kategori'}</span>
+                                <h3 className="pm-section-header__title">
+                                    {activeTag ? aktifEtiketAdi : (activeKatObj?.ad || 'Menü')}
+                                </h3>
                             </div>
-                            <span className="pm-section-header__count">{activeProducts.length} ürün</span>
+                            <span className="pm-section-header__count">{gosterilenUrunler.length} ürün</span>
                         </section>
                         <section className="pm-grid-section">
-                            <div className="pm-grid">
-                                {activeProducts.map((urun, index) => (
-                                    <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
-                                ))}
-                            </div>
+                            {gosterilenUrunler.length === 0 ? (
+                                <div className="pm-empty">
+                                    <span style={{ fontSize: 40 }}>🍮</span>
+                                    <p>Bu seçimde ürün bulunamadı</p>
+                                </div>
+                            ) : (
+                                <div className="pm-grid">
+                                    {gosterilenUrunler.map((urun, index) => (
+                                        <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
+                                    ))}
+                                </div>
+                            )}
                         </section>
                     </>
                 )}

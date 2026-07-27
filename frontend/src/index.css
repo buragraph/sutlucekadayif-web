@@ -45,6 +45,7 @@
   --pm-text-70: rgba(8, 69, 41, 0.72);
   --pm-border: rgba(8, 69, 41, 0.1);
   --pm-white-70: rgba(255, 255, 255, 0.55);
+  --pm-lime: #8cc63f;        /* logo "kadayıf" yeşili — etiket çipi vurgusu */
   --pm-radius: 22px;
   --pm-radius-lg: 28px;
   --pm-radius-xl: 32px;
@@ -3880,32 +3881,6 @@ input[type=number] {
    ═══════════════════════════════════════════════ */
 
 /* ── Etiket hızlı filtreleri ── */
-.pm-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-.pm-tag-filter {
-  padding: 7px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--pm-border);
-  background: transparent;
-  color: var(--pm-text-70);
-  font-family: 'Montserrat', sans-serif;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--pm-transition);
-  white-space: nowrap;
-}
-.pm-tag-filter:hover { border-color: var(--pm-dark); color: var(--pm-dark); }
-.pm-tag-filter--active {
-  background: var(--pm-dark);
-  color: var(--pm-cream);
-  border-color: var(--pm-dark);
-}
-
 /* ── Arama temizleme butonu ── */
 .pm-header__search { position: relative; }
 .pm-header__search-clear {
@@ -4283,35 +4258,48 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
 .pm-header__search-input::placeholder { color: var(--pm-text-50); font-weight: 500; }
 
 /* Etiket filtreleri — ikonlu, tek satır kaydırılabilir */
-.pm-tags {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
-  margin-top: 0;
-  overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.pm-tags::-webkit-scrollbar { display: none; }
-.pm-tag-filter {
+
+/* ── Etiket çipleri (kategori rayının içinde) ──
+   Etiketler eskiden aramanın altında AYRI bir sıradaydı; kategori sekmeleriyle
+   neredeyse aynı görünüyor, hangisinin ne yaptığı anlaşılmıyordu. Artık aynı
+   rayda duruyorlar ama biçimleri kasıtlı olarak farklı: kategori sekmesi seçilince
+   dolu koyu zemin alır, etiket çipi ise yıldız ikonlu ve çerçeveli kalır. */
+.pm-navbar__sep {
   flex-shrink: 0;
-  padding: 6px 13px;
-  border-radius: 999px;
+  align-self: center;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--pm-border);
+}
+.pm-tagchip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 14px;
   border: 1px solid var(--pm-border);
+  border-radius: 999px;
   background: transparent;
   color: var(--pm-text-60);
   font-family: 'Montserrat', sans-serif;
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   transition: background var(--pm-transition), color var(--pm-transition), border-color var(--pm-transition);
 }
-.pm-tag-filter:hover { border-color: rgba(8, 69, 41, 0.3); color: var(--pm-dark); }
-.pm-tag-filter--active {
-  background: var(--pm-dark);
-  color: var(--pm-cream);
-  border-color: var(--pm-dark);
+.pm-tagchip__icon { flex-shrink: 0; opacity: 0.7; }
+/* Hover YALNIZCA aktif olmayan çipe: düz `:hover` sözde-sınıf özgüllüğü yüzünden
+   `--active`i ezer ve koyu zeminde yazıyı görünmez yapar (bu tuzağa daha önce
+   .pm-navtab'da düşüldü). */
+.pm-tagchip:not(.pm-tagchip--active):hover {
+  border-color: rgba(8, 69, 41, 0.32);
+  color: var(--pm-dark);
 }
-/* Aktif + hover: krem yazı korunsun (yoksa koyu zeminde kaybolur) */
-.pm-tag-filter--active:hover { color: var(--pm-cream); border-color: var(--pm-dark); }
+.pm-tagchip--active {
+  background: var(--pm-lime, #8cc63f);
+  border-color: var(--pm-lime, #8cc63f);
+  color: #0b2b1c;
+}
+.pm-tagchip--active .pm-tagchip__icon { opacity: 1; }
