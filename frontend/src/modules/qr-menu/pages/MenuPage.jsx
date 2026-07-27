@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../../../services/api';
-import { Search, ChevronUp, Instagram, MessageCircle, X, Star } from 'lucide-react';
+import { Search, ChevronUp, Instagram, MessageCircle, X } from 'lucide-react';
 import { proxyImageUrl, proxyR2Url } from '../../../utils/imageProxy';
 import GeriBildirimModal from '../components/GeriBildirimModal';
 import IsBasvuruModal from '../components/IsBasvuruModal';
@@ -146,7 +146,6 @@ export default function MenuPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [activeKat, setActiveKat] = useState(null);   // scroll-spy: görünümdeki kategori
-    const [activeTag, setActiveTag] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedUrun, setSelectedUrun] = useState(null);
     const [showScrollTop, setShowScrollTop] = useState(false);
@@ -209,25 +208,17 @@ export default function MenuPage() {
         [visibleKategoriler, urunlerByKategori]
     );
 
-    const mevcutEtiketler = useMemo(() => {
-        const set = new Set();
-        tumUrunler.forEach(u => (u.etiket || []).forEach(e => set.add(e)));
-        return [...set].filter(e => TAG_LABELS[e]);
-    }, [tumUrunler]);
-
-    // Arama, kategori/etiket gezinmesinden AYRI bir mod: arama sırasında
-    // kategori rayı gizlenir. Etiket seçimi ise rayın İÇİNDE yaşar — bu yüzden
-    // etiket aktifken ray görünür kalmalı, yoksa kullanıcı seçtiği etiketi
-    // kapatacak kontrolü ekranda bulamaz.
+    // Arama, kategori gezinmesinden AYRI bir mod: arama sırasında kategori rayı
+    // gizlenir, yerine düz sonuç listesi gelir.
     const aramaModu = !!searchQuery.trim();
 
-    // Filtre modunda gösterilecek düz liste (arama > etiket)
-    const filteredProducts = useMemo(() => {
+    // Arama sonuçları (etiketle süzme kaldırıldı — etiketler yalnızca ürün
+    // kartında rozet olarak görünür, filtre kontrolü yok)
+    const aramaSonuclari = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
-        if (q) return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
-        if (activeTag) return tumUrunler.filter(u => u.etiket?.includes(activeTag));
-        return [];
-    }, [searchQuery, activeTag, tumUrunler]);
+        if (!q) return [];
+        return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
+    }, [searchQuery, tumUrunler]);
 
     // Aktif sekmeyi yatay barda ortala (sayfayı kaydırmadan)
     useEffect(() => {
@@ -241,7 +232,6 @@ export default function MenuPage() {
 
     // Kategori seç → yalnızca o kategoriyi göster + menü başına kaydır (sayfa kısa kalsın)
     const selectKat = (id) => {
-        setActiveTag(null);
         setActiveKat(id);
         requestAnimationFrame(() => navbarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     };
@@ -258,16 +248,9 @@ export default function MenuPage() {
         );
     }
 
-    // Filtre başlığı
-    // Gezinme modunda gösterilecek liste: etiket seçiliyse süzülmüş, değilse kategori
-    const aktifEtiketAdi = activeTag ? (TAG_LABELS[activeTag] || activeTag) : '';
-
     // Gezinme modunda gösterilecek tek kategori
     const activeKatObj = visibleKategoriler.find(k => k.id === activeKat);
     const activeProducts = urunlerByKategori[activeKat] || [];
-    // Ray artık iki tür seçim taşıyor: etiket seçiliyse süzülmüş liste gösterilir,
-    // değilse aktif kategorinin ürünleri.
-    const gosterilenUrunler = activeTag ? filteredProducts : activeProducts;
 
     return (
         <div className="pm">
@@ -310,16 +293,6 @@ export default function MenuPage() {
                         <span className="pm-hero__eyebrow">İmza Lezzetler</span>
                         <h2 className="pm-hero__heading">Geleneksel kadayıfın<br />premium deneyimi.</h2>
                         <p className="pm-hero__desc">Özenle seçilmiş malzemeler, ustalıkla hazırlanan lezzetler ve göz alıcı sunumlarla tatlının ötesinde bir deneyim.</p>
-                        {mevcutEtiketler.includes('en_cok_satan') && (
-                            <div className="pm-hero__actions">
-                                <button
-                                    className="pm-hero__btn pm-hero__btn--primary"
-                                    onClick={() => { setActiveTag('en_cok_satan'); setSearchQuery(''); }}
-                                >
-                                    En Çok Satanlar
-                                </button>
-                            </div>
-                        )}
                     </div>
                 </section>
 
@@ -353,17 +326,17 @@ export default function MenuPage() {
                                 <span className="pm-section-header__eyebrow">Arama sonuçları</span>
                                 <h3 className="pm-section-header__title">“{searchQuery.trim()}”</h3>
                             </div>
-                            <span className="pm-section-header__count">{filteredProducts.length} ürün</span>
+                            <span className="pm-section-header__count">{aramaSonuclari.length} ürün</span>
                         </section>
                         <section className="pm-grid-section">
-                            {filteredProducts.length === 0 ? (
+                            {aramaSonuclari.length === 0 ? (
                                 <div className="pm-empty">
                                     <span style={{ fontSize: 40 }}>🔍</span>
                                     <p>Sonuç bulunamadı</p>
                                 </div>
                             ) : (
                                 <div className="pm-grid">
-                                    {filteredProducts.map((urun, index) => (
+                                    {aramaSonuclari.map((urun, index) => (
                                         <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
                                     ))}
                                 </div>
@@ -379,58 +352,28 @@ export default function MenuPage() {
                                     <button
                                         key={kat.id}
                                         ref={(el) => { tabRefs.current[kat.id] = el; }}
-                                        /* Etiket seçiliyken hiçbir kategori aktif görünmez:
-                                           o an listelenen şey kategori değil, etiket süzgeci. */
-                                        className={`pm-navtab ${!activeTag && activeKat === kat.id ? 'pm-navtab--active' : ''}`}
+                                        className={`pm-navtab ${activeKat === kat.id ? 'pm-navtab--active' : ''}`}
                                         onClick={() => selectKat(kat.id)}
                                     >
                                         {kat.ad}
                                     </button>
                                 ))}
-
-                                {/* Etiketler aynı rayda ama ayrışsın: önce ayırıcı, sonra
-                                    yıldız ikonlu ve daha hafif görünümlü çipler. */}
-                                {mevcutEtiketler.length > 0 && (
-                                    <>
-                                        <span className="pm-navbar__sep" aria-hidden="true" />
-                                        {mevcutEtiketler.map((tag) => (
-                                            <button
-                                                key={tag}
-                                                className={`pm-tagchip ${activeTag === tag ? 'pm-tagchip--active' : ''}`}
-                                                onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-                                                aria-pressed={activeTag === tag}
-                                            >
-                                                <Star size={12} className="pm-tagchip__icon" />
-                                                {TAG_LABELS[tag] || tag}
-                                            </button>
-                                        ))}
-                                    </>
-                                )}
                             </div>
                         </nav>
 
                         <section className="pm-section-header">
                             <div>
-                                <span className="pm-section-header__eyebrow">{activeTag ? 'Filtre' : 'Kategori'}</span>
-                                <h3 className="pm-section-header__title">
-                                    {activeTag ? aktifEtiketAdi : (activeKatObj?.ad || 'Menü')}
-                                </h3>
+                                <span className="pm-section-header__eyebrow">Kategori</span>
+                                <h3 className="pm-section-header__title">{activeKatObj?.ad || 'Menü'}</h3>
                             </div>
-                            <span className="pm-section-header__count">{gosterilenUrunler.length} ürün</span>
+                            <span className="pm-section-header__count">{activeProducts.length} ürün</span>
                         </section>
                         <section className="pm-grid-section">
-                            {gosterilenUrunler.length === 0 ? (
-                                <div className="pm-empty">
-                                    <span style={{ fontSize: 40 }}>🍮</span>
-                                    <p>Bu seçimde ürün bulunamadı</p>
-                                </div>
-                            ) : (
-                                <div className="pm-grid">
-                                    {gosterilenUrunler.map((urun, index) => (
-                                        <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
-                                    ))}
-                                </div>
-                            )}
+                            <div className="pm-grid">
+                                {activeProducts.map((urun, index) => (
+                                    <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
+                                ))}
+                            </div>
                         </section>
                     </>
                 )}
