@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, ListMinus, Store } from 'lucide-react';
+import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, ListMinus, Store, Pencil } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { proxyImageUrl } from '../../../utils/imageProxy';
@@ -1056,6 +1056,18 @@ export default function ProductsPage() {
                                                         (merkez {Math.round(urun.fiyat)} ₺)
                                                     </span>
                                                 )}
+                                                {/* Fiyat düzenleme, İşlemler sütunundaki etiket ikonu yerine fiyatın
+                                                    yanında: hangi alanı değiştirdiği ikondan anlaşılmıyordu. */}
+                                                {role !== 'admin' && urun.fiyatDuzenlenebilir && (
+                                                    <Button
+                                                        variant="ghost" size="icon"
+                                                        className="ml-1.5 size-6 align-middle text-muted-foreground hover:text-foreground"
+                                                        title="Şube fiyatını düzenle"
+                                                        onClick={() => { setFiyatUrun(urun); setFiyatDeger(String(Math.round(urun.etkinFiyat ?? urun.fiyat))); }}
+                                                    >
+                                                        <Pencil className="size-3" />
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <span className="text-sm text-muted-foreground">{katMap[urun.kategori] || '—'}</span>
@@ -1085,18 +1097,6 @@ export default function ProductsPage() {
                                                     {!isKilitli && (
                                                         <Button variant="ghost" size="icon" className="size-7 text-destructive hover:text-destructive hover:bg-destructive/10" title="Sil" onClick={() => handleUrunDelete(urun)}>
                                                             <Trash2 className="size-3.5" />
-                                                        </Button>
-                                                    )}
-                                                    {/* Merkez izin verdiyse şube kendi fiyatını girebilir.
-                                                        Ürünün diğer alanları kilitli kaldığı için tam düzenleme
-                                                        formu yerine tek alanlık ayrı bir pencere açılır. */}
-                                                    {role !== 'admin' && urun.fiyatDuzenlenebilir && (
-                                                        <Button
-                                                            variant="ghost" size="icon" className="size-7"
-                                                            title="Şube fiyatını düzenle"
-                                                            onClick={() => { setFiyatUrun(urun); setFiyatDeger(String(Math.round(urun.etkinFiyat ?? urun.fiyat))); }}
-                                                        >
-                                                            <Tag className="size-3.5" />
                                                         </Button>
                                                     )}
                                                     {/* Menüden çıkarma — ürünü SİLMEZ, yalnızca bu şubenin
