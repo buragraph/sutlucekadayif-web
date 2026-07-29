@@ -101,6 +101,23 @@ function menudeMi(user, urun) {
 }
 
 /**
+ * YANIT PROJEKSİYONU — şube sahibine giden gövdeden merkeze ait yönetim
+ * alanlarını çıkarır. TEK KAYNAK: ürün döndüren her yol buradan geçer.
+ *
+ * Bu alanlar 92 şubenin fiyatını (`fiyat_override`), merkezin yasak listesini
+ * (`gizli_subeler`), fiyat izinlerini (`fiyat_serbest`) ve hangi şubenin ürünü
+ * sattığını (`menude_subeler`) taşır — hiçbiri tek bir şubeyi ilgilendirmez.
+ *
+ * Kopyalanmamalı: temizlik daha önce yalnızca GET /products'ta yapılıyordu,
+ * /trash ve fiyat güncelleme yanıtı atlanmıştı ve ikisi de sessizce sızdırdı.
+ */
+function yanitProjeksiyonu(user, urun) {
+    if (user.role === 'admin') return urun;
+    const { fiyat_override, gizli_subeler, fiyat_serbest, menude_subeler, ...guvenli } = urun;
+    return guvenli;
+}
+
+/**
  * Şube slug dizisini temizler (tekilleştirir, boşları atar).
  * Çoklu şube seçicisinden gelen tüm alanlar (gizli_subeler, fiyat_serbest,
  * menude_subeler) bundan geçer.
@@ -210,8 +227,7 @@ router.get(
         const cikti = urunler
             // Merkezin bu şubeden gizlediği ürünler panelde de görünmez
             .filter((u) => !urunGizliMi(req.user, u))
-            .map((u) => {
-                const cikti = {
+            .map((u) => yanitProjeksiyonu(req.user, {
                     ...u,
                     duzenlenemez: urunKilitliMi(req.user, u, katKilit),
                     fiyatDuzenlenebilir: fiyatDuzenlenebilirMi(req.user, u),
@@ -221,18 +237,7 @@ router.get(
                     // ayırır: menüdekiler tabloda, menüde olmayanlar "Ürün Ekle"
                     // katalog penceresinde. Kural yine tek yerde (menudeMi) yaşar.
                     menude: menudeMi(req.user, u),
-                };
-                // Şube sahibi DİĞER şubelerin fiyatlarını ve merkezin gizleme/izin
-                // listelerini görmemeli — bunlar yalnızca admin'e ait yönetim verisi.
-                // menude_subeler de 97 şubenin katalog tercihini ifşa eder.
-                if (req.user.role !== 'admin') {
-                    delete cikti.fiyat_override;
-                    delete cikti.gizli_subeler;
-                    delete cikti.fiyat_serbest;
-                    delete cikti.menude_subeler;
-                }
-                return cikti;
-            });
+            }));
 
         res.json({ urunler: cikti });
     })
@@ -608,7 +613,11 @@ router.put(
             // (97 R2 yazımı + yüzlerce Firestore okuması).
             await regenerateMenuJson(req.user.subeSlug).catch(console.error);
             const guncel = await docRef.get();
-            const guncelVeri = { ...guncel.data(), tur: found.source, sube_slug: found.subeSlug };
+            // Ortak dokümanın TAMAMI dönerse şube, diğer 91 şubenin fiyat
+            // override'ını ve merkezin gizleme/menü listelerini görürdü.
+            const guncelVeri = yanitProjeksiyonu(req.user, {
+                ...guncel.data(), tur: found.source, sube_slug: found.subeSlug,
+            });
             return res.json({ success: true, urun: { id, ...guncelVeri, etkinFiyat: yeni } });
         }
 
@@ -683,7 +692,7 @@ router.put(
         const updatedData = { ...updated.data(), tur: found.source, sube_slug: found.subeSlug };
 
         await regenerateAffectedMenuJsons(updatedData).catch(console.error);
-        res.json({ success: true, urun: { id, ...updatedData } });
+        res.json({ success: true, urun: yanitProjeksiyonu(req.user, { id, ...updatedData }) });
     })
 );
 
@@ -772,7 +781,9 @@ router.get(
         // çözülmezse arayüz butonu gösterir, backend 403 döner.
         const katKilit = await katKilitHaritasi(req);
         res.json({
-            urunler: urunler.map((u) => ({ ...u, duzenlenemez: urunKilitliMi(req.user, u, katKilit) })),
+            urunler: urunler.map((u) => yanitProjeksiyonu(req.user, {
+                ...u, duzenlenemez: urunKilitliMi(req.user, u, katKilit),
+            })),
         });
     })
 );
