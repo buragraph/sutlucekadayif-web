@@ -1027,18 +1027,33 @@ export default function ProductsPage() {
                                                         : <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted text-xl">🍮</div>}
                                                     <div className="flex flex-col gap-1 min-w-0">
                                                         <span className="font-medium text-foreground truncate">{urun.ad}</span>
-                                                        {urun.etiket?.length > 0 && (
-                                                            <div className="flex gap-1 flex-wrap">
-                                                                {urun.etiket.map(key => {
-                                                                    const tag = ETIKETLER.find(t => t.key === key);
-                                                                    return tag ? (
-                                                                        <span key={key} className="text-[10px] px-1.5 py-px rounded-full font-semibold" style={{ background: tag.color + '18', color: tag.color }}>
-                                                                            {tag.emoji} {tag.ad}
+                                                        {/* Rozetler satırı şişirmesin: en fazla 2 tanesi kısa adıyla
+                                                            gösterilir, gerisi "+N" olur (tamamı tooltip'te). Tam adlar
+                                                            uzun olduğu için ("Haftanın En Çok Tercih Edileni") 8 etiketli
+                                                            üründe satır 45px'ten 150px'e çıkıyordu. */}
+                                                        {urun.etiket?.length > 0 && (() => {
+                                                            const GORUNEN = 2;
+                                                            const tumu = urun.etiket.map((k) => ETIKETLER.find((t) => t.key === k)).filter(Boolean);
+                                                            if (tumu.length === 0) return null;
+                                                            const kalan = tumu.length - GORUNEN;
+                                                            return (
+                                                                <div className="flex gap-1 flex-wrap">
+                                                                    {tumu.slice(0, GORUNEN).map((tag) => (
+                                                                        <span key={tag.key} className="text-[10px] px-1.5 py-px rounded-full font-semibold whitespace-nowrap" style={{ background: tag.color + '18', color: tag.color }}>
+                                                                            {tag.emoji} {tag.kisa}
                                                                         </span>
-                                                                    ) : null;
-                                                                })}
-                                                            </div>
-                                                        )}
+                                                                    ))}
+                                                                    {kalan > 0 && (
+                                                                        <span
+                                                                            className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium whitespace-nowrap text-muted-foreground"
+                                                                            title={tumu.map((t) => t.ad).join(', ')}
+                                                                        >
+                                                                            +{kalan}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </TableCell>
