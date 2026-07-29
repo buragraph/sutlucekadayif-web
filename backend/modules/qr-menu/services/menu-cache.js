@@ -1,6 +1,20 @@
 import { db } from '../../../config/firebase.js';
-import { uploadFile } from '../../../config/r2.js';
+import { uploadFile, deleteFile } from '../../../config/r2.js';
 import { buildMenuData } from './menu-builder.js';
+
+/**
+ * Şube silindiğinde R2'deki menü JSON'ını da kaldırır.
+ * Bırakılırsa /menu/{slug} adresi silinmiş şubenin menüsünü servis etmeye
+ * devam eder (public endpoint önce R2'ye bakıyor).
+ */
+export async function deleteMenuJson(subeSlug) {
+    try {
+        await deleteFile(`menu/${subeSlug}.json`);
+        console.log(`[MenuCache] 🗑 ${subeSlug}.json silindi`);
+    } catch (err) {
+        console.error(`[MenuCache] ❌ ${subeSlug} JSON silinemedi:`, err.message);
+    }
+}
 
 /**
  * Belirli bir şubenin menü JSON'ını oluşturup R2'ye yazar

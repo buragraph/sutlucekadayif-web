@@ -4,6 +4,7 @@ import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { bumpDataVersion } from '../modules/reports/db.js';
 import { getKonumListe, syncAllKonumlar, upsertKonum, removeKonum } from '../shared/konum-store.js';
+import { deleteMenuJson } from '../modules/qr-menu/services/menu-cache.js';
 
 const router = Router();
 
@@ -206,9 +207,24 @@ router.delete(
             return res.status(400).json({ error: 'Bu şubeye atanmış kullanıcılar var. Önce kullanıcıları başka şubeye taşıyın.' });
         }
 
+        // Alt koleksiyonlar ÖNCE: Firestore doküman silindiğinde altındakileri
+        // temizlemez, öksüz kalırlar. Şubenin dönem verisi ve varsa eski
+        // şubeye-özel ürünleri böyle geride kalıyordu — görünmez ama duruyor.
+        for (const alt of ['donemler', 'urunler']) {
+            const snap = await docRef.collection(alt).get();
+            for (let i = 0; i < snap.docs.length; i += 400) {
+                const b = db.batch();
+                snap.docs.slice(i, i + 400).forEach((d) => b.delete(d.ref));
+                await b.commit();
+            }
+        }
+
         await docRef.delete();
-        await bumpDataVersion();   // rapor cache'leri
-        await removeKonum(slug);   // harita konum dokümanından çıkar
+        await bumpDataVersion();      // rapor cache'leri
+        await removeKonum(slug);      // harita konum dokümanından çıkar
+        // R2'deki menü JSON'ı da gitmeli; kalırsa /menu/{slug} silinmiş şubenin
+        // menüsünü servis etmeye devam eder (public uç önce R2'ye bakıyor).
+        await deleteMenuJson(slug).catch(console.error);
         res.json({ success: true });
     })
 );
