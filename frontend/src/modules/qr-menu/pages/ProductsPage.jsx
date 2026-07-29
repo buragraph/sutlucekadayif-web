@@ -1257,6 +1257,13 @@ export default function ProductsPage() {
                                                         {deletedDate.toLocaleDateString('tr-TR')} • {daysLeft > 0 ? `${daysLeft} gün kaldı` : 'Bugün silinecek'}
                                                     </div>
                                                 </div>
+                                                {/* Butonlar yalnızca kullanıcının gerçekten geri alabileceği
+                                                    kayıtlarda. `duzenlenemez` sunucudan gelir — kural burada
+                                                    yeniden yazılsaydı arayüz izin verip backend 403 dönerdi. */}
+                                                {u.duzenlenemez ? (
+                                                    <span className="text-xs text-muted-foreground">Geri alınamaz</span>
+                                                ) : (
+                                                <>
                                                 <Button variant="outline" size="sm" className="h-7 text-xs" onClick={async () => {
                                                     try {
                                                         const queryParam = u.tur === 'sube_ozel' && u.sube_slug ? `?subeSlug=${u.sube_slug}` : '';
@@ -1281,6 +1288,8 @@ export default function ProductsPage() {
                                                 }}>
                                                     <Trash2 className="size-3" />Sil
                                                 </Button>
+                                                </>
+                                                )}
                                             </div>
                                         );
                                     })}

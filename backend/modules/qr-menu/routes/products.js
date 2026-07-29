@@ -736,12 +736,17 @@ router.get(
     asyncHandler(async (req, res) => {
         const urunler = [];
 
-        // Ana collection'dan silinen ürünler
-        const mainSnap = await db.collection('ortak_urunler').get();
-        mainSnap.forEach((d) => {
-            const data = d.data();
-            if (data.deletedAt) urunler.push({ id: d.id, tur: 'ortak', ...data });
-        });
+        // Ortak ürünlerin çöp kutusu YALNIZCA admin'e ait. Şube ortak ürünü
+        // silemiyor (bkz. urunKilitliMi), dolayısıyla geri de alamıyor: listede
+        // görmesi hem çalışmayan "Geri Al"/"Sil" butonları demekti, hem de
+        // `...data` ile merkezin gizleme/fiyat/menü listelerini sızdırıyordu.
+        if (req.user.role === 'admin') {
+            const mainSnap = await db.collection('ortak_urunler').get();
+            mainSnap.forEach((d) => {
+                const data = d.data();
+                if (data.deletedAt) urunler.push({ id: d.id, tur: 'ortak', ...data });
+            });
+        }
 
         // Şube subcollection'lardan silinen ürünler.
         // Admin: tüm şubeler (paralel) | Şube sahibi: yalnızca kendi şubesi.
@@ -762,7 +767,13 @@ router.get(
             });
         });
 
-        res.json({ urunler });
+        // Hesaplanmış kilit alanı — arayüz "Geri Al"/"Sil" butonlarını buna göre
+        // gösterir. Kilitli kategorideki şube ürünü geri alınamıyor; kural burada
+        // çözülmezse arayüz butonu gösterir, backend 403 döner.
+        const katKilit = await katKilitHaritasi(req);
+        res.json({
+            urunler: urunler.map((u) => ({ ...u, duzenlenemez: urunKilitliMi(req.user, u, katKilit) })),
+        });
     })
 );
 
