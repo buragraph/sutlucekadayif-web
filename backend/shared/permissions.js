@@ -19,7 +19,9 @@ const PERMISSIONS = {
 
     // ── Ürün Yönetimi ──
     'products.view': ['admin', 'sube_sahibi'],
-    'products.create': ['admin', 'sube_sahibi'],
+    // Ürünleri YALNIZCA merkez ekler. Şube ürün oluşturamaz; ortak katalogtan
+    // gelen ürünlerde mevcut/mevcut değil yapar, izin verilmişse kendi fiyatını girer.
+    'products.create': ['admin'],
     'products.edit': ['admin', 'sube_sahibi'],
     'products.delete': ['admin', 'sube_sahibi'],
     'products.toggleAvailability': ['admin', 'sube_sahibi'],

@@ -42,23 +42,46 @@ export async function buildMenuData(subeSlug) {
     const kategoriler = [];
     katSnap.forEach((d) => kategoriler.push({ id: d.id, ...d.data() }));
 
+    // PUBLIC projeksiyon — müşteri menüsünde gösterilen alanlar SADECE bunlar.
+    // Şube bazlı yönetim alanları (fiyat_override, fiyat_serbest, gizli_subeler,
+    // mevcut_degil) dışarı SIZDIRILMAZ: bu JSON R2'de auth'suz servis ediliyor,
+    // yani 97 şubenin fiyatı ve merkezin gizleme listesi herkese açık olurdu.
+    const musteriAlanlari = (urun, fiyat) => ({
+        id: urun.id,
+        ad: urun.ad,
+        fiyat,
+        aciklama: urun.aciklama || '',
+        etiket: urun.etiket || [],
+        gorsel: urun.gorsel || '',
+        miktar: urun.miktar ?? null,
+        birim: urun.birim || '',
+        kategori: urun.kategori || 'diger',
+    });
+
     const tumUrunler = [];
 
-    // Ortak ürünleri filtrele: mevcut_degil'de bu şube varsa gösterme
+    // Ortak ürünler — üç ayrı şube bazlı kural sırayla uygulanır:
+    //  1) gizli_subeler : MERKEZ gizlemiş. Şube bu ürünü panelde de göremez.
+    //  2) mevcut_degil  : ŞUBE kendi kapatmış (stok yok vb). Panelde görünür,
+    //                     müşteri menüsünde görünmez; şube geri açabilir.
+    //  3) fiyat_override: Şubeye özel fiyat verilmişse merkez fiyatının yerine geçer.
     ortakSnap.forEach((d) => {
         const data = d.data();
         if (data.deletedAt) return;
-        const mevcutDegil = data.mevcut_degil || [];
-        if (!mevcutDegil.includes(subeSlug)) {
-            tumUrunler.push({ id: d.id, ...data });
-        }
+        if ((data.gizli_subeler || []).includes(subeSlug)) return;
+        if ((data.mevcut_degil || []).includes(subeSlug)) return;
+
+        const override = data.fiyat_override?.[subeSlug];
+        const fiyat = typeof override === 'number' ? override : data.fiyat;
+        tumUrunler.push(musteriAlanlari({ id: d.id, ...data }, fiyat));
     });
 
-    // Şubeye özel ürünler
+    // Şubeye özel ürünler (geçmişten kalan kayıtlar — şubeler artık ürün EKLEYEMEZ,
+    // merkez tek bir şubeye ürün vermek isterse ortak ürünü diğerlerinden gizler)
     ozelSnap.forEach((d) => {
         const data = d.data();
         if (data.deletedAt) return;
-        tumUrunler.push({ id: d.id, ...data });
+        tumUrunler.push(musteriAlanlari({ id: d.id, ...data }, data.fiyat));
     });
 
     // Kategoriye göre grupla

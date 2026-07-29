@@ -74,6 +74,40 @@ function urunKilitliMi(user, urun, katKilit) {
 }
 
 /**
+ * Ürün bu şubeden GİZLENMİŞ mi? — merkez kontrolündedir.
+ *
+ * `mevcut_degil` ile karıştırılmamalı; ikisi farklı kavram:
+ *   gizli_subeler → MERKEZ gizler. Şube ürünü panelde de göremez, geri açamaz.
+ *   mevcut_degil  → ŞUBE kendi kapatır (stok yok). Panelde görünür, geri açabilir.
+ */
+function urunGizliMi(user, urun) {
+    if (user.role === 'admin') return false;
+    return (urun.gizli_subeler || []).includes(user.subeSlug);
+}
+
+/**
+ * Şube bu ürünün fiyatını KENDİ şubesi için değiştirebilir mi?
+ *
+ * Yalnızca ortak ürünler için anlamlıdır ve merkez ürün bazında, şube şube
+ * yetkilendirir (`fiyat_serbest` dizisi). Yazılan fiyat ortak dokümanın
+ * `fiyat` alanını DEĞİL, `fiyat_override.{sube}` girdisini günceller — aksi
+ * halde bir şubenin değişikliği 97 şubede birden geçerli olurdu.
+ */
+function fiyatDuzenlenebilirMi(user, urun) {
+    if (user.role === 'admin') return true;
+    if (urun.tur === 'sube_ozel') return false; // kendi ürününde zaten `kilitli` kuralı geçerli
+    if (urunGizliMi(user, urun)) return false;
+    return (urun.fiyat_serbest || []).includes(user.subeSlug);
+}
+
+/** Şubenin gördüğü etkin fiyat: kendi override'ı varsa o, yoksa merkez fiyatı. */
+function etkinFiyat(user, urun) {
+    if (user.role === 'admin' || !user.subeSlug) return urun.fiyat;
+    const o = urun.fiyat_override?.[user.subeSlug];
+    return typeof o === 'number' ? o : urun.fiyat;
+}
+
+/**
  * Şube sahibi yalnızca KENDİ şubesinin, kilitli OLMAYAN özel ürününü
  * değiştirebilir. Ortak ürünler ve diğer şubelerin ürünleri yalnızca admin.
  */
@@ -135,15 +169,21 @@ router.get(
             });
         }
 
-        // Her ürüne, İSTEYEN KULLANICI için hesaplanmış kilit durumunu ekle.
-        // Arayüz kuralı yeniden hesaplamaz, bu alanı okur — kural tek yerde yaşar.
-        // Ham `kilitli` alanı korunur (admin formundaki anahtarın durumu odur);
-        // `duzenlenemez` ise kategori mirası + ortak/şube ayrımıyla çözülmüş sonuç.
+        // Her ürüne, İSTEYEN KULLANICI için hesaplanmış yetki alanlarını ekle.
+        // Arayüz kuralları yeniden hesaplamaz, bu alanları okur — kural tek yerde
+        // yaşar. (İki kopya olsaydı biri güncellenip diğeri unutulduğunda arayüz
+        // düzenlemeye izin verir, backend 403 dönerdi.)
         const katKilit = await katKilitHaritasi(req);
-        const cikti = urunler.map((u) => ({
-            ...u,
-            duzenlenemez: urunKilitliMi(req.user, u, katKilit),
-        }));
+        const cikti = urunler
+            // Merkezin bu şubeden gizlediği ürünler panelde de görünmez
+            .filter((u) => !urunGizliMi(req.user, u))
+            .map((u) => ({
+                ...u,
+                duzenlenemez: urunKilitliMi(req.user, u, katKilit),
+                fiyatDuzenlenebilir: fiyatDuzenlenebilirMi(req.user, u),
+                // Şube kendi fiyatını görsün; merkez fiyatı `fiyat` alanında kalır
+                etkinFiyat: etkinFiyat(req.user, u),
+            }));
 
         res.json({ urunler: cikti });
     })
@@ -397,7 +437,8 @@ router.put(
     requirePermission('products.edit'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
-        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kilitli } = req.body;
+        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kilitli,
+                gizli_subeler, fiyat_serbest } = req.body;
 
         // Şube sahibi yalnızca kendi şubesinde arar (başka şubeyi hedefleyemez)
         const lookupSlug = req.user.role === 'admin' ? (sube_slug || req.body._subeSlug) : req.user.subeSlug;
@@ -406,10 +447,46 @@ router.put(
         if (!found) {
             return res.status(404).json({ error: 'Ürün bulunamadı' });
         }
-        if (!canMutateProduct(req, found, katKilit)) {
+        const { docRef, doc } = found;
+        const urunVerisi = { tur: found.source, sube_slug: found.subeSlug, ...doc.data() };
+
+        // Merkezin gizlediği ürün şube için yok hükmündedir — varlığını sızdırmamak
+        // adına 403 değil 404 döner.
+        if (urunGizliMi(req.user, urunVerisi)) {
+            return res.status(404).json({ error: 'Ürün bulunamadı' });
+        }
+
+        const tamYetki = canMutateProduct(req, found, katKilit);
+        // Şube ortak ürünü düzenleyemez AMA merkez izin verdiyse yalnızca kendi
+        // fiyatını ayarlayabilir. Bu fiyat ortak dokümanın `fiyat` alanına DEĞİL,
+        // `fiyat_override.{sube}` girdisine yazılır — yoksa 97 şubede birden değişirdi.
+        const yalnizcaFiyat = !tamYetki && fiyatDuzenlenebilirMi(req.user, urunVerisi);
+
+        if (!tamYetki && !yalnizcaFiyat) {
             return res.status(403).json({ error: 'Bu ürünü değiştirme yetkiniz yok' });
         }
-        const { docRef, doc } = found;
+
+        if (yalnizcaFiyat) {
+            const yeni = Number(fiyat);
+            if (fiyat === undefined || !Number.isFinite(yeni) || yeni < 0) {
+                return res.status(400).json({ error: 'Geçerli bir fiyat girin' });
+            }
+            // Tek alanlık atomik güncelleme: FieldPath kullanılıyor çünkü şube
+            // slug'ları tire içerebiliyor (kocaeli-merkez) ve noktalı string yol
+            // bunları yanlış ayrıştırır. Ayrıca haritayı okuyup geri yazmadığımız
+            // için eşzamanlı şube güncellemeleri birbirini ezmez.
+            await docRef.update(
+                new admin.firestore.FieldPath('fiyat_override', req.user.subeSlug),
+                yeni
+            );
+            // YALNIZCA bu şubenin menüsü değişti. regenerateAffectedMenuJsons ortak
+            // üründe 97 şubeyi birden yeniler — tek bir şube fiyatı için gereksiz
+            // (97 R2 yazımı + yüzlerce Firestore okuması).
+            await regenerateMenuJson(req.user.subeSlug).catch(console.error);
+            const guncel = await docRef.get();
+            const guncelVeri = { ...guncel.data(), tur: found.source, sube_slug: found.subeSlug };
+            return res.json({ success: true, urun: { id, ...guncelVeri, etkinFiyat: yeni } });
+        }
 
         const updateData = {};
         if (ad !== undefined) updateData.ad = ad.trim();
@@ -426,6 +503,28 @@ router.put(
             updateData.kilitli = kilitli === null
                 ? admin.firestore.FieldValue.delete()
                 : Boolean(kilitli);
+        }
+
+        // Şube bazlı merkez ayarları — YALNIZCA admin yazabilir. Çoklu şube
+        // seçimi olduğu için dizi olarak gelir; tekilleştirilip temizlenir.
+        const subeDizisi = (v) => [...new Set(
+            (Array.isArray(v) ? v : []).map((x) => String(x).trim()).filter(Boolean)
+        )];
+        if (req.user.role === 'admin' && gizli_subeler !== undefined) {
+            updateData.gizli_subeler = subeDizisi(gizli_subeler);
+        }
+        if (req.user.role === 'admin' && fiyat_serbest !== undefined) {
+            const serbest = subeDizisi(fiyat_serbest);
+            updateData.fiyat_serbest = serbest;
+            // Yetkisi geri alınan şubenin fiyatı ortalıkta kalmasın: izin listesinden
+            // çıkan şubelerin override'ı temizlenir, ürün merkez fiyatına döner.
+            const mevcutOverride = doc.data().fiyat_override || {};
+            const temizlenmis = Object.fromEntries(
+                Object.entries(mevcutOverride).filter(([slug]) => serbest.includes(slug))
+            );
+            if (Object.keys(temizlenmis).length !== Object.keys(mevcutOverride).length) {
+                updateData.fiyat_override = temizlenmis;
+            }
         }
 
         if (Object.keys(updateData).length === 0) {
@@ -616,6 +715,16 @@ router.put(
 
         // Availability toggle sadece ortak ürünlerde çalışır
         const urunRef = db.collection('ortak_urunler').doc(id);
+
+        // Merkezin bu şubeden gizlediği ürün şube için yok hükmünde: mevcut/mevcut
+        // değil yapılamaz. (Aksi halde şube gizli ürünü menüsüne geri açabilirdi.)
+        const urunDoc = await urunRef.get();
+        if (!urunDoc.exists) {
+            return res.status(404).json({ error: 'Ürün bulunamadı' });
+        }
+        if ((urunDoc.data().gizli_subeler || []).includes(subeSlug)) {
+            return res.status(404).json({ error: 'Ürün bulunamadı' });
+        }
 
         if (mevcut) {
             await urunRef.update({
