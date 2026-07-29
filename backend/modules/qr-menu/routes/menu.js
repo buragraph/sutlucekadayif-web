@@ -27,6 +27,22 @@ router.get(
 );
 
 /**
+ * GET /api/menu/cache-durumu
+ * Menü JSON yazımı duraklatılmış mı?
+ * NOT: '/:subeSlug'dan ÖNCE tanımlı olmalı, yoksa şube slug'ı sanılır.
+ */
+router.get(
+    '/cache-durumu',
+    verifyToken,
+    requirePermission('categories.edit'),
+    asyncHandler(async (req, res) => {
+        const doc = await db.collection('ayarlar').doc('menu_cache').get();
+        const d = doc.data() || {};
+        res.json({ duraklatildi: !!d.duraklatildi, not: d.not || '', zaman: d.zaman || null });
+    })
+);
+
+/**
  * GET /api/menu/:subeSlug
  * Public endpoint — müşteriler için şube menüsü
  * Auth gerektirmez, QR kod ile açılır
@@ -46,6 +62,39 @@ router.get(
         }
 
         res.json(menu);
+    })
+);
+
+/**
+ * POST /api/menu/cache-durumu
+ * Menü JSON yazımını duraklatır / sürdürür.
+ * Body: { duraklat: boolean, not?: string }
+ *
+ * Duraklatma, katalogda toplu düzenleme yaparken işe yarar: her kayıtta 88
+ * menü yeniden pişmez. SÜRDÜRÜRKEN tüm şubelerin JSON'ı bir kez yeniden
+ * üretilir — duraklatma boyunca biriken bütün değişiklikler o anda yansır.
+ *
+ * DİKKAT: duraklatma sırasında müşteri QR menüsü ESKİ veriyi gösterir.
+ */
+router.post(
+    '/cache-durumu',
+    verifyToken,
+    requirePermission('categories.edit'),
+    asyncHandler(async (req, res) => {
+        const { duraklat, not } = req.body;
+        if (typeof duraklat !== 'boolean') {
+            return res.status(400).json({ error: 'duraklat alanı boolean olmalı' });
+        }
+        const { menuYazimiDuraklat } = await import('../services/menu-cache.js');
+        await menuYazimiDuraklat(duraklat, not || '');
+
+        if (duraklat) {
+            return res.json({ duraklatildi: true, mesaj: 'Menü yazımı duraklatıldı. Müşteri menüleri güncellenmeyecek.' });
+        }
+        // Sürdürme: biriken değişiklikleri tek seferde yaz
+        const { regenerateAllMenuJsons } = await import('../services/menu-cache.js');
+        await regenerateAllMenuJsons();
+        res.json({ duraklatildi: false, mesaj: 'Menü yazımı sürdürüldü, tüm şube menüleri yenilendi.' });
     })
 );
 

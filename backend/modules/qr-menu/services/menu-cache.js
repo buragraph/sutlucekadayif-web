@@ -2,6 +2,38 @@ import { db } from '../../../config/firebase.js';
 import { uploadFile, deleteFile } from '../../../config/r2.js';
 import { buildMenuData } from './menu-builder.js';
 
+// ─── Menü JSON yazımı duraklatma ───
+// Katalogda toplu düzenleme yapılırken (ürün birleştirme, fiyat/şube ayarı)
+// her kayıtta 88 menü JSON'ı yeniden pişiyor: işlem başına ~740 okuma + 88 R2
+// yazımı. Duraklatıldığında yazım atlanır; işi bitince tek seferde tam yenileme
+// yapılır.
+//
+// DİKKAT: duraklatma sırasında R2'deki JSON'lar ESKİ kalır, yani müşteri QR
+// menüsünde eski veriyi görür. Public API (/api/menu/:slug) canlı okuduğu için
+// güncel, ama menü sayfası önce R2'ye bakıyor.
+const DURUM_REF = db.collection('ayarlar').doc('menu_cache');
+let durumCache = { v: null, t: 0 };
+const DURUM_TTL = 30_000;
+
+export async function menuYazimiDuraklatildiMi() {
+    if (durumCache.v !== null && Date.now() - durumCache.t < DURUM_TTL) return durumCache.v;
+    try {
+        const d = await DURUM_REF.get();
+        durumCache = { v: !!d.data()?.duraklatildi, t: Date.now() };
+    } catch (err) {
+        // Bayrak okunamazsa yazmaya DEVAM et — duraklatma sessizce kalıcı olmasın
+        console.error('[MenuCache] Duraklatma bayrağı okunamadı:', err.message);
+        durumCache = { v: false, t: Date.now() };
+    }
+    return durumCache.v;
+}
+
+/** Bayrağı değiştirir; mikro-cache anında düşürülür. */
+export async function menuYazimiDuraklat(duraklatildi, not = '') {
+    await DURUM_REF.set({ duraklatildi: !!duraklatildi, not, zaman: new Date().toISOString() }, { merge: true });
+    durumCache = { v: !!duraklatildi, t: Date.now() };
+}
+
 /**
  * Şube silindiğinde R2'deki menü JSON'ını da kaldırır.
  * Bırakılırsa /menu/{slug} adresi silinmiş şubenin menüsünü servis etmeye
@@ -21,6 +53,10 @@ export async function deleteMenuJson(subeSlug) {
  * @param {string} subeSlug - Şube slug'ı (ör: "amasya")
  */
 export async function regenerateMenuJson(subeSlug, paylasilan = null) {
+    if (await menuYazimiDuraklatildiMi()) {
+        console.log(`[MenuCache] ⏸ yazım duraklatıldı, atlandı: ${subeSlug}`);
+        return;
+    }
     try {
         // Menü projeksiyonu public endpoint ile TEK kaynaktan gelir
         // (bkz. services/menu-builder.js) — güvenli alan filtresi de orada.
@@ -64,6 +100,12 @@ const PAYLASIM_ESIGI = 19;
  * @param {string[]|null} hedefSlugs - null ise TÜM şubeler
  */
 export async function regenerateMenuJsons(hedefSlugs = null) {
+    // Duraklatma kontrolü EN BAŞTA: aksi halde pahalı okumalar (katalog, şube
+    // listesi) boşuna yapılır, sonra yazım atlanırdı.
+    if (await menuYazimiDuraklatildiMi()) {
+        console.log(`[MenuCache] ⏸ yazım duraklatıldı, ${hedefSlugs === null ? 'tüm şubeler' : hedefSlugs.length + ' şube'} atlandı`);
+        return;
+    }
     if (hedefSlugs !== null) {
         const hedef = [...new Set(hedefSlugs.filter(Boolean))];
         if (hedef.length === 0) return;
