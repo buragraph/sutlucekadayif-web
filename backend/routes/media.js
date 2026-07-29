@@ -43,7 +43,7 @@ function toIso(v) {
 router.get(
     '/',
     verifyToken,
-    requirePermission('categories.view'),
+    requirePermission('media.view'),
     asyncHandler(async (req, res) => {
         const { klasor, genel, cursor, q } = req.query;
         const limit = Math.min(Number(req.query.limit) || PAGE_SIZE, 200);
@@ -95,7 +95,7 @@ router.get(
 router.get(
     '/klasorler',
     verifyToken,
-    requirePermission('categories.view'),
+    requirePermission('media.view'),
     asyncHandler(async (req, res) => {
         const snap = await db.collection('medya_klasorler').orderBy('ad').get();
         const klasorAdlari = snap.docs.map((d) => d.data().ad);
@@ -126,7 +126,7 @@ router.get(
 router.post(
     '/klasorler',
     verifyToken,
-    requirePermission('categories.create'),
+    requirePermission('media.manage'),
     asyncHandler(async (req, res) => {
         const { ad } = req.body;
 
@@ -159,7 +159,7 @@ router.post(
 router.delete(
     '/klasorler/:id',
     verifyToken,
-    requirePermission('categories.delete'),
+    requirePermission('media.manage'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
 
@@ -196,7 +196,7 @@ router.delete(
 router.put(
     '/bulk-move',
     verifyToken,
-    requirePermission('categories.edit'),
+    requirePermission('media.manage'),
     asyncHandler(async (req, res) => {
         const { ids, klasor } = req.body;
         if (!Array.isArray(ids) || ids.length === 0) {
@@ -220,7 +220,7 @@ router.put(
 router.post(
     '/bulk-delete',
     verifyToken,
-    requirePermission('categories.delete'),
+    requirePermission('media.manage'),
     asyncHandler(async (req, res) => {
         const { ids } = req.body;
         if (!Array.isArray(ids) || ids.length === 0) {
@@ -258,7 +258,7 @@ router.post(
 router.post(
     '/backfill-search',
     verifyToken,
-    requirePermission('categories.edit'),
+    requirePermission('media.manage'),
     asyncHandler(async (req, res) => {
         const snap = await db.collection('medya').get();
         const eksik = snap.docs.filter((d) => d.data().arama === undefined);
@@ -279,7 +279,7 @@ router.post(
 router.post(
     '/',
     verifyToken,
-    requirePermission('categories.create'),
+    requirePermission('media.manage'),
     asyncHandler(async (req, res) => {
         const { ad, url, klasor, boyut } = req.body;
 
@@ -317,7 +317,7 @@ router.post(
 router.put(
     '/:id',
     verifyToken,
-    requirePermission('categories.edit'),
+    requirePermission('media.manage'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
         const { ad, klasor } = req.body;
@@ -344,7 +344,7 @@ router.put(
 router.delete(
     '/:id',
     verifyToken,
-    requirePermission('categories.delete'),
+    requirePermission('media.manage'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
 

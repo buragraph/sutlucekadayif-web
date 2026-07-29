@@ -42,6 +42,13 @@ const PERMISSIONS = {
     'categories.edit': ['admin'],
     'categories.delete': ['admin'],
 
+    // ── Medya Kütüphanesi ──
+    // Görseller merkez tarafından yönetilir; şubede medya arayüzü yok.
+    // Daha önce kategori izinleri ödünç alınıyordu ve `categories.view` şube
+    // sahibinde açık olduğu için şube, API'den tüm kütüphaneyi listeleyebiliyordu.
+    'media.view': ['admin'],
+    'media.manage': ['admin'],
+
     // ── Kullanıcı Yönetimi ──
     'users.view': ['admin', 'sube_sahibi'],
     'users.create': ['admin', 'sube_sahibi'],
