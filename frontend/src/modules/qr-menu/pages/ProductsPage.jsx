@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, ListMinus, Store } from 'lucide-react';
+import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, ListMinus, Store } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
@@ -200,6 +201,8 @@ export default function ProductsPage() {
     const [katalogArama, setKatalogArama] = useState('');
     const [katalogSecili, setKatalogSecili] = useState(new Set());
     const [katalogBusy, setKatalogBusy] = useState(false);
+    // Mevcutluk anahtarı uçuşta olan ürünler — çift tıklamayı engeller
+    const [mevcutBekleyen, setMevcutBekleyen] = useState(new Set());
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [aiLoading, setAiLoading] = useState(false);
@@ -340,6 +343,27 @@ export default function ProductsPage() {
             setKatalogAcik(false); setKatalogSecili(new Set()); setKatalogArama('');
         } catch (err) { toast.error(err.response?.data?.error || 'Ürün eklenemedi'); }
         setKatalogBusy(false);
+    }
+
+    // Mevcut / mevcut değil — İYİMSER güncelleme: anahtar anında düşer, istek
+    // başarısız olursa eski değere geri alınır. Sunucu yanıtını beklemek
+    // anahtarı "takılıyor" gibi gösteriyordu.
+    async function handleMevcutToggle(urun, mevcut) {
+        const oncekiMevcutDegil = urun.mevcut_degil || [];
+        setUrunler((prev) => prev.map((u) => (u.id === urun.id ? {
+            ...u,
+            mevcut_degil: mevcut
+                ? oncekiMevcutDegil.filter((s) => s !== subeSlug)
+                : [...oncekiMevcutDegil, subeSlug],
+        } : u)));
+        setMevcutBekleyen((p) => new Set(p).add(urun.id));
+        try {
+            await api.put(`/products/${urun.id}/availability`, { subeSlug, mevcut });
+        } catch (err) {
+            setUrunler((prev) => prev.map((u) => (u.id === urun.id ? { ...u, mevcut_degil: oncekiMevcutDegil } : u)));
+            toast.error(err.response?.data?.error || 'Güncelleme başarısız');
+        }
+        setMevcutBekleyen((p) => { const n = new Set(p); n.delete(urun.id); return n; });
     }
 
     async function handleMenudenCikar(urun) {
@@ -944,8 +968,12 @@ export default function ProductsPage() {
                         <Table className="**:data-[slot=table-cell]:px-4 **:data-[slot=table-head]:px-4">
                             <TableHeader className="border-t **:data-[slot=table-head]:h-11 **:data-[slot=table-head]:font-normal **:data-[slot=table-head]:text-foreground **:data-[slot=table-head]:text-sm">
                                 <TableRow>
-                                    <TableHead className="w-10">
-                                        <Checkbox checked={tumuSeciliMi} onCheckedChange={toggleSelectAllPage} aria-label="Tümünü seç" disabled={secilebilirSayfa.length === 0} />
+                                    {/* Baş sütun: admin'de toplu seçim, şube sahibinde mevcutluk anahtarı.
+                                        Şube ortak ürünü toplu işleme alamadığı için o kutu zaten hep boştu. */}
+                                    <TableHead className={role === 'admin' ? 'w-10' : 'w-20'}>
+                                        {role === 'admin'
+                                            ? <Checkbox checked={tumuSeciliMi} onCheckedChange={toggleSelectAllPage} aria-label="Tümünü seç" disabled={secilebilirSayfa.length === 0} />
+                                            : <span className="text-muted-foreground">Mevcut</span>}
                                     </TableHead>
                                     <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('ad')}>
                                         <span className="inline-flex items-center">Ürün <SortIcon col="ad" /></span>
@@ -957,7 +985,6 @@ export default function ProductsPage() {
                                         <span className="inline-flex items-center">Kategori <SortIcon col="kategori" /></span>
                                     </TableHead>
                                     {role === 'admin' && <TableHead>Şube</TableHead>}
-                                    {role !== 'admin' && subeSlug && <TableHead>Durum</TableHead>}
                                     <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('tarih')}>
                                         <span className="inline-flex items-center">Tarih <SortIcon col="tarih" /></span>
                                     </TableHead>
@@ -970,19 +997,30 @@ export default function ProductsPage() {
                                     const buSubedeMevcut = !mevcutDegil.includes(subeSlug);
                                     const isKilitli = !!urun.duzenlenemez; // sunucudan gelir
 
+                                    // Mevcut değilse satır soluklaşır AMA ilk hücre hariç: anahtar artık
+                                    // asıl kontrol, yarı saydam olursa kapalıyken zor okunuyor.
                                     return (
                                         <TableRow
                                             key={urun.id}
-                                            className={`group transition-colors ${!buSubedeMevcut ? 'opacity-50' : ''} ${!isKilitli ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+                                            className={`group transition-colors ${!buSubedeMevcut ? '[&>td:not(:first-child)]:opacity-50' : ''} ${!isKilitli ? 'cursor-pointer hover:bg-muted/40' : ''}`}
                                             onClick={(e) => {
                                                 if (e.target.closest('button')) return;
                                                 if (!isKilitli) openEditUrun(urun);
                                             }}
                                         >
                                             <TableCell onClick={(e) => e.stopPropagation()}>
-                                                {!isKilitli && (
+                                                {role !== 'admin' && subeSlug && urun.tur !== 'sube_ozel' ? (
+                                                    // Mevcutluk anahtarı — /availability yalnızca ortak üründe
+                                                    // çalışır, eski şubeye özel kayıtlar seçim kutusunda kalır.
+                                                    <Switch
+                                                        checked={buSubedeMevcut}
+                                                        onCheckedChange={(v) => handleMevcutToggle(urun, v)}
+                                                        disabled={mevcutBekleyen.has(urun.id)}
+                                                        aria-label={`${urun.ad} — ${buSubedeMevcut ? 'mevcut' : 'mevcut değil'}`}
+                                                    />
+                                                ) : !isKilitli ? (
                                                     <Checkbox checked={selectedIds.has(urun.id)} onCheckedChange={() => toggleSelect(urun.id)} aria-label={`${urun.ad} seç`} />
-                                                )}
+                                                ) : null}
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-3">
@@ -1039,13 +1077,6 @@ export default function ProductsPage() {
                                                         })()}
                                                 </TableCell>
                                             )}
-                                            {role !== 'admin' && subeSlug && (
-                                                <TableCell>
-                                                    <DotBadge tone={buSubedeMevcut ? 'green' : 'red'}>
-                                                        {buSubedeMevcut ? 'Mevcut' : 'Mevcut Değil'}
-                                                    </DotBadge>
-                                                </TableCell>
-                                            )}
                                             <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                                                 {urun.createdAt ? new Date(urun.createdAt).toLocaleDateString('tr-TR') : '—'}
                                             </TableCell>
@@ -1077,21 +1108,6 @@ export default function ProductsPage() {
                                                             onClick={() => handleMenudenCikar(urun)}
                                                         >
                                                             <ListMinus className="size-3.5" />
-                                                        </Button>
-                                                    )}
-                                                    {role !== 'admin' && subeSlug && (
-                                                        <Button variant="ghost" size="icon" className="size-7" title={buSubedeMevcut ? 'Mevcut Değil Yap' : 'Mevcut Yap'} onClick={async () => {
-                                                            try {
-                                                                await api.put(`/products/${urun.id}/availability`, { subeSlug, mevcut: !buSubedeMevcut });
-                                                                setUrunler(prev => prev.map(u => u.id === urun.id ? {
-                                                                    ...u,
-                                                                    mevcut_degil: buSubedeMevcut
-                                                                        ? [...(u.mevcut_degil || []), subeSlug]
-                                                                        : (u.mevcut_degil || []).filter(s => s !== subeSlug)
-                                                                } : u));
-                                                            } catch (err) { toast.error('Güncelleme başarısız'); }
-                                                        }}>
-                                                            {buSubedeMevcut ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                                                         </Button>
                                                     )}
                                                 </div>
