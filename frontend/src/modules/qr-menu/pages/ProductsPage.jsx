@@ -860,16 +860,20 @@ export default function ProductsPage() {
                                 <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={clearSelection}>Temizle</Button>
                             </div>
                         )}
-                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={async () => {
-                            try { const { data } = await api.get('/products/trash'); setTrashUrunler(data.urunler); setShowTrash(true); }
-                            catch (err) { toast.error('Çöp kutusu yüklenemedi'); }
-                        }}>
-                            <Trash className="size-3.5 mr-1.5" /> Silinenler
-                        </Button>
-                        {/* Ürün OLUŞTURMA yalnızca merkezde. Şube sahibi ortak katalogtan
-                            seçim yapar — "Ürün Ekle" katalog penceresini açar. */}
+                        {/* Ürün OLUŞTURMA ve SİLME yalnızca merkezde. Şube sahibi ortak
+                            katalogtan seçim yapar — "Ürün Ekle" katalog penceresini açar.
+                            "Silinenler" de merkeze ait: şube ortak ürünü silemediği ve
+                            artık şubeye özel ürün oluşturamadığı için çöp kutusuna hiçbir
+                            zaman kayıt düşüremiyor — buton her şubede boş açılıyordu.
+                            (Menüden çıkarma silme değildir; kayıt katalogda kalır.) */}
                         {role === 'admin' ? (
                             <>
+                                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={async () => {
+                                    try { const { data } = await api.get('/products/trash'); setTrashUrunler(data.urunler); setShowTrash(true); }
+                                    catch { toast.error('Çöp kutusu yüklenemedi'); }
+                                }}>
+                                    <Trash className="size-3.5 mr-1.5" /> Silinenler
+                                </Button>
                                 <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openBulkAdd}>
                                     <ListPlus className="size-3.5 mr-1.5" /> Toplu Ekle
                                 </Button>
