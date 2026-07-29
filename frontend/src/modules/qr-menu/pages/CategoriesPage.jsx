@@ -10,6 +10,89 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 
+const colorPalette = [
+    { bg: '#dbeafe', text: '#1e40af', label: 'Mavi' },
+    { bg: '#fce7f3', text: '#9d174d', label: 'Pembe' },
+    { bg: '#d1fae5', text: '#065f46', label: 'Yeşil' },
+    { bg: '#fef3c7', text: '#92400e', label: 'Sarı' },
+    { bg: '#ede9fe', text: '#5b21b6', label: 'Mor' },
+    { bg: '#fee2e2', text: '#991b1b', label: 'Kırmızı' },
+    { bg: '#e0e7ff', text: '#3730a3', label: 'Lacivert' },
+    { bg: '#ccfbf1', text: '#115e59', label: 'Turkuaz' },
+    { bg: '#fff7ed', text: '#9a3412', label: 'Turuncu' },
+    { bg: '#f0fdf4', text: '#166534', label: 'Koyu Yeşil' },
+];
+
+/**
+ * Kategori kartı — MODÜL kapsamında tanımlı OLMALI.
+ *
+ * Daha önce CategoriesPage'in içinde tanımlıydı; bu, her render'da yeni bir
+ * bileşen TÜRÜ üretiyordu ve React kartları taşımak yerine hepsini DOM'dan
+ * silip yeniden oluşturuyordu (ölçüldü: 14/14 düğüm yenileniyordu).
+ * Sürüklemede ilk `dragover` yeniden render tetiklediği için sürüklenen düğüm
+ * yok oluyor, tarayıcı sürüklemeyi iptal ediyor ve `dragend` hiç gelmiyordu —
+ * sıra bu yüzden kaydedilmiyordu. Bileşen dışarı alınınca düğümler korunuyor.
+ */
+function KategoriCard({ kat, surukleId, siraKaydediliyor, onSurukleBasla, onSurukleUzerinde, onSurukleBitti, onDuzenle, onSil }) {
+    const colorInfo = colorPalette.find(c => c.bg === kat.renk) || { bg: kat.renk || '#dbeafe', text: '#374151' };
+    const isOrtak = (kat.tur || 'ortak') === 'ortak';
+
+    return (
+        <div
+            draggable={!siraKaydediliyor}
+            onDragStart={(e) => { onSurukleBasla(kat.id); e.dataTransfer.effectAllowed = 'move'; }}
+            onDragOver={(e) => onSurukleUzerinde(e, kat)}
+            onDragEnd={onSurukleBitti}
+            className={`group relative flex items-center gap-3 rounded-lg border bg-card p-3 transition-shadow hover:shadow-sm ${surukleId === kat.id ? 'opacity-40 ring-2 ring-primary' : ''} ${siraKaydediliyor ? 'pointer-events-none opacity-60' : ''}`}
+        >
+            {/* Sürükleme tutamacı — kart komple sürüklenebilir, ikon göstergesi */}
+            <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+
+            {/* Color / Image */}
+            {kat.gorsel ? (
+                <img src={proxyImageUrl(kat.gorsel)} alt={kat.ad} className="size-10 shrink-0 rounded-lg object-cover" />
+            ) : (
+                <div className="size-10 shrink-0 rounded-lg flex items-center justify-center text-sm font-bold"
+                     style={{ background: colorInfo.bg, color: colorInfo.text }}>
+                    {kat.ad.charAt(0).toUpperCase()}
+                </div>
+            )}
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-medium text-foreground truncate">{kat.ad}</h3>
+                    <span className="text-[11px] text-muted-foreground shrink-0">{kat.urunSayisi || 0} ürün</span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                    {isOrtak ? (
+                        <span className="inline-flex items-center text-[10px] text-blue-600">
+                            <Globe className="size-2.5 mr-0.5" /> Ortak
+                        </span>
+                    ) : (
+                        <span className="inline-flex items-center text-[10px] text-amber-600">
+                            <MapPin className="size-2.5 mr-0.5" /> Şubeye Özel
+                        </span>
+                    )}
+                    {kat.renk && (
+                        <span className="inline-block size-2.5 rounded-full border border-black/10" style={{ background: kat.renk }} />
+                    )}
+                </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-foreground" onClick={() => onDuzenle(kat)} title="Düzenle">
+                    <Pencil className="size-3" />
+                </Button>
+                <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => onSil(kat)} title="Sil">
+                    <Trash2 className="size-3" />
+                </Button>
+            </div>
+        </div>
+    );
+}
+
 export default function CategoriesPage() {
     const toast = useToast();
     const confirm = useConfirm();
@@ -27,19 +110,6 @@ export default function CategoriesPage() {
     const [surukleId, setSurukleId] = useState(null);
     const [siraKaydediliyor, setSiraKaydediliyor] = useState(false);
     const siraRef = useRef([]); // sürükleme sırasında oluşan güncel sıra (id dizisi)
-
-    const colorPalette = [
-        { bg: '#dbeafe', text: '#1e40af', label: 'Mavi' },
-        { bg: '#fce7f3', text: '#9d174d', label: 'Pembe' },
-        { bg: '#d1fae5', text: '#065f46', label: 'Yeşil' },
-        { bg: '#fef3c7', text: '#92400e', label: 'Sarı' },
-        { bg: '#ede9fe', text: '#5b21b6', label: 'Mor' },
-        { bg: '#fee2e2', text: '#991b1b', label: 'Kırmızı' },
-        { bg: '#e0e7ff', text: '#3730a3', label: 'Lacivert' },
-        { bg: '#ccfbf1', text: '#115e59', label: 'Turkuaz' },
-        { bg: '#fff7ed', text: '#9a3412', label: 'Turuncu' },
-        { bg: '#f0fdf4', text: '#166534', label: 'Koyu Yeşil' },
-    ];
 
     useEffect(() => { loadKategoriler(); }, []);
 
@@ -178,65 +248,15 @@ export default function CategoriesPage() {
     const ortakKategoriler = kategoriler.filter(k => (k.tur || 'ortak') === 'ortak');
     const subeKategoriler = kategoriler.filter(k => k.tur === 'sube_ozel');
 
-    function KategoriCard({ kat }) {
-        const colorInfo = colorPalette.find(c => c.bg === kat.renk) || { bg: kat.renk || '#dbeafe', text: '#374151' };
-        const isOrtak = (kat.tur || 'ortak') === 'ortak';
-
-        return (
-            <div
-                draggable={!siraKaydediliyor}
-                onDragStart={(e) => { setSurukleId(kat.id); e.dataTransfer.effectAllowed = 'move'; }}
-                onDragOver={(e) => suruklemeUzerinde(e, kat)}
-                onDragEnd={suruklemeBitti}
-                className={`group relative flex items-center gap-3 rounded-lg border bg-card p-3 transition-shadow hover:shadow-sm ${surukleId === kat.id ? 'opacity-40 ring-2 ring-primary' : ''} ${siraKaydediliyor ? 'pointer-events-none opacity-60' : ''}`}
-            >
-                {/* Sürükleme tutamacı — kart komple sürüklenebilir, ikon göstergesi */}
-                <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
-
-                {/* Color / Image */}
-                {kat.gorsel ? (
-                    <img src={proxyImageUrl(kat.gorsel)} alt={kat.ad} className="size-10 shrink-0 rounded-lg object-cover" />
-                ) : (
-                    <div className="size-10 shrink-0 rounded-lg flex items-center justify-center text-sm font-bold"
-                         style={{ background: colorInfo.bg, color: colorInfo.text }}>
-                        {kat.ad.charAt(0).toUpperCase()}
-                    </div>
-                )}
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-medium text-foreground truncate">{kat.ad}</h3>
-                        <span className="text-[11px] text-muted-foreground shrink-0">{kat.urunSayisi || 0} ürün</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                        {isOrtak ? (
-                            <span className="inline-flex items-center text-[10px] text-blue-600">
-                                <Globe className="size-2.5 mr-0.5" /> Ortak
-                            </span>
-                        ) : (
-                            <span className="inline-flex items-center text-[10px] text-amber-600">
-                                <MapPin className="size-2.5 mr-0.5" /> Şubeye Özel
-                            </span>
-                        )}
-                        {kat.renk && (
-                            <span className="inline-block size-2.5 rounded-full border border-black/10" style={{ background: kat.renk }} />
-                        )}
-                    </div>
-                </div>
-
-                {/* Actions */}
-                <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-foreground" onClick={() => openEdit(kat)} title="Düzenle">
-                        <Pencil className="size-3" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(kat)} title="Sil">
-                        <Trash2 className="size-3" />
-                    </Button>
-                </div>
-            </div>
-        );
-    }
+    // Karta geçilen ortak alanlar — iki listede de aynı
+    const kartProplari = {
+        surukleId, siraKaydediliyor,
+        onSurukleBasla: setSurukleId,
+        onSurukleUzerinde: suruklemeUzerinde,
+        onSurukleBitti: suruklemeBitti,
+        onDuzenle: openEdit,
+        onSil: handleDelete,
+    };
 
     return (
         <div className="flex flex-1 flex-col gap-4 w-full">
@@ -287,7 +307,7 @@ export default function CategoriesPage() {
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                 {ortakKategoriler.map((kat) => (
-                                    <KategoriCard key={kat.id} kat={kat} />
+                                    <KategoriCard key={kat.id} kat={kat} {...kartProplari} />
                                 ))}
                             </div>
                         </div>
@@ -303,7 +323,7 @@ export default function CategoriesPage() {
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                 {subeKategoriler.map((kat) => (
-                                    <KategoriCard key={kat.id} kat={kat} />
+                                    <KategoriCard key={kat.id} kat={kat} {...kartProplari} />
                                 ))}
                             </div>
                         </div>
