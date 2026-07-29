@@ -19,12 +19,16 @@ import { db } from '../../../config/firebase.js';
  * @returns {Promise<{sube: object, kategoriler: object[], urunlerByKategori: object}|null>}
  *          Şube yoksa null döner (çağıran taraf 404 / uyarı olarak ele alır).
  */
-export async function buildMenuData(subeSlug) {
-    // Paralel sorgular — hız optimizasyonu
+export async function buildMenuData(subeSlug, paylasilan = null) {
+    // `paylasilan`: TÜM şubeler için aynı olan iki sorgunun (kategoriler +
+    // ortak katalog) önceden okunmuş hâli. Toplu yenilemede (92 şube) bunlar
+    // şube başına yeniden okunuyordu: 92 × 733 ürün ≈ 67 bin gereksiz okuma ve
+    // ~27 sn. regenerateAllMenuJsons artık bir kez okuyup buraya geçiriyor.
+    // Tekil çağrılarda parametre verilmez, davranış aynı kalır.
     const [subeDoc, katSnap, ortakSnap, ozelSnap] = await Promise.all([
         db.collection('subeler').doc(subeSlug).get(),
-        db.collection('kategoriler').orderBy('sira', 'asc').get(),
-        db.collection('ortak_urunler').get(),                                // Ortak ürünler (ana collection)
+        paylasilan?.katSnap ?? db.collection('kategoriler').orderBy('sira', 'asc').get(),
+        paylasilan?.ortakSnap ?? db.collection('ortak_urunler').get(),        // Ortak ürünler (ana collection)
         db.collection('subeler').doc(subeSlug).collection('urunler').get(),  // Şubeye özel (subcollection)
     ]);
 

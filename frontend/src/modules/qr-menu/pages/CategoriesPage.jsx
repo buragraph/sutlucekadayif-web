@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../../../services/api';
 import { Plus, Pencil, Trash2, X, GripVertical, Globe, MapPin, ImagePlus, Images, FolderOpen, Package } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
@@ -24,6 +24,9 @@ export default function CategoriesPage() {
     const [showMediaLibrary, setShowMediaLibrary] = useState(false);
     const [loadingMedia, setLoadingMedia] = useState(false);
     const [mediaImages, setMediaImages] = useState([]);
+    const [surukleId, setSurukleId] = useState(null);
+    const [siraKaydediliyor, setSiraKaydediliyor] = useState(false);
+    const siraRef = useRef([]); // sürükleme sırasında oluşan güncel sıra (id dizisi)
 
     const colorPalette = [
         { bg: '#dbeafe', text: '#1e40af', label: 'Mavi' },
@@ -42,7 +45,11 @@ export default function CategoriesPage() {
 
     async function loadKategoriler() {
         setLoading(true);
-        try { const { data } = await api.get('/categories'); setKategoriler(data.kategoriler); }
+        try {
+            const { data } = await api.get('/categories');
+            setKategoriler(data.kategoriler);
+            siraRef.current = data.kategoriler.map((k) => k.id);
+        }
         catch (err) { console.error('Kategoriler yüklenemedi:', err); }
         setLoading(false);
     }
@@ -133,6 +140,41 @@ export default function CategoriesPage() {
         setShowMediaLibrary(false);
     }
 
+    // ── Sürükle-bırak ile sıralama ──
+    // Menü kategorileri `sira` alanına göre listeliyor (menu-builder.js) ama bu
+    // alanı değiştirecek bir arayüz yoktu; tutamaç ikonu duruyordu, mantığı yoktu.
+    // Sıra sunucuya TEK istekte gönderilir (PUT /categories/sira): kategori başına
+    // ayrı istek 92 şubenin menüsünü her seferinde yeniden ürettirirdi.
+    function suruklemeUzerinde(e, hedef) {
+        e.preventDefault();
+        if (!surukleId || surukleId === hedef.id) return;
+        const kaynakIdx = kategoriler.findIndex((k) => k.id === surukleId);
+        const hedefIdx = kategoriler.findIndex((k) => k.id === hedef.id);
+        if (kaynakIdx < 0 || hedefIdx < 0) return;
+        // Ortak ↔ şubeye özel gruplar karışmasın (farklı `tur`, farklı liste)
+        if ((kategoriler[kaynakIdx].tur || 'ortak') !== (kategoriler[hedefIdx].tur || 'ortak')) return;
+        const yeni = [...kategoriler];
+        const [tasinan] = yeni.splice(kaynakIdx, 1);
+        yeni.splice(hedefIdx, 0, tasinan);
+        setKategoriler(yeni);
+        siraRef.current = yeni.map((k) => k.id); // onDragEnd bayat state okumasın
+    }
+
+    async function suruklemeBitti() {
+        const bitenId = surukleId;
+        setSurukleId(null);
+        if (!bitenId || siraRef.current.length === 0) return;
+        setSiraKaydediliyor(true);
+        try {
+            await api.put('/categories/sira', { idler: siraRef.current });
+            toast.success('Kategori sırası kaydedildi');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Sıra kaydedilemedi');
+            await loadKategoriler(); // sunucudaki gerçek sıraya geri dön
+        }
+        setSiraKaydediliyor(false);
+    }
+
     const ortakKategoriler = kategoriler.filter(k => (k.tur || 'ortak') === 'ortak');
     const subeKategoriler = kategoriler.filter(k => k.tur === 'sube_ozel');
 
@@ -141,8 +183,14 @@ export default function CategoriesPage() {
         const isOrtak = (kat.tur || 'ortak') === 'ortak';
 
         return (
-            <div className="group relative flex items-center gap-3 rounded-lg border bg-card p-3 hover:shadow-sm transition-shadow">
-                {/* Drag Handle */}
+            <div
+                draggable={!siraKaydediliyor}
+                onDragStart={(e) => { setSurukleId(kat.id); e.dataTransfer.effectAllowed = 'move'; }}
+                onDragOver={(e) => suruklemeUzerinde(e, kat)}
+                onDragEnd={suruklemeBitti}
+                className={`group relative flex items-center gap-3 rounded-lg border bg-card p-3 transition-shadow hover:shadow-sm ${surukleId === kat.id ? 'opacity-40 ring-2 ring-primary' : ''} ${siraKaydediliyor ? 'pointer-events-none opacity-60' : ''}`}
+            >
+                {/* Sürükleme tutamacı — kart komple sürüklenebilir, ikon göstergesi */}
                 <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
 
                 {/* Color / Image */}
@@ -221,6 +269,14 @@ export default function CategoriesPage() {
                 </div>
             ) : (
                 <div className="flex flex-col gap-6">
+                    {/* Sıralama menüye birebir yansıyor; kullanıcı kartları sürükleyebileceğini
+                        bilmiyordu (tutamaç ikonu vardı ama açıklama yoktu). */}
+                    <p className="-mb-3 text-xs text-muted-foreground">
+                        {siraKaydediliyor
+                            ? 'Sıra kaydediliyor, tüm şubelerin menüsü yenileniyor...'
+                            : 'Kartları sürükleyerek sıralayın — bu sıra QR menüsünde de geçerli olur.'}
+                    </p>
+
                     {/* Ortak Kategoriler */}
                     {ortakKategoriler.length > 0 && (
                         <div>
