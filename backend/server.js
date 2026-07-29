@@ -41,28 +41,12 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-// ─── Rate Limiting ───
-const generalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 dakika
-    max: 500,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Çok fazla istek. Lütfen biraz bekleyin.' },
-    validate: { xForwardedForHeader: false, trustProxy: false },
-});
-
-const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 20,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { error: 'Çok fazla giriş denemesi. Lütfen biraz bekleyin.' },
-    validate: { xForwardedForHeader: false, trustProxy: false },
-});
-
-app.use(generalLimiter);
-
-// ─── Middleware ───
+// ─── CORS ───
+// DİKKAT: cors() rate limiter'dan ÖNCE gelmeli. Sonra gelirse limiter'ın
+// döndüğü 429 yanıtında Access-Control-Allow-Origin başlığı olmuyor ve tarayıcı
+// bunu "CORS policy" hatası olarak gösteriyor — gerçek sebep (kota doldu)
+// kullanıcıya hiç ulaşmıyor. Ayrıca cors() preflight'ı burada sonlandırdığı
+// için OPTIONS istekleri kotayı yemiyor (istek başına 2 yerine 1 sayılıyor).
 app.use(cors({
     origin: function (origin, callback) {
         const allowedOrigins = [
@@ -85,8 +69,38 @@ app.use(cors({
         }
     },
     credentials: true,
-    exposedHeaders: ['Content-Disposition']
+    // RateLimit-* ve Retry-After CORS'ta güvenli liste dışında; açıkça
+    // sunulmazsa tarayıcıdaki JS okuyamıyor ve arayüz kullanıcıya "ne kadar
+    // beklemeli" diyemiyor.
+    exposedHeaders: ['Content-Disposition', 'Retry-After', 'RateLimit-Reset', 'RateLimit-Remaining']
 }));
+
+// ─── Rate Limiting ───
+// 1000/15dk: medya toplu yüklemesi görsel başına 2 istek atıyor (/upload/image
+// + /media), yani ~500 görsellik alan bırakıyor. Kötüye kullanıma açık uçların
+// kendi sıkı limitleri var (giriş 20/15dk, herkese açık formlar 5-10/saat),
+// bu yüzden genel limit panel işini engellemeyecek kadar geniş tutulabiliyor.
+const generalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 dakika
+    max: 1000,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Çok fazla istek. Lütfen biraz bekleyin.' },
+    validate: { xForwardedForHeader: false, trustProxy: false },
+});
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Çok fazla giriş denemesi. Lütfen biraz bekleyin.' },
+    validate: { xForwardedForHeader: false, trustProxy: false },
+});
+
+app.use(generalLimiter);
+
+// ─── Middleware ───
 app.use(express.json({ limit: '1mb' }));
 
 // ─── Multipart shim (Firebase Functions) ───

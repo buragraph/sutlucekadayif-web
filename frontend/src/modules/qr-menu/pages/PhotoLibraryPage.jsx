@@ -84,6 +84,7 @@ export default function PhotoLibraryPage() {
         setUploading(true);
 
         let basarili = 0;
+        let kotaDoldu = 0; // 0 = dolmadı, >0 = kaç saniye beklenmeli
         for (const file of files) {
             let uploadedUrl = null;
             try {
@@ -107,11 +108,22 @@ export default function PhotoLibraryPage() {
                 if (uploadedUrl) {
                     api.delete('/upload/image', { data: { url: uploadedUrl } }).catch(() => {});
                 }
+                // İstek kotası dolduysa kalan dosyaları denemek işe yaramaz: her
+                // deneme kotayı biraz daha yakar ve dosya başına bir hata bildirimi
+                // çıkarır. Döngüyü kes, tek ve anlaşılır bir uyarı ver.
+                if (err.response?.status === 429) {
+                    kotaDoldu = Number(err.response.headers?.['retry-after']) || 60;
+                    break;
+                }
                 toast.error(`"${file.name}" yüklenemedi`);
             }
         }
 
         if (basarili > 0) toast.success(`${basarili} görsel yüklendi`);
+        if (kotaDoldu) {
+            const dk = Math.max(1, Math.ceil(kotaDoldu / 60));
+            toast.error(`İstek sınırına takıldınız — ${dk} dakika sonra kalan görselleri yükleyebilirsiniz.`);
+        }
         await refresh();
         setUploading(false);
         e.target.value = '';
