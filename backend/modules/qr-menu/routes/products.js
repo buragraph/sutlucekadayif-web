@@ -3,7 +3,7 @@ import { db } from '../../../config/firebase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import admin from 'firebase-admin';
 import asyncHandler from '../../../utils/asyncHandler.js';
-import { regenerateAffectedMenuJsons, regenerateAllMenuJsons, regenerateMenuJson } from '../services/menu-cache.js';
+import { regenerateAffectedMenuJsons, regenerateMenuJsons, regenerateMenuJson } from '../services/menu-cache.js';
 
 const router = Router();
 
@@ -345,12 +345,17 @@ router.post(
     })
 );
 
-// Toplu işlem sonrası etkilenen menü JSON'larını tek seferde yeniler (dedupe)
+// Toplu işlem sonrası etkilenen menü JSON'larını TEK seferde yeniler (dedupe).
+// Ortak üründe artık tüm şubeler değil, yalnızca o ürünlerin bulunduğu şubeler
+// yenilenir (`menude_subeler` birleşimi). Strateji seçimini regenerateMenuJsons
+// şube sayısına göre kendisi yapar.
 async function regenerateForAffected(affected) {
-    const hasOrtak = affected.some((a) => a.tur !== 'sube_ozel');
-    if (hasOrtak) { await regenerateAllMenuJsons().catch(console.error); return; }
-    const slugs = [...new Set(affected.map((a) => a.sube_slug).filter(Boolean))];
-    await Promise.all(slugs.map((s) => regenerateMenuJson(s).catch(console.error)));
+    const slugs = new Set();
+    for (const a of affected) {
+        if (a.tur === 'sube_ozel') { if (a.sube_slug) slugs.add(a.sube_slug); continue; }
+        (a.menude_subeler || []).forEach((s) => slugs.add(s));
+    }
+    await regenerateMenuJsons([...slugs]).catch(console.error);
 }
 
 /**
@@ -389,7 +394,7 @@ router.put(
             np = Math.max(0, Math.round(np * 100) / 100);
 
             await found.docRef.update({ fiyat: np });
-            affected.push({ tur: found.source, sube_slug: found.subeSlug });
+            affected.push({ tur: found.source, sube_slug: found.subeSlug, menude_subeler: found.doc.data().menude_subeler || [] });
             updated++;
         }
 
@@ -452,7 +457,7 @@ router.post(
                 await db.collection('ortak_urunler').add(data);
             }
             katInc[p.kategori] = (katInc[p.kategori] || 0) + 1;
-            affected.push({ tur: data.tur, sube_slug: data.sube_slug });
+            affected.push({ tur: data.tur, sube_slug: data.sube_slug, menude_subeler: data.menude_subeler || [] });
             created++;
         }
 
@@ -488,7 +493,7 @@ router.post(
             await found.docRef.update({ deletedAt: new Date().toISOString() });
             const kat = found.doc.data().kategori;
             if (kat) katDec[kat] = (katDec[kat] || 0) + 1;
-            affected.push({ tur: found.source, sube_slug: found.subeSlug });
+            affected.push({ tur: found.source, sube_slug: found.subeSlug, menude_subeler: found.doc.data().menude_subeler || [] });
             deleted++;
         }
 
@@ -691,7 +696,10 @@ router.put(
         const updated = await docRef.get();
         const updatedData = { ...updated.data(), tur: found.source, sube_slug: found.subeSlug };
 
-        await regenerateAffectedMenuJsons(updatedData).catch(console.error);
+        // Eski menü listesi de hedefe eklenir: ürün bir şubeden ÇIKARILDIYSA
+        // (menude_subeler daraldıysa) o şubenin menüsü de yenilenmeli, yoksa
+        // ürün orada asılı kalır.
+        await regenerateAffectedMenuJsons(updatedData, doc.data().menude_subeler || []).catch(console.error);
         res.json({ success: true, urun: yanitProjeksiyonu(req.user, { id, ...updatedData }) });
     })
 );

@@ -26,18 +26,25 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
     // ~27 sn. regenerateAllMenuJsons artık bir kez okuyup buraya geçiriyor.
     // Tekil çağrılarda parametre verilmez, davranış aynı kalır.
     const [subeDoc, katSnap, ortakSnap, ozelSnap] = await Promise.all([
-        db.collection('subeler').doc(subeSlug).get(),
+        // Toplu yenilemede şube dokümanları zaten liste sorgusuyla okundu;
+        // burada tekrar okumak 88 gereksiz okuma demekti.
+        paylasilan?.subeDoclari?.get(subeSlug) ?? db.collection('subeler').doc(subeSlug).get(),
         paylasilan?.katSnap ?? db.collection('kategoriler').orderBy('sira', 'asc').get(),
         // TEK şube üretilirken yalnızca O ŞUBENİN menüsündeki ürünler okunur —
-        // tüm katalog değil. 733 ürünlük katalogta bir şubenin menüsü ~67 ürün,
-        // yani ~9× daha ucuz. Şube fiyat/mevcutluk değiştirdiğinde çalışan yol
-        // burası ve en sık tetiklenen işlem bu.
+        // tüm katalog değil. 733 ürünlük katalogta bir şubenin menüsü ~43 ürün.
+        // Şube fiyat/mevcutluk değiştirdiğinde çalışan yol burası ve en sık
+        // tetiklenen işlem bu.
         // `array-contains` tek alanlık otomatik indeksi kullanır, bileşik indeks
         // istemez (sıralama yok). Sonraki filtreler (deletedAt, gizli_subeler,
         // mevcut_degil) aynen uygulanmaya devam eder.
         paylasilan?.ortakSnap ?? db.collection('ortak_urunler')
             .where('menude_subeler', 'array-contains', subeSlug).get(),
-        db.collection('subeler').doc(subeSlug).collection('urunler').get(),  // Şubeye özel (subcollection)
+        // Şubeye özel eski ürünler. Toplu yenilemede tek bir koleksiyon-grubu
+        // sorgusuyla hepsi okunup şubeye göre gruplanır: aksi halde 88 ayrı
+        // sorgu atılıyordu ve hepsi BOŞ dönüyordu (Firestore boş sorguya da
+        // 1 okuma faturalar).
+        paylasilan?.ozelByShube ? (paylasilan.ozelByShube.get(subeSlug) || [])
+            : db.collection('subeler').doc(subeSlug).collection('urunler').get(),
     ]);
 
     if (!subeDoc.exists) return null;
