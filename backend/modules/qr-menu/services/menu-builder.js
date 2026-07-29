@@ -28,7 +28,15 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
     const [subeDoc, katSnap, ortakSnap, ozelSnap] = await Promise.all([
         db.collection('subeler').doc(subeSlug).get(),
         paylasilan?.katSnap ?? db.collection('kategoriler').orderBy('sira', 'asc').get(),
-        paylasilan?.ortakSnap ?? db.collection('ortak_urunler').get(),        // Ortak ürünler (ana collection)
+        // TEK şube üretilirken yalnızca O ŞUBENİN menüsündeki ürünler okunur —
+        // tüm katalog değil. 733 ürünlük katalogta bir şubenin menüsü ~67 ürün,
+        // yani ~9× daha ucuz. Şube fiyat/mevcutluk değiştirdiğinde çalışan yol
+        // burası ve en sık tetiklenen işlem bu.
+        // `array-contains` tek alanlık otomatik indeksi kullanır, bileşik indeks
+        // istemez (sıralama yok). Sonraki filtreler (deletedAt, gizli_subeler,
+        // mevcut_degil) aynen uygulanmaya devam eder.
+        paylasilan?.ortakSnap ?? db.collection('ortak_urunler')
+            .where('menude_subeler', 'array-contains', subeSlug).get(),
         db.collection('subeler').doc(subeSlug).collection('urunler').get(),  // Şubeye özel (subcollection)
     ]);
 
