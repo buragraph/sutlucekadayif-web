@@ -360,8 +360,24 @@ export default function ProductsPage() {
     const menuUrunleri = urunler.filter((u) => u.menude !== false);
     const katalogUrunleri = urunler.filter((u) => u.menude === false);
 
+    // Kategori rayı — şube sahibinde YALNIZCA menüsünde ürünü olan kategoriler.
+    // Ortak katalog opt-in olduğu için şubenin hiç ürün almadığı kategoriler
+    // tıklandığında boş liste veriyordu. Ray, arama sonucuna değil şubenin tüm
+    // menüsüne bakar; yoksa kullanıcı yazdıkça sekmeler kaybolurdu.
+    // Admin taksonomiyi bütün görmeli (ürünü kategorilere o dağıtıyor).
+    const doluKatIdleri = new Set(menuUrunleri.map((u) => u.kategori));
+    const gosterilecekKategoriler = role === 'admin'
+        ? kategoriler
+        : kategoriler.filter((k) => doluKatIdleri.has(k.id));
+
+    // Seçili kategori artık rayda yoksa (son ürün menüden çıkarıldı) "Tümü" gibi
+    // davran. Durumu sıfırlamıyoruz: ürün geri eklenince sekme seçili döner.
+    const etkinKategori = selectedKategori !== 'all' && !gosterilecekKategoriler.some((k) => k.id === selectedKategori)
+        ? 'all'
+        : selectedKategori;
+
     const filteredUrunler = menuUrunleri.filter((u) => {
-        const matchKategori = selectedKategori === 'all' || u.kategori === selectedKategori;
+        const matchKategori = etkinKategori === 'all' || u.kategori === etkinKategori;
         const matchSearch = !searchTerm || u.ad.toLowerCase().includes(searchTerm.toLowerCase());
         let matchSube = true;
         if (role === 'admin' && selectedSube !== 'all') {
@@ -868,8 +884,8 @@ export default function ProductsPage() {
                     <div className="flex flex-col gap-3 px-4 lg:flex-row lg:items-center lg:justify-between">
                         <div className="max-w-full overflow-x-auto">
                             <div className="inline-flex w-max items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
-                                {[{ id: 'all', ad: 'Tümü' }, ...kategoriler].map((k) => {
-                                    const active = selectedKategori === k.id;
+                                {[{ id: 'all', ad: 'Tümü' }, ...gosterilecekKategoriler].map((k) => {
+                                    const active = etkinKategori === k.id;
                                     return (
                                         <button
                                             key={k.id}
