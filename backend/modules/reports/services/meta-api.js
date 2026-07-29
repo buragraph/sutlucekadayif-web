@@ -1,4 +1,4 @@
-import { upsertSube, upsertMetaToplanlar, upsertToplamErisim, getAllSubeler, getSubeByKod, getMetaMappings, saveMetaMappings as dbSaveMetaMappings, getCampaignMappings, saveCampaignMappings as dbSaveCampaignMappings, getAdsetMappings, saveAdsetMappings as dbSaveAdsetMappings, getAdsetsCache, saveAdsetsCache, bumpDataVersion } from '../db.js';
+import { upsertMetaToplanlar, upsertToplamErisim, getAllSubeler, getSubeByKod, getMetaMappings, saveMetaMappings as dbSaveMetaMappings, getCampaignMappings, saveCampaignMappings as dbSaveCampaignMappings, getAdsetMappings, saveAdsetMappings as dbSaveAdsetMappings, getAdsetsCache, saveAdsetsCache, bumpDataVersion } from '../db.js';
 
 // Batch sonunda versiyonu tek seferde artırır. Aggregate'ler her upsert'te delta ile
 // güncellendiği için ayrıca recalc gerekmez (skipBump:true ile yazılıp burada 1 bump).
@@ -72,7 +72,11 @@ function extractPrefix(adsetName) {
   if (isCreative) return p1;
   const KNOWN_DISTRICTS = ['kecioren', 'kozyatagi', 'pursaklar', 'eryaman', 'etimesgut', 'mamak', 'sincan', 'baglica', 'gunesevler', 'karapurcek', 'etlik', 'maltepe', 'masukiye', 'pendik', 'kadikoy', 'kartal', 'kordon', 'alsancak', 'bornova', 'buca', 'lara', 'kepez', 'konyaalti', 'muratpasa', 'sapanca', 'duzce', 'bolu'];
   const p2slug = turkishToSlug(p2);
-  if (KNOWN_DISTRICTS.some(d => p2slug.startsWith(d))) return `${p1}-${p2}`;
+  // TAM eşleşme aranır. Eskiden `startsWith` idi ve "Bağlıca Sütlü Kadayıf
+  // Denemeye Gidiyoruz" gibi kreatif adları ilçe sanıyordu (slug "baglica" ile
+  // BAŞLIYOR): şube adı olarak tüm cümle alınıyor, eşleşmeyince de çöp şube
+  // açılıyordu (baglicabaglicasutlukadayifdenemeyegidiyoruz).
+  if (KNOWN_DISTRICTS.includes(p2slug)) return `${p1}-${p2}`;
   if (p2.length > 15) return p1;
   return `${p1}-${p2}`;
 }
@@ -176,9 +180,14 @@ export async function importFromMetaApi(accessToken, since, until, targetSubeKod
     const slug = turkishToSlug(prefix);
     let sube = subeBulSlug(mevcutSubeler, slug);
     if (!sube) {
-      // Hedefli çekimde eşleşmeyen prefix için yeni şube AÇMA — çöp kayıt oluşur
-      if (targetSubeKod) { hatalar.push({ adset: adsetName, error: 'Şube eşleşmedi (hedefli çekim)' }); continue; }
-      sube = await upsertSube(slug, `Sütlüce Kadayıf ${prefix}`); mevcutSubeler.push(sube);
+      // Eşleşmeyen prefix için yeni şube AÇILMAZ. Eskiden açılıyordu ve reklam
+      // seti adı değiştiğinde/kreatif adı prefix sanıldığında sahte şube
+      // doğuyordu — üstelik içine gerçek harcama yazıldığı için sonradan
+      // silinemez hâle geliyordu (bkz. 13.504 ₺ tutan 4 çöp şube).
+      // Doğru yol: eşleşmeyeni bildir, yönetici Önizle→Eşleştir akışıyla
+      // (previewMetaInsights / confirmMetaImport) mevcut bir şubeye bağlasın.
+      hatalar.push({ adset: adsetName, prefix, slug, error: 'Eşleşen şube yok — Önizle/Eşleştir ile bağlayın' });
+      continue;
     }
     // Hedef şube verilmişse yalnızca ona ait satırlar işlenir; diğer şubelere yazılmaz
     if (targetSubeKod && sube.kod !== targetSubeKod) continue;
@@ -247,8 +256,11 @@ export async function confirmMetaImport(accessToken, since, until, eslesmeleri) 
     const slug = turkishToSlug(prefix);
     const hedefKod = eslesmeleri[slug];
     if (!hedefKod || hedefKod === '__atla__') { atlanan.push(adsetName); continue; }
-    let sube = mevcutSubeler.find(s => s.kod === hedefKod);
-    if (!sube) { sube = await upsertSube(hedefKod, `Sütlüce Kadayıf ${prefix}`); mevcutSubeler.push(sube); }
+    // Hedef kod yöneticinin MEVCUT şubelerden seçtiği değerdir; bulunamıyorsa
+    // (silinmiş/yanlış kod) yeni şube açmak yerine atlanır — açmak, eşleştirme
+    // ekranını çöp şube üretecine çevirirdi.
+    const sube = mevcutSubeler.find(s => s.kod === hedefKod);
+    if (!sube) { atlanan.push(adsetName); continue; }
     if (!subeGruplari[sube.kod]) subeGruplari[sube.kod] = { sube, rows: [] };
     subeGruplari[sube.kod].rows.push(row);
   }
