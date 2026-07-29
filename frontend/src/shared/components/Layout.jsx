@@ -30,7 +30,13 @@ export default function Layout() {
                 }}
             >
                 <AppSidebar variant="inset" />
-                <SidebarInset className="peer-data-[variant=inset]:border">
+                {/* min-w-0: SidebarInset bir flex öğesi ve varsayılan `min-width:auto`
+                    yüzünden içeriğinin asgari genişliğinden dar olamıyor. Geniş bir
+                    içerik (ör. kategori rayı 14 sekmeye çıkınca 1493px) tüm sayfayı
+                    kenar çubuğu genişliği kadar sağa taşırıyordu. overflow-x-hidden
+                    ikinci emniyet. Tasarım referansında da bu ikisi birlikte duruyor
+                    (next-shadcn-admin-dashboard/src/app/(main)/dashboard/layout.tsx). */}
+                <SidebarInset className="peer-data-[variant=inset]:border min-w-0 overflow-x-hidden">
                     <AppHeader />
                     <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[1536px] flex-col overflow-x-hidden p-4 md:p-6">
                         <Outlet />
