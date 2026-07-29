@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
+import { SubeCokluSecici } from '../components/SubeCokluSecici';
 
 const ETIKETLER = [
     { key: 'en_cok_satan', label: 'En Çok Satan', emoji: '🔥', color: '#ef4444' },
@@ -188,7 +189,11 @@ export default function ProductsPage() {
     const [viewMode, setViewMode] = useState('list');
     const [editingUrun, setEditingUrun] = useState(null);
     const [savingUrun, setSavingUrun] = useState(false);
-    const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kilitli: '' });
+    // Şube fiyat düzenleme penceresi (yalnızca merkez izin verdiği ürünlerde)
+    const [fiyatUrun, setFiyatUrun] = useState(null);
+    const [fiyatDeger, setFiyatDeger] = useState('');
+    const [fiyatKaydediliyor, setFiyatKaydediliyor] = useState(false);
+    const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kilitli: '', gizli_subeler: [], fiyat_serbest: [] });
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [aiLoading, setAiLoading] = useState(false);
@@ -238,14 +243,14 @@ export default function ProductsPage() {
 
     function openAddUrun() {
         setEditingUrun(null);
-        setUrunForm({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', aciklama: '', sube_slug: subeSlug || '', gorsel: '', etiket: [], miktar: '', birim: 'gr' });
+        setUrunForm({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', aciklama: '', sube_slug: subeSlug || '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kilitli: '', gizli_subeler: [], fiyat_serbest: [] });
         setImageFile(null); setImagePreview(null);
         setViewMode('add');
     }
 
     function openEditUrun(urun) {
         setEditingUrun(urun);
-        setUrunForm({ ad: urun.ad, fiyat: urun.fiyat, kategori: urun.kategori || '', aciklama: urun.aciklama || '', sube_slug: urun.sube_slug || '', gorsel: urun.gorsel || '', etiket: urun.etiket || [], miktar: urun.miktar || '', birim: urun.birim || 'gr', kilitli: typeof urun.kilitli === 'boolean' ? (urun.kilitli ? 'evet' : 'hayir') : '' });
+        setUrunForm({ ad: urun.ad, fiyat: urun.fiyat, kategori: urun.kategori || '', aciklama: urun.aciklama || '', sube_slug: urun.sube_slug || '', gorsel: urun.gorsel || '', etiket: urun.etiket || [], miktar: urun.miktar || '', birim: urun.birim || 'gr', kilitli: typeof urun.kilitli === 'boolean' ? (urun.kilitli ? 'evet' : 'hayir') : '', gizli_subeler: urun.gizli_subeler || [], fiyat_serbest: urun.fiyat_serbest || [] });
         setImageFile(null); setImagePreview(urun.gorsel || null);
         setViewMode('edit');
     }
@@ -261,6 +266,12 @@ export default function ProductsPage() {
             // kaldırılır, kilit yine kategoriden miras alınır.
             if (role === 'admin') {
                 payload.kilitli = urunForm.kilitli === '' ? null : urunForm.kilitli === 'evet';
+                // Şube bazlı merkez ayarları — yalnızca ortak üründe anlamlı
+                const kat = kategoriler.find((k) => k.id === urunForm.kategori);
+                if (!kat || kat.tur !== 'sube_ozel') {
+                    payload.gizli_subeler = urunForm.gizli_subeler || [];
+                    payload.fiyat_serbest = urunForm.fiyat_serbest || [];
+                }
             }
             const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
             if (selectedKat && (selectedKat.tur === 'sube_ozel') && urunForm.sube_slug) {
@@ -589,6 +600,49 @@ export default function ProductsPage() {
                                                 </div>
                                             );
                                         })()}
+
+                                        {/* Merkez ayarları — yalnızca admin, yalnızca ORTAK ürünlerde.
+                                            Şubeye özel üründe anlamsız: o ürün zaten tek şubeye ait. */}
+                                        {(() => {
+                                            const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
+                                            if (role !== 'admin' || subeler.length === 0) return null;
+                                            if (selectedKat && selectedKat.tur === 'sube_ozel') return null;
+                                            return (
+                                                <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                                                    <p className="text-xs font-medium text-muted-foreground">Şube ayarları</p>
+
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs">
+                                                            Bu ürünü göremeyecek şubeler
+                                                            <span className="ml-1 font-normal text-muted-foreground">
+                                                                — panelde de görünmez, açamazlar
+                                                            </span>
+                                                        </Label>
+                                                        <SubeCokluSecici
+                                                            subeler={subeler}
+                                                            secili={urunForm.gizli_subeler || []}
+                                                            onChange={(v) => setUrunForm({ ...urunForm, gizli_subeler: v })}
+                                                            placeholder="Tüm şubeler görebilir"
+                                                        />
+                                                    </div>
+
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs">
+                                                            Kendi fiyatını girebilecek şubeler
+                                                            <span className="ml-1 font-normal text-muted-foreground">
+                                                                — yalnızca kendi menüsünü etkiler
+                                                            </span>
+                                                        </Label>
+                                                        <SubeCokluSecici
+                                                            subeler={subeler}
+                                                            secili={urunForm.fiyat_serbest || []}
+                                                            onChange={(v) => setUrunForm({ ...urunForm, fiyat_serbest: v })}
+                                                            placeholder="Hiçbiri — merkez fiyatı geçerli"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1.5">
                                                 <Label>Miktar <span className="text-muted-foreground font-normal text-xs">(opsiyonel)</span></Label>
@@ -859,8 +913,17 @@ export default function ProductsPage() {
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                <span className="font-medium tabular-nums text-foreground">{Math.round(urun.fiyat)} ₺</span>
+                                                {/* Şube kendi fiyatını görür (etkinFiyat sunucuda çözülür).
+                                                    Merkez fiyatından farklıysa küçük bir not düşülür. */}
+                                                <span className="font-medium tabular-nums text-foreground">
+                                                    {Math.round(urun.etkinFiyat ?? urun.fiyat)} ₺
+                                                </span>
                                                 {urun.miktar ? <span className="text-xs text-muted-foreground ml-1">/ {urun.miktar}{urun.birim}</span> : null}
+                                                {role !== 'admin' && urun.etkinFiyat != null && urun.etkinFiyat !== urun.fiyat && (
+                                                    <span className="ml-1.5 text-[11px] text-muted-foreground">
+                                                        (merkez {Math.round(urun.fiyat)} ₺)
+                                                    </span>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <span className="text-sm text-muted-foreground">{katMap[urun.kategori] || '—'}</span>
@@ -887,6 +950,18 @@ export default function ProductsPage() {
                                                     {!isKilitli && (
                                                         <Button variant="ghost" size="icon" className="size-7 text-destructive hover:text-destructive hover:bg-destructive/10" title="Sil" onClick={() => handleUrunDelete(urun)}>
                                                             <Trash2 className="size-3.5" />
+                                                        </Button>
+                                                    )}
+                                                    {/* Merkez izin verdiyse şube kendi fiyatını girebilir.
+                                                        Ürünün diğer alanları kilitli kaldığı için tam düzenleme
+                                                        formu yerine tek alanlık ayrı bir pencere açılır. */}
+                                                    {role !== 'admin' && urun.fiyatDuzenlenebilir && (
+                                                        <Button
+                                                            variant="ghost" size="icon" className="size-7"
+                                                            title="Şube fiyatını düzenle"
+                                                            onClick={() => { setFiyatUrun(urun); setFiyatDeger(String(Math.round(urun.etkinFiyat ?? urun.fiyat))); }}
+                                                        >
+                                                            <Tag className="size-3.5" />
                                                         </Button>
                                                     )}
                                                     {role !== 'admin' && subeSlug && (
@@ -1008,6 +1083,61 @@ export default function ProductsPage() {
                             </>
                         )}
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Şube fiyatı — merkez izin verdiyse şube kendi fiyatını girer.
+                Yazılan değer ortak ürünün merkez fiyatını DEĞİL, yalnızca bu
+                şubenin override'ını günceller (backend fiyat_override'a yazar). */}
+            <Dialog open={!!fiyatUrun} onOpenChange={(o) => !o && setFiyatUrun(null)}>
+                <DialogContent className="sm:max-w-sm">
+                    {fiyatUrun && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <Tag className="size-4" /> Şube Fiyatı
+                                </DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-3">
+                                <p className="text-sm text-muted-foreground">
+                                    <span className="font-medium text-foreground">{fiyatUrun.ad}</span>
+                                    {' — '}merkez fiyatı {Math.round(fiyatUrun.fiyat)} ₺
+                                </p>
+                                <div className="space-y-1.5">
+                                    <Label>Şubenizdeki fiyat (₺)</Label>
+                                    <Input
+                                        type="number" min="0" step="0.01" autoFocus
+                                        value={fiyatDeger}
+                                        onChange={(e) => setFiyatDeger(e.target.value)}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Yalnızca kendi menünüzü etkiler, diğer şubeler değişmez.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2 pt-1">
+                                <Button variant="outline" onClick={() => setFiyatUrun(null)}>İptal</Button>
+                                <Button
+                                    disabled={fiyatKaydediliyor || fiyatDeger === ''}
+                                    onClick={async () => {
+                                        setFiyatKaydediliyor(true);
+                                        try {
+                                            const { data } = await api.put(`/products/${fiyatUrun.id}`, { fiyat: Number(fiyatDeger) });
+                                            const yeni = data?.urun?.etkinFiyat ?? Number(fiyatDeger);
+                                            setUrunler((prev) => prev.map((u) => (u.id === fiyatUrun.id ? { ...u, etkinFiyat: yeni } : u)));
+                                            toast.success('Fiyat güncellendi');
+                                            setFiyatUrun(null);
+                                        } catch (err) {
+                                            toast.error(err.response?.data?.error || 'Fiyat güncellenemedi');
+                                        }
+                                        setFiyatKaydediliyor(false);
+                                    }}
+                                >
+                                    {fiyatKaydediliyor ? 'Kaydediliyor...' : 'Kaydet'}
+                                </Button>
+                            </div>
+                        </>
+                    )}
                 </DialogContent>
             </Dialog>
 

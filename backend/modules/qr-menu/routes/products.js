@@ -177,13 +177,23 @@ router.get(
         const cikti = urunler
             // Merkezin bu şubeden gizlediği ürünler panelde de görünmez
             .filter((u) => !urunGizliMi(req.user, u))
-            .map((u) => ({
-                ...u,
-                duzenlenemez: urunKilitliMi(req.user, u, katKilit),
-                fiyatDuzenlenebilir: fiyatDuzenlenebilirMi(req.user, u),
-                // Şube kendi fiyatını görsün; merkez fiyatı `fiyat` alanında kalır
-                etkinFiyat: etkinFiyat(req.user, u),
-            }));
+            .map((u) => {
+                const cikti = {
+                    ...u,
+                    duzenlenemez: urunKilitliMi(req.user, u, katKilit),
+                    fiyatDuzenlenebilir: fiyatDuzenlenebilirMi(req.user, u),
+                    // Şube kendi fiyatını görsün; merkez fiyatı `fiyat` alanında kalır
+                    etkinFiyat: etkinFiyat(req.user, u),
+                };
+                // Şube sahibi DİĞER şubelerin fiyatlarını ve merkezin gizleme/izin
+                // listelerini görmemeli — bunlar yalnızca admin'e ait yönetim verisi.
+                if (req.user.role !== 'admin') {
+                    delete cikti.fiyat_override;
+                    delete cikti.gizli_subeler;
+                    delete cikti.fiyat_serbest;
+                }
+                return cikti;
+            });
 
         res.json({ urunler: cikti });
     })
