@@ -4229,3 +4229,38 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
 .pm-header__search-input::placeholder { color: var(--pm-text-50); font-weight: 500; }
 
 /* Etiket filtreleri — ikonlu, tek satır kaydırılabilir */
+
+/* ─── Yatay çip rayı (yönetim paneli kategori sekmeleri) ───────────────────
+   Yerel kaydırma çubuğu gizlenir; onun yerine içeriğin devam ettiği KENARDA
+   yumuşak bir solma gösterilir. Öncesinde ray sağdan bıçakla kesilmiş gibi
+   duruyordu ve daha fazla kategori olduğu anlaşılmıyordu.
+
+   Solma yalnızca o yönde gizli içerik varsa uygulanır; data-sol / data-sag
+   JS tarafından kaydırma sırasında güncellenir (bkz. KaydirilirRay.jsx).
+   Maske alfa tabanlı olduğu için açık/koyu temada aynı çalışır. */
+.ray-kaydir {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;              /* Firefox */
+  -webkit-overflow-scrolling: touch;  /* iOS ivmeli kaydırma */
+  scroll-behavior: smooth;
+}
+.ray-kaydir::-webkit-scrollbar { display: none; }
+
+.ray-kaydir[data-sag='1'] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent 100%);
+}
+.ray-kaydir[data-sol='1'] {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 36px);
+  mask-image: linear-gradient(to right, transparent 0, #000 36px);
+}
+.ray-kaydir[data-sol='1'][data-sag='1'] {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 36px, #000 calc(100% - 36px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 36px, #000 calc(100% - 36px), transparent 100%);
+}
+
+/* Kaydırmayı hareket azaltma tercihine saygı göster */
+@media (prefers-reduced-motion: reduce) {
+  .ray-kaydir { scroll-behavior: auto; }
+}

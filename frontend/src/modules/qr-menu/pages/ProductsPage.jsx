@@ -19,6 +19,7 @@ import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { SubeCokluSecici } from '../components/SubeCokluSecici';
+import { KaydirilirRay } from '../components/KaydirilirRay';
 
 import { ETIKETLER } from '../constants/etiketler';
 
@@ -904,14 +905,18 @@ export default function ProductsPage() {
                 <div className="flex flex-col gap-4 flex-1 min-h-0">
                     {/* Toolbar: kategori segment toggle + arama + şube */}
                     <div className="flex flex-col gap-3 px-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="max-w-full overflow-x-auto">
+                        <KaydirilirRay className="max-w-full">
                             <div className="inline-flex w-max items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
                                 {[{ id: 'all', ad: 'Tümü' }, ...gosterilecekKategoriler].map((k) => {
                                     const active = etkinKategori === k.id;
                                     return (
                                         <button
                                             key={k.id}
-                                            onClick={() => setSelectedKategori(k.id)}
+                                            onClick={(e) => {
+                                                setSelectedKategori(k.id);
+                                                // Yarım görünen çipe tıklanınca tamamı görünür alana gelsin
+                                                e.currentTarget.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+                                            }}
                                             className={`rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
                                         >
                                             {k.ad}
@@ -919,7 +924,7 @@ export default function ProductsPage() {
                                     );
                                 })}
                             </div>
-                        </div>
+                        </KaydirilirRay>
                         <div className="flex items-center gap-2 shrink-0">
                             <div className="relative w-full sm:w-56">
                                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
