@@ -20,13 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { SubeCokluSecici } from '../components/SubeCokluSecici';
 
-const ETIKETLER = [
-    { key: 'en_cok_satan', label: 'En Çok Satan', emoji: '🔥', color: '#ef4444' },
-    { key: 'yeni', label: 'Yeni', emoji: '✨', color: '#8b5cf6' },
-    { key: 'onerilen', label: 'Önerilen', emoji: '⭐', color: '#f59e0b' },
-    { key: 'vegan', label: 'Vegan', emoji: '🌱', color: '#22c55e' },
-    { key: 'acili', label: 'Acılı', emoji: '🌶️', color: '#dc2626' },
-];
+import { ETIKETLER } from '../constants/etiketler';
 
 // Referans e-ticaret tablosu tarzı noktalı durum rozeti
 const DOT_TONE = {
@@ -818,7 +812,7 @@ export default function ProductsPage() {
                                                 setUrunForm({ ...urunForm, etiket: active ? current.filter(k => k !== tag.key) : [...current, tag.key] });
                                             }} className={`rounded-full border-2 px-3.5 py-1.5 text-xs font-medium transition-all ${active ? 'font-bold shadow-sm' : 'border-border text-muted-foreground hover:border-muted-foreground/40'}`}
                                                 style={active ? { borderColor: tag.color, background: tag.color + '18', color: tag.color } : {}}>
-                                                {tag.emoji} {tag.label}
+                                                {tag.emoji} {tag.ad}
                                             </button>
                                         );
                                     })}
@@ -1039,7 +1033,7 @@ export default function ProductsPage() {
                                                                     const tag = ETIKETLER.find(t => t.key === key);
                                                                     return tag ? (
                                                                         <span key={key} className="text-[10px] px-1.5 py-px rounded-full font-semibold" style={{ background: tag.color + '18', color: tag.color }}>
-                                                                            {tag.emoji} {tag.label}
+                                                                            {tag.emoji} {tag.ad}
                                                                         </span>
                                                                     ) : null;
                                                                 })}

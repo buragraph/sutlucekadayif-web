@@ -6,14 +6,7 @@ import { proxyImageUrl, proxyR2Url } from '../../../utils/imageProxy';
 import GeriBildirimModal from '../components/GeriBildirimModal';
 import IsBasvuruModal from '../components/IsBasvuruModal';
 
-// Etiket etiketleri (kod → görünen ad)
-const TAG_LABELS = {
-    en_cok_satan: 'Çok Satan',
-    yeni: 'Yeni',
-    onerilen: 'Önerilen',
-    vegan: 'Vegan',
-    acili: 'Acılı',
-};
+import { etiketKisaAd } from '../constants/etiketler';
 
 /* ─── Skeleton Loading ─── */
 function SkeletonLoading() {
@@ -84,7 +77,7 @@ function ProductCard({ urun, index, onClick }) {
                     </span>
                     {urun.etiket?.length > 0 && (
                         <span className="pm-card__tag pm-card__tag--inline">
-                            {TAG_LABELS[urun.etiket[0]] || urun.etiket[0]}
+                            {etiketKisaAd(urun.etiket[0])}
                         </span>
                     )}
                 </div>
@@ -121,7 +114,7 @@ function ProductModal({ urun, onClose }) {
                     {urun.etiket?.length > 0 && (
                         <div className="pm-modal__tags">
                             {urun.etiket.map((e) => (
-                                <span key={e} className="pm-modal__tag">{TAG_LABELS[e] || e}</span>
+                                <span key={e} className="pm-modal__tag">{etiketKisaAd(e)}</span>
                             ))}
                         </div>
                     )}
