@@ -4231,36 +4231,51 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
 /* Etiket filtreleri — ikonlu, tek satır kaydırılabilir */
 
 /* ─── Yatay çip rayı (yönetim paneli kategori sekmeleri) ───────────────────
-   Yerel kaydırma çubuğu gizlenir; onun yerine içeriğin devam ettiği KENARDA
-   yumuşak bir solma gösterilir. Öncesinde ray sağdan bıçakla kesilmiş gibi
-   duruyordu ve daha fazla kategori olduğu anlaşılmıyordu.
+   Kaydırma çubuğu DURUR, sadece incelir. Ayrıca içeriğin devam ettiği kenara
+   yumuşak bir solma bindirilir; ray sağdan bıçakla kesilmiş gibi durmasın.
 
-   Solma yalnızca o yönde gizli içerik varsa uygulanır; data-sol / data-sag
-   JS tarafından kaydırma sırasında güncellenir (bkz. KaydirilirRay.jsx).
-   Maske alfa tabanlı olduğu için açık/koyu temada aynı çalışır. */
+   Solma bir MASKE değil, üste bindirilen degrade: maske kullanılsaydı kaydırma
+   çubuğunun ucu da soluklaşırdı. Overlay alttan 12px boş bırakır — tarayıcının
+   "thin" çubuğu ölçülen 11px, böylece çubuk baştan sona net kalır.
+
+   Solma yalnızca o yönde gizli içerik varsa açılır; data-sol / data-sag
+   JS tarafından güncellenir (bkz. KaydirilirRay.jsx). */
+.ray-sarmal { position: relative; }
+
+.ray-sarmal::before,
+.ray-sarmal::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 12px;          /* kaydırma çubuğunun üstünü örtme (ölçülen: 11px) */
+  width: 32px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.ray-sarmal::before { left: 0;  background: linear-gradient(to right, var(--card), transparent); }
+.ray-sarmal::after  { right: 0; background: linear-gradient(to left,  var(--card), transparent); }
+.ray-sarmal[data-sol='1']::before { opacity: 1; }
+.ray-sarmal[data-sag='1']::after  { opacity: 1; }
+
 .ray-kaydir {
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: none;              /* Firefox */
   -webkit-overflow-scrolling: touch;  /* iOS ivmeli kaydırma */
   scroll-behavior: smooth;
+  padding-bottom: 4px;                /* çubuk çiplere yapışmasın */
+  scrollbar-width: thin;                              /* Firefox */
+  scrollbar-color: var(--border) transparent;
 }
-.ray-kaydir::-webkit-scrollbar { display: none; }
+/* Aşağıdaki -webkit- kuralları `scrollbar-width` desteklemeyen eski
+   Chrome/Safari sürümleri içindir; destekleyenlerde standart özellik kazanır. */
+.ray-kaydir::-webkit-scrollbar { height: 6px; }
+.ray-kaydir::-webkit-scrollbar-track { background: transparent; }
+.ray-kaydir::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+.ray-kaydir:hover::-webkit-scrollbar-thumb { background: var(--muted-foreground); }
 
-.ray-kaydir[data-sag='1'] {
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent 100%);
-  mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent 100%);
-}
-.ray-kaydir[data-sol='1'] {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 36px);
-  mask-image: linear-gradient(to right, transparent 0, #000 36px);
-}
-.ray-kaydir[data-sol='1'][data-sag='1'] {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 36px, #000 calc(100% - 36px), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 36px, #000 calc(100% - 36px), transparent 100%);
-}
-
-/* Kaydırmayı hareket azaltma tercihine saygı göster */
+/* Hareket azaltma tercihine saygı göster */
 @media (prefers-reduced-motion: reduce) {
   .ray-kaydir { scroll-behavior: auto; }
+  .ray-sarmal::before, .ray-sarmal::after { transition: none; }
 }
