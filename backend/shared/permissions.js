@@ -25,6 +25,10 @@ const PERMISSIONS = {
     'products.edit': ['admin', 'sube_sahibi'],
     'products.delete': ['admin', 'sube_sahibi'],
     'products.toggleAvailability': ['admin', 'sube_sahibi'],
+    // Ortak katalogtaki bir ürünü ŞUBENİN MENÜSÜNE ekleme / menüden çıkarma.
+    // Ürün oluşturmak DEĞİLDİR: katalog merkez tarafından doldurulur, şube
+    // yalnızca hangilerini sattığını seçer (bkz. menude_subeler).
+    'products.toggleMenu': ['admin', 'sube_sahibi'],
 
     // ── Şube Yönetimi ──
     'branches.view': ['admin', 'sube_sahibi'],

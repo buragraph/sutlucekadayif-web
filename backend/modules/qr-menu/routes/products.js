@@ -76,13 +76,46 @@ function urunKilitliMi(user, urun, katKilit) {
 /**
  * Ürün bu şubeden GİZLENMİŞ mi? — merkez kontrolündedir.
  *
- * `mevcut_degil` ile karıştırılmamalı; ikisi farklı kavram:
- *   gizli_subeler → MERKEZ gizler. Şube ürünü panelde de göremez, geri açamaz.
- *   mevcut_degil  → ŞUBE kendi kapatır (stok yok). Panelde görünür, geri açabilir.
+ * Üç kavram birbirine benziyor, karıştırılmamalı:
+ *   gizli_subeler  → MERKEZ yasaklar. Şube ürünü panelde göremez, ekleyemez.
+ *   menude_subeler → ŞUBE seçer. Sattığı ürünleri kataloğdan menüsüne ekler.
+ *   mevcut_degil   → ŞUBE geçici kapatır (stok yok). Panelde durur, geri açar.
  */
 function urunGizliMi(user, urun) {
     if (user.role === 'admin') return false;
     return (urun.gizli_subeler || []).includes(user.subeSlug);
+}
+
+/**
+ * Ortak ürün bu şubenin MENÜSÜNDE mi?
+ *
+ * `menude_subeler` bir OPT-IN listesidir: merkez tüm ürünleri ortak kataloğa
+ * ekler, şube hangilerini sattığını buradan işaretler. Listede olmayan ürün QR
+ * menüsünde hiç görünmez — şube "Ürün Ekle" ile kendini listeye ekler
+ * (POST /products/menu). Şubeye özel eski ürünler zaten tek şubeye ait.
+ */
+function menudeMi(user, urun) {
+    if (user.role === 'admin') return true;
+    if (urun.tur === 'sube_ozel') return true;
+    return (urun.menude_subeler || []).includes(user.subeSlug);
+}
+
+/**
+ * Şube slug dizisini temizler (tekilleştirir, boşları atar).
+ * Çoklu şube seçicisinden gelen tüm alanlar (gizli_subeler, fiyat_serbest,
+ * menude_subeler) bundan geçer.
+ */
+const subeDizisi = (v) => [...new Set(
+    (Array.isArray(v) ? v : []).map((x) => String(x).trim()).filter(Boolean)
+)];
+
+/**
+ * Tüm şube slug'ları — yeni ortak ürünün varsayılan `menude_subeler` değeri.
+ * `.select()` alan çekmez, yalnızca doküman kimliklerini getirir (ucuz okuma).
+ */
+async function tumSubeSluglari() {
+    const snap = await db.collection('subeler').select().get();
+    return snap.docs.map((d) => d.id);
 }
 
 /**
@@ -184,13 +217,19 @@ router.get(
                     fiyatDuzenlenebilir: fiyatDuzenlenebilirMi(req.user, u),
                     // Şube kendi fiyatını görsün; merkez fiyatı `fiyat` alanında kalır
                     etkinFiyat: etkinFiyat(req.user, u),
+                    // Ürün bu şubenin menüsünde mi? Arayüz listeyi buna göre ikiye
+                    // ayırır: menüdekiler tabloda, menüde olmayanlar "Ürün Ekle"
+                    // katalog penceresinde. Kural yine tek yerde (menudeMi) yaşar.
+                    menude: menudeMi(req.user, u),
                 };
                 // Şube sahibi DİĞER şubelerin fiyatlarını ve merkezin gizleme/izin
                 // listelerini görmemeli — bunlar yalnızca admin'e ait yönetim verisi.
+                // menude_subeler de 97 şubenin katalog tercihini ifşa eder.
                 if (req.user.role !== 'admin') {
                     delete cikti.fiyat_override;
                     delete cikti.gizli_subeler;
                     delete cikti.fiyat_serbest;
+                    delete cikti.menude_subeler;
                 }
                 return cikti;
             });
@@ -209,7 +248,8 @@ router.post(
     verifyToken,
     requirePermission('products.create'),
     asyncHandler(async (req, res) => {
-        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kilitli } = req.body;
+        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kilitli,
+                gizli_subeler, fiyat_serbest, menude_subeler } = req.body;
 
         if (!ad || !ad.trim()) {
             return res.status(400).json({ error: 'Ürün adı zorunludur' });
@@ -270,6 +310,17 @@ router.post(
             // Ortak → ana urunler collection'a yaz
             productData.tur = 'ortak';
             productData.mevcut_degil = [];
+            // Şube bazlı merkez ayarları YALNIZCA admin'den gelir (bu rotaya zaten
+            // admin dışında kimse giremiyor, yine de rolü açıkça kontrol ediyoruz).
+            productData.gizli_subeler = req.user.role === 'admin' ? subeDizisi(gizli_subeler) : [];
+            productData.fiyat_serbest = req.user.role === 'admin' ? subeDizisi(fiyat_serbest) : [];
+            // Menüde gösterilecek şubeler. Belirtilmezse TÜM şubeler: merkez yeni
+            // bir ürün eklediğinde varsayılan davranış "her şubede açık", şube
+            // satmadığını kendi menüsünden çıkarır. Yasaklı şube menüde olamaz.
+            const menude = menude_subeler !== undefined
+                ? subeDizisi(menude_subeler)
+                : await tumSubeSluglari();
+            productData.menude_subeler = menude.filter((s) => !productData.gizli_subeler.includes(s));
             docRef = await db.collection('ortak_urunler').add(productData);
         }
 
@@ -359,6 +410,10 @@ router.post(
         const katMap = {};
         katSnap.forEach((d) => { katMap[d.id] = d.data(); });
 
+        // Ortak ürünler varsayılan olarak tüm şubelerin menüsüne düşer (bkz. POST /).
+        // Döngü dışında BİR KEZ okunur — satır başına okuma yapılmaz.
+        let tumSubeler = null;
+
         const affected = [];
         const katInc = {};
         let created = 0;
@@ -385,7 +440,10 @@ router.post(
                 data.tur = 'sube_ozel'; data.sube_slug = slug;
                 await db.collection('subeler').doc(slug).collection('urunler').add(data);
             } else {
+                if (tumSubeler === null) tumSubeler = await tumSubeSluglari();
                 data.tur = 'ortak'; data.mevcut_degil = [];
+                data.gizli_subeler = []; data.fiyat_serbest = [];
+                data.menude_subeler = tumSubeler;
                 await db.collection('ortak_urunler').add(data);
             }
             katInc[p.kategori] = (katInc[p.kategori] || 0) + 1;
@@ -437,6 +495,62 @@ router.post(
 );
 
 /**
+ * POST /api/products/menu
+ * Ortak katalogtaki ürünleri şubenin menüsüne EKLER / menüden ÇIKARIR.
+ * Body: { subeSlug?, ids: string[], menude: boolean }
+ *
+ * Tekil işlem de çoklu seçim de bu tek yoldan geçer. Sebep maliyet: menü JSON
+ * yenilemesi tüm ortak kataloğu + şube alt koleksiyonunu okuyup R2'ye yazıyor.
+ * 20 ürünü tek tek eklemek 20 kat okuma + 20 R2 yazımı demek olurdu; burada
+ * yazma tek batch, yenileme ise işlem başına BİR kez.
+ */
+router.post(
+    '/menu',
+    verifyToken,
+    requirePermission('products.toggleMenu'),
+    asyncHandler(async (req, res) => {
+        const { ids, menude } = req.body;
+        // Şube sahibi her zaman KENDİ şubesine yazar — gövdeden gelen slug'a güvenilmez.
+        const slug = req.user.role === 'admin' ? req.body.subeSlug : req.user.subeSlug;
+
+        if (!slug) return res.status(400).json({ error: 'Şube bilgisi gerekli' });
+        if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Ürün seçilmedi' });
+        // Firestore batch sınırı 500; tek istekte bunun altında kalıyoruz.
+        if (ids.length > 400) return res.status(400).json({ error: 'Tek seferde en fazla 400 ürün' });
+        if (typeof menude !== 'boolean') return res.status(400).json({ error: 'menude alanı boolean olmalı' });
+
+        const temizIds = [...new Set(ids.map((x) => String(x).trim()).filter(Boolean))];
+        const refs = temizIds.map((id) => db.collection('ortak_urunler').doc(id));
+        // Döngü içinde tekil get YOK — tek toplu okuma (bkz. CLAUDE.md, okuma maliyeti)
+        const docs = await db.getAll(...refs);
+
+        const batch = db.batch();
+        let islenen = 0;
+        for (const d of docs) {
+            if (!d.exists) continue;
+            const data = d.data();
+            if (data.deletedAt) continue;
+            // Merkezin yasakladığı ürün şube için yok hükmünde — sessizce atlanır,
+            // yoksa şube gizli ürünü menüsüne ekleyebilirdi.
+            if ((data.gizli_subeler || []).includes(slug)) continue;
+            batch.update(d.ref, {
+                menude_subeler: menude
+                    ? admin.firestore.FieldValue.arrayUnion(slug)
+                    : admin.firestore.FieldValue.arrayRemove(slug),
+            });
+            islenen++;
+        }
+        if (islenen > 0) {
+            await batch.commit();
+            // Yalnızca bu şubenin menüsü değişti (97 şubeyi yenilemek gereksiz).
+            await regenerateMenuJson(slug).catch(console.error);
+        }
+
+        res.json({ success: true, islenen, menude });
+    })
+);
+
+/**
  * PUT /api/products/:id
  * Ürün güncelle
  * Body: { ad?, fiyat?, kategori?, aciklama?, etiket?, sube_slug? }
@@ -448,7 +562,7 @@ router.put(
     asyncHandler(async (req, res) => {
         const { id } = req.params;
         const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kilitli,
-                gizli_subeler, fiyat_serbest } = req.body;
+                gizli_subeler, fiyat_serbest, menude_subeler } = req.body;
 
         // Şube sahibi yalnızca kendi şubesinde arar (başka şubeyi hedefleyemez)
         const lookupSlug = req.user.role === 'admin' ? (sube_slug || req.body._subeSlug) : req.user.subeSlug;
@@ -517,11 +631,21 @@ router.put(
 
         // Şube bazlı merkez ayarları — YALNIZCA admin yazabilir. Çoklu şube
         // seçimi olduğu için dizi olarak gelir; tekilleştirilip temizlenir.
-        const subeDizisi = (v) => [...new Set(
-            (Array.isArray(v) ? v : []).map((x) => String(x).trim()).filter(Boolean)
-        )];
+        // Yasaklı şube (gizli_subeler) menüde kalamaz: iki listenin çelişmemesi
+        // için menude_subeler her durumda gizli listesine göre budanır.
+        const yeniGizli = req.user.role === 'admin' && gizli_subeler !== undefined
+            ? subeDizisi(gizli_subeler)
+            : (doc.data().gizli_subeler || []);
         if (req.user.role === 'admin' && gizli_subeler !== undefined) {
-            updateData.gizli_subeler = subeDizisi(gizli_subeler);
+            updateData.gizli_subeler = yeniGizli;
+        }
+        if (req.user.role === 'admin' && menude_subeler !== undefined) {
+            updateData.menude_subeler = subeDizisi(menude_subeler).filter((s) => !yeniGizli.includes(s));
+        } else if (req.user.role === 'admin' && gizli_subeler !== undefined) {
+            // Menü listesi bu istekte gelmedi ama gizleme değişti — mevcut listeyi buda
+            const mevcutMenude = doc.data().menude_subeler || [];
+            const budanmis = mevcutMenude.filter((s) => !yeniGizli.includes(s));
+            if (budanmis.length !== mevcutMenude.length) updateData.menude_subeler = budanmis;
         }
         if (req.user.role === 'admin' && fiyat_serbest !== undefined) {
             const serbest = subeDizisi(fiyat_serbest);
@@ -734,6 +858,11 @@ router.put(
         }
         if ((urunDoc.data().gizli_subeler || []).includes(subeSlug)) {
             return res.status(404).json({ error: 'Ürün bulunamadı' });
+        }
+        // Menüsünde olmayan ürünün stok durumu anlamsız — şube önce ürünü
+        // kataloğdan menüsüne eklemeli (POST /products/menu).
+        if (!(urunDoc.data().menude_subeler || []).includes(subeSlug)) {
+            return res.status(400).json({ error: 'Ürün menünüzde değil' });
         }
 
         if (mevcut) {

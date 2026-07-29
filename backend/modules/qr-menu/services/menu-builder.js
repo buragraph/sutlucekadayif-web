@@ -44,8 +44,9 @@ export async function buildMenuData(subeSlug) {
 
     // PUBLIC projeksiyon — müşteri menüsünde gösterilen alanlar SADECE bunlar.
     // Şube bazlı yönetim alanları (fiyat_override, fiyat_serbest, gizli_subeler,
-    // mevcut_degil) dışarı SIZDIRILMAZ: bu JSON R2'de auth'suz servis ediliyor,
-    // yani 97 şubenin fiyatı ve merkezin gizleme listesi herkese açık olurdu.
+    // menude_subeler, mevcut_degil) dışarı SIZDIRILMAZ: bu JSON R2'de auth'suz
+    // servis ediliyor, yani 97 şubenin fiyatı ve merkezin gizleme listesi
+    // herkese açık olurdu.
     const musteriAlanlari = (urun, fiyat) => ({
         id: urun.id,
         ad: urun.ad,
@@ -60,15 +61,21 @@ export async function buildMenuData(subeSlug) {
 
     const tumUrunler = [];
 
-    // Ortak ürünler — üç ayrı şube bazlı kural sırayla uygulanır:
-    //  1) gizli_subeler : MERKEZ gizlemiş. Şube bu ürünü panelde de göremez.
-    //  2) mevcut_degil  : ŞUBE kendi kapatmış (stok yok vb). Panelde görünür,
-    //                     müşteri menüsünde görünmez; şube geri açabilir.
-    //  3) fiyat_override: Şubeye özel fiyat verilmişse merkez fiyatının yerine geçer.
+    // Ortak ürünler — dört ayrı şube bazlı kural SIRAYLA uygulanır:
+    //  1) gizli_subeler : MERKEZ yasaklamış. Şube ürünü panelde de göremez,
+    //                     menüsüne ekleyemez.
+    //  2) menude_subeler: OPT-IN listesi. Ortak katalogtaki her ürün her şubede
+    //                     görünmez; şube hangilerini sattığını kendi seçer
+    //                     ("Ürün Ekle" → katalogtan seçme). Listede yoksa ürün
+    //                     bu şubenin menüsünde HİÇ yer almaz.
+    //  3) mevcut_degil  : ŞUBE geçici kapatmış (stok yok vb). Menüde görünmez
+    //                     ama panelde durur, şube geri açabilir.
+    //  4) fiyat_override: Şubeye özel fiyat verilmişse merkez fiyatının yerine geçer.
     ortakSnap.forEach((d) => {
         const data = d.data();
         if (data.deletedAt) return;
         if ((data.gizli_subeler || []).includes(subeSlug)) return;
+        if (!(data.menude_subeler || []).includes(subeSlug)) return;
         if ((data.mevcut_degil || []).includes(subeSlug)) return;
 
         const override = data.fiyat_override?.[subeSlug];

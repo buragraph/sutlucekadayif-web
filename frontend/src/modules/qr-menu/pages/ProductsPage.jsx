@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus } from 'lucide-react';
+import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, ListMinus, Store } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
@@ -193,7 +193,13 @@ export default function ProductsPage() {
     const [fiyatUrun, setFiyatUrun] = useState(null);
     const [fiyatDeger, setFiyatDeger] = useState('');
     const [fiyatKaydediliyor, setFiyatKaydediliyor] = useState(false);
-    const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kilitli: '', gizli_subeler: [], fiyat_serbest: [] });
+    const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: [] });
+    // Katalogdan menüye ürün ekleme penceresi (şube sahibi) — ürün OLUŞTURMAZ,
+    // merkezin eklediği ortak ürünlerden şubenin sattıklarını işaretler.
+    const [katalogAcik, setKatalogAcik] = useState(false);
+    const [katalogArama, setKatalogArama] = useState('');
+    const [katalogSecili, setKatalogSecili] = useState(new Set());
+    const [katalogBusy, setKatalogBusy] = useState(false);
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [aiLoading, setAiLoading] = useState(false);
@@ -243,14 +249,16 @@ export default function ProductsPage() {
 
     function openAddUrun() {
         setEditingUrun(null);
-        setUrunForm({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', aciklama: '', sube_slug: subeSlug || '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kilitli: '', gizli_subeler: [], fiyat_serbest: [] });
+        // Yeni ortak ürün varsayılan olarak TÜM şubelerin menüsüne düşer (backend
+        // de alan gelmezse aynısını yapar). Merkez isterse seçimi daraltır.
+        setUrunForm({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', aciklama: '', sube_slug: subeSlug || '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: subeler.map((s) => s.slug) });
         setImageFile(null); setImagePreview(null);
         setViewMode('add');
     }
 
     function openEditUrun(urun) {
         setEditingUrun(urun);
-        setUrunForm({ ad: urun.ad, fiyat: urun.fiyat, kategori: urun.kategori || '', aciklama: urun.aciklama || '', sube_slug: urun.sube_slug || '', gorsel: urun.gorsel || '', etiket: urun.etiket || [], miktar: urun.miktar || '', birim: urun.birim || 'gr', kilitli: typeof urun.kilitli === 'boolean' ? (urun.kilitli ? 'evet' : 'hayir') : '', gizli_subeler: urun.gizli_subeler || [], fiyat_serbest: urun.fiyat_serbest || [] });
+        setUrunForm({ ad: urun.ad, fiyat: urun.fiyat, kategori: urun.kategori || '', aciklama: urun.aciklama || '', sube_slug: urun.sube_slug || '', gorsel: urun.gorsel || '', etiket: urun.etiket || [], miktar: urun.miktar || '', birim: urun.birim || 'gr', kilitli: typeof urun.kilitli === 'boolean' ? (urun.kilitli ? 'evet' : 'hayir') : '', gizli_subeler: urun.gizli_subeler || [], fiyat_serbest: urun.fiyat_serbest || [], menude_subeler: urun.menude_subeler || [] });
         setImageFile(null); setImagePreview(urun.gorsel || null);
         setViewMode('edit');
     }
@@ -271,6 +279,7 @@ export default function ProductsPage() {
                 if (!kat || kat.tur !== 'sube_ozel') {
                     payload.gizli_subeler = urunForm.gizli_subeler || [];
                     payload.fiyat_serbest = urunForm.fiyat_serbest || [];
+                    payload.menude_subeler = urunForm.menude_subeler || [];
                 }
             }
             const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
@@ -311,10 +320,47 @@ export default function ProductsPage() {
         catch (err) { toast.error(err.response?.data?.error || 'Silme işlemi başarısız'); }
     }
 
+    // ── Katalog → menü ──
+    // Şube, merkezin eklediği ortak ürünlerden sattıklarını menüsüne alır.
+    // Tekil çıkarma da çoklu ekleme de aynı uçtan geçer: menü JSON'ı işlem
+    // başına bir kez yenilenir (ürün başına değil).
+    async function menuyeYaz(ids, menude) {
+        const { data } = await api.post('/products/menu', { ids, menude, subeSlug });
+        setUrunler((prev) => prev.map((u) => (ids.includes(u.id) ? { ...u, menude } : u)));
+        return data.islenen;
+    }
+
+    async function handleKatalogEkle() {
+        const ids = [...katalogSecili];
+        if (ids.length === 0) return;
+        setKatalogBusy(true);
+        try {
+            const n = await menuyeYaz(ids, true);
+            toast.success(`${n} ürün menünüze eklendi`);
+            setKatalogAcik(false); setKatalogSecili(new Set()); setKatalogArama('');
+        } catch (err) { toast.error(err.response?.data?.error || 'Ürün eklenemedi'); }
+        setKatalogBusy(false);
+    }
+
+    async function handleMenudenCikar(urun) {
+        const ok = await confirm(`"${urun.ad}" menünüzden çıkarılsın mı? Katalogdan tekrar ekleyebilirsiniz.`);
+        if (!ok) return;
+        try {
+            await menuyeYaz([urun.id], false);
+            toast.success('Ürün menünüzden çıkarıldı');
+        } catch (err) { toast.error(err.response?.data?.error || 'Ürün çıkarılamadı'); }
+    }
+
     const katMap = {};
     kategoriler.forEach((k) => { katMap[k.id] = k.ad; });
 
-    const filteredUrunler = urunler.filter((u) => {
+    // Şube sahibinin listesi = KENDİ menüsündeki ürünler. Menüde olmayan ortak
+    // ürünler "Ürün Ekle" katalog penceresinde durur. `menude` sunucuda hesaplanır
+    // (bkz. backend menudeMi) — burada kural yeniden yazılmaz.
+    const menuUrunleri = urunler.filter((u) => u.menude !== false);
+    const katalogUrunleri = urunler.filter((u) => u.menude === false);
+
+    const filteredUrunler = menuUrunleri.filter((u) => {
         const matchKategori = selectedKategori === 'all' || u.kategori === selectedKategori;
         const matchSearch = !searchTerm || u.ad.toLowerCase().includes(searchTerm.toLowerCase());
         let matchSube = true;
@@ -613,6 +659,21 @@ export default function ProductsPage() {
 
                                                     <div className="space-y-1.5">
                                                         <Label className="text-xs">
+                                                            Menüsünde gösterecek şubeler
+                                                            <span className="ml-1 font-normal text-muted-foreground">
+                                                                — şube kendi de ekleyip çıkarabilir
+                                                            </span>
+                                                        </Label>
+                                                        <SubeCokluSecici
+                                                            subeler={subeler}
+                                                            secili={urunForm.menude_subeler || []}
+                                                            onChange={(v) => setUrunForm({ ...urunForm, menude_subeler: v })}
+                                                            placeholder="Hiçbiri — hiçbir menüde görünmez"
+                                                        />
+                                                    </div>
+
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs">
                                                             Bu ürünü göremeyecek şubeler
                                                             <span className="ml-1 font-normal text-muted-foreground">
                                                                 — panelde de görünmez, açamazlar
@@ -765,12 +826,22 @@ export default function ProductsPage() {
                         }}>
                             <Trash className="size-3.5 mr-1.5" /> Silinenler
                         </Button>
-                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openBulkAdd}>
-                            <ListPlus className="size-3.5 mr-1.5" /> Toplu Ekle
-                        </Button>
-                        <Button size="sm" className="h-8 text-xs" onClick={openAddUrun}>
-                            <Plus className="size-3.5 mr-1.5" /> Yeni Ürün
-                        </Button>
+                        {/* Ürün OLUŞTURMA yalnızca merkezde. Şube sahibi ortak katalogtan
+                            seçim yapar — "Ürün Ekle" katalog penceresini açar. */}
+                        {role === 'admin' ? (
+                            <>
+                                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openBulkAdd}>
+                                    <ListPlus className="size-3.5 mr-1.5" /> Toplu Ekle
+                                </Button>
+                                <Button size="sm" className="h-8 text-xs" onClick={openAddUrun}>
+                                    <Plus className="size-3.5 mr-1.5" /> Yeni Ürün
+                                </Button>
+                            </>
+                        ) : (
+                            <Button size="sm" className="h-8 text-xs" onClick={() => { setKatalogSecili(new Set()); setKatalogArama(''); setKatalogAcik(true); }}>
+                                <Plus className="size-3.5 mr-1.5" /> Ürün Ekle
+                            </Button>
+                        )}
                     </CardAction>
                 </CardHeader>
                 <CardContent className="flex flex-1 min-h-0 flex-col gap-4 px-0">
@@ -779,10 +850,17 @@ export default function ProductsPage() {
                     <Spinner className="size-8" />
                     <p className="text-sm text-muted-foreground">Ürünler yükleniyor...</p>
                 </div>
-            ) : urunler.length === 0 ? (
+            ) : menuUrunleri.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
                     <span className="text-4xl">📋</span>
-                    <p>Henüz ürün eklenmemiş</p>
+                    {role !== 'admin' && katalogUrunleri.length > 0 ? (
+                        <>
+                            <p>Menünüzde ürün yok</p>
+                            <p className="text-xs">Katalogda {katalogUrunleri.length} ürün var — "Ürün Ekle" ile sattıklarınızı seçin.</p>
+                        </>
+                    ) : (
+                        <p>Henüz ürün eklenmemiş</p>
+                    )}
                 </div>
             ) : (
                 <div className="flex flex-col gap-4 flex-1 min-h-0">
@@ -932,7 +1010,17 @@ export default function ProductsPage() {
                                                 <TableCell>
                                                     {urun.tur === 'sube_ozel' && urun.sube_slug
                                                         ? <DotBadge tone="violet">{urun.sube_slug}</DotBadge>
-                                                        : <DotBadge tone="neutral">Ortak</DotBadge>}
+                                                        : (() => {
+                                                            // Ortak ürünün kaç şubenin menüsünde olduğu — merkezin
+                                                            // "bu ürün nerede satılıyor" sorusuna tek bakışta yanıt.
+                                                            const n = (urun.menude_subeler || []).length;
+                                                            const hepsi = subeler.length > 0 && n === subeler.length;
+                                                            return (
+                                                                <DotBadge tone={n === 0 ? 'red' : hepsi ? 'green' : 'neutral'}>
+                                                                    {n === 0 ? 'Hiçbir menüde' : hepsi ? `Tüm şubeler (${n})` : `${n} şube`}
+                                                                </DotBadge>
+                                                            );
+                                                        })()}
                                                 </TableCell>
                                             )}
                                             {role !== 'admin' && subeSlug && (
@@ -962,6 +1050,17 @@ export default function ProductsPage() {
                                                             onClick={() => { setFiyatUrun(urun); setFiyatDeger(String(Math.round(urun.etkinFiyat ?? urun.fiyat))); }}
                                                         >
                                                             <Tag className="size-3.5" />
+                                                        </Button>
+                                                    )}
+                                                    {/* Menüden çıkarma — ürünü SİLMEZ, yalnızca bu şubenin
+                                                        menüsünden kaldırır. Katalogdan geri eklenebilir. */}
+                                                    {role !== 'admin' && subeSlug && urun.tur !== 'sube_ozel' && (
+                                                        <Button
+                                                            variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive"
+                                                            title="Menüden çıkar"
+                                                            onClick={() => handleMenudenCikar(urun)}
+                                                        >
+                                                            <ListMinus className="size-3.5" />
                                                         </Button>
                                                     )}
                                                     {role !== 'admin' && subeSlug && (
@@ -1024,6 +1123,80 @@ export default function ProductsPage() {
             )}
                 </CardContent>
             </Card>
+
+            {/* Katalogdan Ürün Ekle — şube sahibi.
+                Yeni ürün OLUŞTURMAZ: merkezin ortak kataloğa eklediği, bu şubenin
+                menüsünde henüz olmayan ürünleri listeler. Seçilenler tek istekte
+                eklenir (menü JSON'ı bir kez yenilensin diye). */}
+            <Dialog open={katalogAcik} onOpenChange={(o) => { if (!o) { setKatalogAcik(false); setKatalogSecili(new Set()); } }}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2"><Store className="size-4" /> Katalogdan Ürün Ekle</DialogTitle>
+                    </DialogHeader>
+                    {(() => {
+                        const q = katalogArama.trim().toLocaleLowerCase('tr');
+                        const liste = katalogUrunleri.filter((u) =>
+                            !q || (u.ad || '').toLocaleLowerCase('tr').includes(q) || (katMap[u.kategori] || '').toLocaleLowerCase('tr').includes(q)
+                        );
+                        return (
+                            <div className="space-y-3">
+                                <p className="text-xs text-muted-foreground">
+                                    Ürünleri merkez ekler. Buradan yalnızca şubenizde sattıklarınızı seçersiniz.
+                                </p>
+                                <div className="relative">
+                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                                    <Input value={katalogArama} onChange={(e) => setKatalogArama(e.target.value)} placeholder="Ürün veya kategori ara..." className="h-9 pl-8 text-sm" autoFocus />
+                                </div>
+                                {katalogUrunleri.length === 0 ? (
+                                    <p className="py-8 text-center text-sm text-muted-foreground">
+                                        Katalogdaki tüm ürünler zaten menünüzde.
+                                    </p>
+                                ) : liste.length === 0 ? (
+                                    <p className="py-8 text-center text-sm text-muted-foreground">Sonuç bulunamadı</p>
+                                ) : (
+                                    <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
+                                        {liste.map((u) => {
+                                            const secili = katalogSecili.has(u.id);
+                                            return (
+                                                <button
+                                                    key={u.id}
+                                                    type="button"
+                                                    onClick={() => setKatalogSecili((prev) => {
+                                                        const n = new Set(prev);
+                                                        n.has(u.id) ? n.delete(u.id) : n.add(u.id);
+                                                        return n;
+                                                    })}
+                                                    className={`flex w-full items-center gap-3 rounded-lg border p-2 text-left transition-colors ${secili ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                                                >
+                                                    <span className={`flex size-4 shrink-0 items-center justify-center rounded-sm border ${secili ? 'border-primary bg-primary text-primary-foreground' : 'border-input'}`}>
+                                                        {secili && <Check className="size-3" />}
+                                                    </span>
+                                                    {u.gorsel
+                                                        ? <img src={proxyImageUrl(u.gorsel)} alt="" className="size-9 shrink-0 rounded-md object-cover ring-1 ring-border" />
+                                                        : <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-base">🍮</span>}
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="block truncate text-sm font-medium text-foreground">{u.ad}</span>
+                                                        <span className="block text-xs text-muted-foreground">{katMap[u.kategori] || '—'}</span>
+                                                    </span>
+                                                    <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
+                                                        {Math.round(u.etkinFiyat ?? u.fiyat)} ₺
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+                    <div className="flex justify-end gap-2 pt-1">
+                        <Button variant="outline" onClick={() => { setKatalogAcik(false); setKatalogSecili(new Set()); }}>İptal</Button>
+                        <Button onClick={handleKatalogEkle} disabled={katalogBusy || katalogSecili.size === 0}>
+                            {katalogBusy ? 'Ekleniyor...' : `${katalogSecili.size > 0 ? katalogSecili.size + ' ' : ''}Ürünü Ekle`}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Trash Dialog */}
             <Dialog open={showTrash} onOpenChange={(open) => !open && setShowTrash(false)}>
