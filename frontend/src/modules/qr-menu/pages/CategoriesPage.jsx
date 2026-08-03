@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, GripVertical, Globe, MapPin, ImagePlus, Images, FolderOpen, Package } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, GripVertical, Globe, MapPin, ImagePlus, Images, FolderOpen, Package, FileText, ExternalLink } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
-import { proxyImageUrl } from '../../../utils/imageProxy';
+import { proxyImageUrl, proxyKeyUrl } from '../../../utils/imageProxy';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -111,8 +111,51 @@ export default function CategoriesPage() {
     const [surukleId, setSurukleId] = useState(null);
     const [siraKaydediliyor, setSiraKaydediliyor] = useState(false);
     const siraRef = useRef([]); // sürükleme sırasında oluşan güncel sıra (id dizisi)
+    const [alerjenPdf, setAlerjenPdf] = useState(null);          // { key, ad, boyut, zaman } | null
+    const [alerjenYukleniyor, setAlerjenYukleniyor] = useState(false);
+    const alerjenInputRef = useRef(null);
 
-    useEffect(() => { loadKategoriler(); }, []);
+    useEffect(() => { loadKategoriler(); loadAlerjenPdf(); }, []);
+
+    async function loadAlerjenPdf() {
+        try {
+            const { data } = await api.get('/menu/alerjen-pdf');
+            setAlerjenPdf(data.pdf || null);
+        } catch (err) { console.error('Alerjen PDF bilgisi yüklenemedi:', err); }
+    }
+
+    async function handleAlerjenUpload(e) {
+        const file = e.target.files[0];
+        e.target.value = ''; // aynı dosya tekrar seçilebilsin
+        if (!file) return;
+        setAlerjenYukleniyor(true);
+        try {
+            const formData = new FormData();
+            formData.append('pdf', file);
+            const { data } = await api.post('/menu/alerjen-pdf', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            setAlerjenPdf(data.pdf);
+            toast.success('Alerjen PDF\'i güncellendi — menüde yayında');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'PDF yüklenemedi');
+        }
+        setAlerjenYukleniyor(false);
+    }
+
+    async function handleAlerjenSil() {
+        const ok = await confirm('Alerjen PDF\'i kaldırılsın mı? Menüdeki "Alerjen Bilgileri" butonu kaybolur.');
+        if (!ok) return;
+        setAlerjenYukleniyor(true);
+        try {
+            await api.delete('/menu/alerjen-pdf');
+            setAlerjenPdf(null);
+            toast.success('Alerjen PDF\'i kaldırıldı');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'PDF kaldırılamadı');
+        }
+        setAlerjenYukleniyor(false);
+    }
 
     async function loadKategoriler() {
         setLoading(true);
@@ -331,6 +374,48 @@ export default function CategoriesPage() {
                     )}
                 </div>
             )}
+
+            {/* ── Alerjen PDF'i ── QR menüde "Alerjen Bilgileri" butonuyla açılan
+                tek global dosya. Kategorilerden bağımsız, her durumda görünür. */}
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                    <FileText className="size-5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-sm font-medium text-foreground">Alerjen Bilgileri (PDF)</h2>
+                    {alerjenPdf ? (
+                        <p className="truncate text-xs text-muted-foreground mt-0.5">
+                            {alerjenPdf.ad} · {(alerjenPdf.boyut / 1024 / 1024).toFixed(1)} MB
+                            {alerjenPdf.zaman && ` · ${new Date(alerjenPdf.zaman).toLocaleDateString('tr-TR')}`}
+                        </p>
+                    ) : (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Henüz yüklenmedi — yüklenince QR menüde "Alerjen Bilgileri" butonu görünür.
+                        </p>
+                    )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                    {alerjenPdf && (
+                        <>
+                            <Button size="sm" variant="outline" className="h-8 text-xs" asChild>
+                                <a href={proxyKeyUrl(alerjenPdf.key)} target="_blank" rel="noopener noreferrer">
+                                    <ExternalLink className="size-3.5 mr-1.5" /> Görüntüle
+                                </a>
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-8 text-xs text-destructive hover:text-destructive"
+                                    disabled={alerjenYukleniyor} onClick={handleAlerjenSil}>
+                                <Trash2 className="size-3.5" />
+                            </Button>
+                        </>
+                    )}
+                    <Button size="sm" className="h-8 text-xs" disabled={alerjenYukleniyor}
+                            onClick={() => alerjenInputRef.current?.click()}>
+                        {alerjenYukleniyor ? <Spinner className="size-3.5 mr-1.5" /> : <Plus className="size-3.5 mr-1.5" />}
+                        {alerjenPdf ? 'Değiştir' : 'PDF Yükle'}
+                    </Button>
+                    <input ref={alerjenInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleAlerjenUpload} />
+                </div>
+            </div>
 
             {/* Add/Edit Modal */}
             <Dialog open={showModal} onOpenChange={(open) => !open && closeModal()}>

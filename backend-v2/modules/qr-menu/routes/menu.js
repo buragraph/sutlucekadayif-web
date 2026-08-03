@@ -1,12 +1,46 @@
+import crypto from 'node:crypto';
 import { Router } from '../../../shared/router.js';
 import { supabase } from '../../../config/supabase.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import { cacheMiddleware } from '../../../middleware/cache.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import { veriYaDaHata } from '../../../utils/veri.js';
+import { uploadFile, deleteFile } from '../../../config/r2.js';
+import { dosyaAl } from '../../../shared/dosya.js';
 import { buildMenuData } from '../services/menu-builder.js';
 
 const router = Router();
+
+// ─── Alerjen PDF'i ───
+// Tek global dosya; şube menü JSON'larına GİRMEZ — girseydi her PDF değişimi
+// 88 şubelik JSON fan-out'u gerektirirdi. Bunun yerine küçük `menu/ayarlar.json`
+// yazılır, müşteri menüsü onu ayrıca okur (60 sn cache, bkz. upload proxy).
+// PDF anahtarı her yüklemede yeni (uuid'li) olmalı: proxy PDF'leri 1 yıl
+// immutable cache'lediği için sabit isim tarayıcıda bayat kalırdı.
+const ALERJEN_ANAHTARI = 'alerjen_pdf';
+
+const PDF_AL = dosyaAl('pdf', {
+    tipler: ['application/pdf'],
+    enBoy: 20 * 1024 * 1024,
+    hataMesaji: 'Sadece PDF dosyası yüklenebilir',
+});
+
+async function alerjenAyarOku() {
+    const { data } = await supabase
+        .from('ayarlar').select('deger').eq('anahtar', ALERJEN_ANAHTARI).maybeSingle();
+    return data?.deger || null;
+}
+
+/** Müşteri menüsünün okuduğu global ayar JSON'ını R2'ye yazar.
+ *  Alt çizgili ad bilinçli: şube JSON'ları `menu/{kod}.json` yazdığından,
+ *  "ayarlar" kodlu bir şube açılırsa çakışmasın. */
+async function alerjenAyarJsonYaz(key) {
+    await uploadFile(
+        Buffer.from(JSON.stringify({ alerjenPdf: key || null })),
+        'menu/_ayarlar.json',
+        'application/json'
+    );
+}
 
 /**
  * GET /api/menu/subeler
@@ -41,6 +75,87 @@ router.get(
     asyncHandler(async (req, res) => {
         const { menuYazimiDurumu } = await import('../services/menu-cache.js');
         res.json(await menuYazimiDurumu());
+    })
+);
+
+/**
+ * GET /api/menu/alerjen-pdf
+ * Yüklü alerjen PDF'inin meta bilgisi (CMS için).
+ * NOT: '/:subeSlug'dan ÖNCE tanımlı olmalı (bkz. cache-durumu notu).
+ */
+router.get(
+    '/alerjen-pdf',
+    verifyToken,
+    requirePermission('categories.edit'),
+    asyncHandler(async (req, res) => {
+        res.json({ pdf: await alerjenAyarOku() });
+    })
+);
+
+/**
+ * POST /api/menu/alerjen-pdf
+ * Alerjen PDF'ini yükle/değiştir. Form alanı: pdf (application/pdf, ≤20MB)
+ */
+router.post(
+    '/alerjen-pdf',
+    verifyToken,
+    requirePermission('categories.edit'),
+    PDF_AL,
+    asyncHandler(async (req, res) => {
+        if (!req.file) {
+            return res.status(400).json({ error: 'PDF dosyası bulunamadı' });
+        }
+        const eski = await alerjenAyarOku();
+
+        const key = `menu/alerjenler-${crypto.randomUUID()}.pdf`;
+        await uploadFile(req.file.buffer, key, 'application/pdf');
+
+        const deger = {
+            key,
+            ad: req.file.originalname || 'alerjenler.pdf',
+            boyut: req.file.size ?? req.file.buffer.length,
+            zaman: new Date().toISOString(),
+        };
+        veriYaDaHata(
+            await supabase.from('ayarlar').upsert(
+                { anahtar: ALERJEN_ANAHTARI, deger, guncelleme: new Date().toISOString() },
+                { onConflict: 'anahtar' }
+            ),
+            'alerjen ayarı yazılamadı'
+        );
+        await alerjenAyarJsonYaz(key);
+
+        // Eski dosya EN SONDA silinir: üstteki adımlardan biri patlarsa
+        // yayındaki PDF çalışır kalır. Silme hatası işlemi geri döndürmez.
+        if (eski?.key && eski.key !== key) {
+            await deleteFile(eski.key).catch((e) =>
+                console.error('[Alerjen] eski PDF silinemedi:', e.message));
+        }
+
+        res.json({ pdf: deger });
+    })
+);
+
+/**
+ * DELETE /api/menu/alerjen-pdf
+ * Alerjen PDF'ini kaldır — menüdeki buton kaybolur.
+ */
+router.delete(
+    '/alerjen-pdf',
+    verifyToken,
+    requirePermission('categories.edit'),
+    asyncHandler(async (req, res) => {
+        const eski = await alerjenAyarOku();
+        await alerjenAyarJsonYaz(null);
+        veriYaDaHata(
+            await supabase.from('ayarlar').delete().eq('anahtar', ALERJEN_ANAHTARI),
+            'alerjen ayarı silinemedi'
+        );
+        if (eski?.key) {
+            await deleteFile(eski.key).catch((e) =>
+                console.error('[Alerjen] PDF silinemedi:', e.message));
+        }
+        res.json({ success: true });
     })
 );
 

@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../../../services/api';
-import { Search, ChevronUp, Instagram, MessageCircle, X } from 'lucide-react';
-import { proxyImageUrl, proxyR2Url } from '../../../utils/imageProxy';
+import { Search, ChevronUp, Instagram, MessageCircle, X, FileText } from 'lucide-react';
+import { proxyImageUrl, proxyR2Url, proxyKeyUrl } from '../../../utils/imageProxy';
 import GeriBildirimModal from '../components/GeriBildirimModal';
 import IsBasvuruModal from '../components/IsBasvuruModal';
 
@@ -147,6 +147,7 @@ export default function MenuPage() {
     const [showScrollTop, setShowScrollTop] = useState(false);
     const [showGeriBildirim, setShowGeriBildirim] = useState(false);
     const [showIsBasvuru, setShowIsBasvuru] = useState(false);
+    const [alerjenPdf, setAlerjenPdf] = useState(null);   // R2 key — yoksa buton çıkmaz
 
     const tabRefs = useRef({});      // { katId: <button> }
     const navScrollRef = useRef(null);
@@ -166,6 +167,16 @@ export default function MenuPage() {
     useEffect(() => {
         document.title = sube?.ad ? `${sube.ad} — Sütlüce Kadayıf Menü` : 'Sütlüce Kadayıf';
     }, [sube]);
+
+    // Alerjen PDF'i — şube menüsünden AYRI, global ayar dosyası. Menü JSON'una
+    // gömülmedi: PDF her değiştiğinde 88 şubelik JSON'ın yeniden üretilmesi
+    // gerekirdi. Dosya yoksa (404) buton hiç görünmez.
+    useEffect(() => {
+        fetch(proxyR2Url('https://pub-99104fd4f6324895b46545c23e61887f.r2.dev/menu/_ayarlar.json'))
+            .then((r) => (r.ok ? r.json() : null))
+            .then((j) => setAlerjenPdf(j?.alerjenPdf || null))
+            .catch(() => {});
+    }, []);
 
     async function loadMenu() {
         setLoading(true);
@@ -312,6 +323,16 @@ export default function MenuPage() {
                             </button>
                         )}
                     </div>
+                    {alerjenPdf && (
+                        <a
+                            className="pm-alerjen-btn"
+                            href={proxyKeyUrl(alerjenPdf)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            <FileText size={14} /> Alerjen Bilgileri
+                        </a>
+                    )}
                 </section>
 
                 {aramaModu ? (

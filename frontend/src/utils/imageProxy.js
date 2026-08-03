@@ -22,3 +22,9 @@ export function proxyImageUrl(url) {
 
 // Görsel dışındaki R2 dosyaları (PDF, video) için aynı proxy mantığı
 export const proxyR2Url = proxyImageUrl;
+
+// Elde tam URL değil yalnızca R2 key'i varsa (ör. menü ayar JSON'undaki
+// alerjen PDF anahtarı) proxy URL'ini doğrudan kur.
+export function proxyKeyUrl(key) {
+    return key ? `${API_BASE}/upload/proxy/${key}` : '';
+}
