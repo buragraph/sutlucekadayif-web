@@ -632,7 +632,8 @@
   -webkit-backdrop-filter: blur(4px);
 }
 
-.pm-card__miktar {
+.pm-card__miktar,
+.pm-card__kalori {
   font-size: 10px;
   font-weight: 500;
   color: var(--pm-text-60);
@@ -3962,7 +3963,8 @@ input[type=number] {
   margin: 0 0 18px;
 }
 .pm-modal__price { font-size: 22px; font-weight: 700; color: var(--pm-dark); }
-.pm-modal__miktar { font-size: 14px; font-weight: 500; color: var(--pm-text-50); }
+.pm-modal__miktar,
+.pm-modal__kalori { font-size: 14px; font-weight: 500; color: var(--pm-text-50); }
 
 /* ─── Şikayet & Geri Bildirim Formu (QR menü) ─── */
 .pm-form__sube {

@@ -27,13 +27,9 @@ export default function LoginPage() {
             navigate('/admin');
         } catch (err) {
             console.error('Giriş hatası:', err);
-            if (
-                err.code === 'auth/user-not-found' ||
-                err.code === 'auth/wrong-password' ||
-                err.code === 'auth/invalid-credential'
-            ) {
+            if (err.code === 'invalid_credentials' || err.status === 400) {
                 setError('E-posta veya şifre hatalı');
-            } else if (err.code === 'auth/too-many-requests') {
+            } else if (err.status === 429) {
                 setError('Çok fazla deneme. Lütfen biraz bekleyin.');
             } else {
                 setError('Giriş yapılamadı. Tekrar deneyin.');

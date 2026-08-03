@@ -74,6 +74,8 @@ function ProductCard({ urun, index, onClick }) {
                     <span className="pm-card__price">
                         {Math.round(urun.fiyat)}₺
                         {urun.miktar && <span className="pm-card__miktar"> / {urun.miktar}{urun.birim === 'g' ? 'gr' : urun.birim}</span>}
+                        {/* != null: 0 kcal geçerli (su, sade soda) — `&&` ile gizlenirdi */}
+                        {urun.kalori != null && <span className="pm-card__kalori"> · {urun.kalori} kcal</span>}
                     </span>
                     {urun.etiket?.length > 0 && (
                         <span className="pm-card__tag pm-card__tag--inline">
@@ -123,6 +125,7 @@ function ProductModal({ urun, onClose }) {
                     <div className="pm-modal__price">
                         {Math.round(urun.fiyat)}₺
                         {urun.miktar && <span className="pm-modal__miktar"> / {urun.miktar}{urun.birim === 'g' ? 'gr' : urun.birim}</span>}
+                        {urun.kalori != null && <span className="pm-modal__kalori"> · {urun.kalori} kcal</span>}
                     </div>
                 </div>
             </div>

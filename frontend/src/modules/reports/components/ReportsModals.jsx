@@ -127,7 +127,7 @@ export function PreviewModal() {
 
     const handleDownload = async () => {
         setDlLoading(true);
-        try { await reportsApi.generatePdf(data.kod, data.b, data.e); toast.success('PDF indirildi!'); } 
+        try { await reportsApi.generatePdf(data.kod, data.b, data.e); toast.success('Yazdırma penceresi açıldı — "PDF olarak kaydet" seçin.'); } 
         catch (err) { toast.error(err.message); } 
         finally { setDlLoading(false); }
     };

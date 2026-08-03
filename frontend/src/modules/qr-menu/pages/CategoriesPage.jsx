@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
+import { gorseliWebpYap } from '../utils/gorsel';
 
 const colorPalette = [
     { bg: '#dbeafe', text: '#1e40af', label: 'Mavi' },
@@ -184,7 +185,7 @@ export default function CategoriesPage() {
         setUploading(true);
         try {
             const formData = new FormData();
-            formData.append('image', file);
+            formData.append('image', await gorseliWebpYap(file));
             const { data } = await api.post('/upload/image', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });

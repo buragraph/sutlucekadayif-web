@@ -22,6 +22,7 @@ import { SubeCokluSecici } from '../components/SubeCokluSecici';
 import { KaydirilirRay } from '../components/KaydirilirRay';
 
 import { ETIKETLER } from '../constants/etiketler';
+import { gorseliWebpYap } from '../utils/gorsel';
 
 // Referans e-ticaret tablosu tarzı noktalı durum rozeti
 const DOT_TONE = {
@@ -189,10 +190,12 @@ export default function ProductsPage() {
     const [fiyatUrun, setFiyatUrun] = useState(null);
     const [fiyatDeger, setFiyatDeger] = useState('');
     const [fiyatKaydediliyor, setFiyatKaydediliyor] = useState(false);
-    const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: [] });
+    const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kalori: '', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: [] });
     // Katalogdan menüye ürün ekleme penceresi (şube sahibi) — ürün OLUŞTURMAZ,
     // merkezin eklediği ortak ürünlerden şubenin sattıklarını işaretler.
     const [katalogAcik, setKatalogAcik] = useState(false);
+    const [katalogUrunleri, setKatalogUrunleri] = useState([]);
+    const [katalogYukleniyor, setKatalogYukleniyor] = useState(false);
     const [katalogArama, setKatalogArama] = useState('');
     const [katalogSecili, setKatalogSecili] = useState(new Set());
     const [katalogBusy, setKatalogBusy] = useState(false);
@@ -231,6 +234,23 @@ export default function ProductsPage() {
         if (!silent) setLoadingUrunler(false);
     }
 
+    // Katalog (menüye eklenebilecek ortak ürünler) ayrı uçtan gelir: `/products`
+    // artık şubeye yalnızca MENÜSÜNDEKİ ürünleri döndürüyor, katalogun tamamını
+    // her şubeye göndermek sunucuda 510 ürünlük okumaya mal oluyordu.
+    //
+    // Sayfa açılışında DEĞİL, yalnızca "Ürün Ekle" penceresi açılınca yüklenir:
+    // şube sahiplerinin çoğu katalogu hiç açmaz, açılışa bağlasaydık herkes için
+    // okunurdu. Sunucudaki katalog cache'i sürümlüdür, ürün değiştiğinde tazelenir.
+    async function loadKatalog() {
+        setKatalogYukleniyor(true);
+        try {
+            const { data } = await api.get('/products/katalog');
+            setKatalogUrunleri(data.urunler);
+        }
+        catch (err) { toast.error('Katalog yüklenemedi'); }
+        setKatalogYukleniyor(false);
+    }
+
     async function loadKategoriler() {
         try { const { data } = await api.get('/categories'); setKategoriler(data.kategoriler); }
         catch (err) { console.error('Kategoriler yüklenemedi:', err); }
@@ -249,14 +269,14 @@ export default function ProductsPage() {
         setEditingUrun(null);
         // Yeni ortak ürün varsayılan olarak TÜM şubelerin menüsüne düşer (backend
         // de alan gelmezse aynısını yapar). Merkez isterse seçimi daraltır.
-        setUrunForm({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', aciklama: '', sube_slug: subeSlug || '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: subeler.map((s) => s.slug) });
+        setUrunForm({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', aciklama: '', sube_slug: subeSlug || '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kalori: '', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: subeler.map((s) => s.slug) });
         setImageFile(null); setImagePreview(null);
         setViewMode('add');
     }
 
     function openEditUrun(urun) {
         setEditingUrun(urun);
-        setUrunForm({ ad: urun.ad, fiyat: urun.fiyat, kategori: urun.kategori || '', aciklama: urun.aciklama || '', sube_slug: urun.sube_slug || '', gorsel: urun.gorsel || '', etiket: urun.etiket || [], miktar: urun.miktar || '', birim: urun.birim || 'gr', kilitli: typeof urun.kilitli === 'boolean' ? (urun.kilitli ? 'evet' : 'hayir') : '', gizli_subeler: urun.gizli_subeler || [], fiyat_serbest: urun.fiyat_serbest || [], menude_subeler: urun.menude_subeler || [] });
+        setUrunForm({ ad: urun.ad, fiyat: urun.fiyat, kategori: urun.kategori || '', aciklama: urun.aciklama || '', sube_slug: urun.sube_slug || '', gorsel: urun.gorsel || '', etiket: urun.etiket || [], miktar: urun.miktar || '', birim: urun.birim || 'gr', kalori: urun.kalori ?? '', kilitli: typeof urun.kilitli === 'boolean' ? (urun.kilitli ? 'evet' : 'hayir') : '', gizli_subeler: urun.gizli_subeler || [], fiyat_serbest: urun.fiyat_serbest || [], menude_subeler: urun.menude_subeler || [] });
         setImageFile(null); setImagePreview(urun.gorsel || null);
         setViewMode('edit');
     }
@@ -267,7 +287,9 @@ export default function ProductsPage() {
         e.preventDefault();
         setSavingUrun(true);
         try {
-            const payload = { ad: urunForm.ad, fiyat: Number(urunForm.fiyat), kategori: urunForm.kategori, aciklama: urunForm.aciklama, etiket: urunForm.etiket || [], miktar: urunForm.miktar ? Number(urunForm.miktar) : null, birim: urunForm.birim || '' };
+            // kalori: '' => null (alan temizlendi), '0' => 0 korunur (suyun kalorisi
+            // gerçekten 0). Bu yüzden `urunForm.kalori ? ... : null` yazılmaz.
+            const payload = { ad: urunForm.ad, fiyat: Number(urunForm.fiyat), kategori: urunForm.kategori, aciklama: urunForm.aciklama, etiket: urunForm.etiket || [], miktar: urunForm.miktar ? Number(urunForm.miktar) : null, birim: urunForm.birim || '', kalori: urunForm.kalori === '' ? null : Number(urunForm.kalori) };
             // Ürün bazlı kilit — yalnızca admin gönderir. '' => null: bayrak
             // kaldırılır, kilit yine kategoriden miras alınır.
             if (role === 'admin') {
@@ -286,7 +308,7 @@ export default function ProductsPage() {
             }
             if (imageFile) {
                 const formData = new FormData();
-                formData.append('image', imageFile);
+                formData.append('image', await gorseliWebpYap(imageFile));
                 formData.append('folder', 'urunler');
                 const { data: uploadData } = await api.post('/upload/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
                 payload.gorsel = uploadData.url;
@@ -324,7 +346,21 @@ export default function ProductsPage() {
     // başına bir kez yenilenir (ürün başına değil).
     async function menuyeYaz(ids, menude) {
         const { data } = await api.post('/products/menu', { ids, menude, subeSlug });
-        setUrunler((prev) => prev.map((u) => (ids.includes(u.id) ? { ...u, menude } : u)));
+        // Liste ve katalog artık iki ayrı uçtan geliyor; ürün hangi yöne gittiyse
+        // bir listeden çıkıp diğerine geçer. Sunucuya yeniden sormaya gerek yok.
+        if (menude) {
+            const tasinan = katalogUrunleri
+                .filter((u) => ids.includes(u.id))
+                .map((u) => ({ ...u, menude: true }));
+            setKatalogUrunleri((prev) => prev.filter((u) => !ids.includes(u.id)));
+            setUrunler((prev) => [...prev, ...tasinan]);
+        } else {
+            const tasinan = urunler
+                .filter((u) => ids.includes(u.id))
+                .map((u) => ({ ...u, menude: false }));
+            setUrunler((prev) => prev.filter((u) => !ids.includes(u.id)));
+            setKatalogUrunleri((prev) => [...prev, ...tasinan]);
+        }
         return data.islenen;
     }
 
@@ -377,7 +413,6 @@ export default function ProductsPage() {
     // ürünler "Ürün Ekle" katalog penceresinde durur. `menude` sunucuda hesaplanır
     // (bkz. backend menudeMi) — burada kural yeniden yazılmaz.
     const menuUrunleri = urunler.filter((u) => u.menude !== false);
-    const katalogUrunleri = urunler.filter((u) => u.menude === false);
 
     // Kategori rayı — şube sahibinde YALNIZCA menüsünde ürünü olan kategoriler.
     // Ortak katalog opt-in olduğu için şubenin hiç ürün almadığı kategoriler
@@ -484,7 +519,7 @@ export default function ProductsPage() {
     }
 
     // ── Toplu ekleme ──
-    const yeniBulkRow = () => ({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', miktar: '', birim: 'gr', gorsel: '' });
+    const yeniBulkRow = () => ({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', miktar: '', birim: 'gr', kalori: '', gorsel: '' });
     function openBulkAdd() { setBulkAddRows([yeniBulkRow(), yeniBulkRow(), yeniBulkRow()]); setViewMode('bulkAdd'); }
     function addBulkRow() { setBulkAddRows(r => [...r, yeniBulkRow()]); }
     function removeBulkRow(i) { setBulkAddRows(r => r.filter((_, idx) => idx !== i)); }
@@ -498,6 +533,7 @@ export default function ProductsPage() {
                 ad: r.ad.trim(), fiyat: Number(r.fiyat), kategori: r.kategori,
                 sube_slug: role === 'admin' ? (selectedSube !== 'all' && selectedSube !== 'ortak' ? selectedSube : undefined) : subeSlug,
                 miktar: r.miktar ? Number(r.miktar) : null, birim: r.birim || '',
+                kalori: r.kalori === '' ? null : Number(r.kalori),
                 gorsel: r.gorsel && r.gorsel !== 'loading' ? r.gorsel : '',
             }));
             const { data } = await api.post('/products/bulk', { products });
@@ -536,13 +572,13 @@ export default function ProductsPage() {
                 <Card className="flex flex-1 min-h-0 flex-col rounded-2xl">
                     <CardContent className="flex flex-1 min-h-0 flex-col gap-2 pt-5">
                         {/* Sütun başlıkları */}
-                        <div className="hidden md:grid grid-cols-[56px_1fr_110px_1fr_80px_88px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground shrink-0">
-                            <span>Görsel</span><span>Ürün Adı</span><span>Fiyat ₺</span><span>Kategori</span><span>Miktar</span><span>Birim</span><span></span>
+                        <div className="hidden md:grid grid-cols-[56px_1fr_110px_1fr_80px_88px_80px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground shrink-0">
+                            <span>Görsel</span><span>Ürün Adı</span><span>Fiyat ₺</span><span>Kategori</span><span>Miktar</span><span>Birim</span><span>Kalori</span><span></span>
                         </div>
                         {/* Satırlar */}
                         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 pr-1">
                             {bulkAddRows.map((row, i) => (
-                                <div key={i} className="grid grid-cols-2 md:grid-cols-[56px_1fr_110px_1fr_80px_88px_36px] gap-2 items-center rounded-lg border p-2 md:border-0 md:p-0">
+                                <div key={i} className="grid grid-cols-2 md:grid-cols-[56px_1fr_110px_1fr_80px_88px_80px_36px] gap-2 items-center rounded-lg border p-2 md:border-0 md:p-0">
                                     {/* Görsel — medyadaki "Ürünler" klasöründen seçilir */}
                                     <MediaPicker value={row.gorsel} onSelect={(url) => updateBulkRow(i, 'gorsel', url)}>
                                         <button type="button" className="relative flex size-14 md:size-12 cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-muted/40 hover:bg-muted">
@@ -572,6 +608,7 @@ export default function ProductsPage() {
                                             <SelectItem value="adet">adet</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                    <Input type="number" min="0" value={row.kalori} onChange={(e) => updateBulkRow(i, 'kalori', e.target.value)} placeholder="kcal" className="h-9 text-sm" />
                                     <Button variant="ghost" size="icon" className="size-9 text-muted-foreground hover:text-destructive justify-self-end" onClick={() => removeBulkRow(i)}><X className="size-4" /></Button>
                                 </div>
                             ))}
@@ -753,11 +790,18 @@ export default function ProductsPage() {
                                                     </select>
                                                 </div>
                                             </div>
+                                            <div className="space-y-1.5">
+                                                <Label>Kalori <span className="text-muted-foreground font-normal text-xs">(opsiyonel)</span></Label>
+                                                <div className="flex items-center gap-1.5">
+                                                    <Input type="number" value={urunForm.kalori} onChange={(e) => setUrunForm({ ...urunForm, kalori: e.target.value })} placeholder="320" min="0" className="flex-1" />
+                                                    <span className="flex h-9 w-16 items-center justify-center rounded-md border border-input px-1.5 text-sm text-muted-foreground">kcal</span>
+                                                </div>
+                                            </div>
                                             {(() => {
                                                 const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
                                                 if (selectedKat && selectedKat.tur === 'sube_ozel' && role === 'admin') {
                                                     return (
-                                                        <div className="space-y-1.5">
+                                                        <div className="space-y-1.5 col-span-2">
                                                             <Label>Şube</Label>
                                                             <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs" value={urunForm.sube_slug} onChange={(e) => setUrunForm({ ...urunForm, sube_slug: e.target.value })} required>
                                                                 <option value="">Şube seçiniz</option>
@@ -877,7 +921,7 @@ export default function ProductsPage() {
                                 </Button>
                             </>
                         ) : (
-                            <Button size="sm" className="h-8 text-xs" onClick={() => { setKatalogSecili(new Set()); setKatalogArama(''); setKatalogAcik(true); }}>
+                            <Button size="sm" className="h-8 text-xs" onClick={() => { setKatalogSecili(new Set()); setKatalogArama(''); setKatalogAcik(true); loadKatalog(); }}>
                                 <Plus className="size-3.5 mr-1.5" /> Ürün Ekle
                             </Button>
                         )}
@@ -892,10 +936,12 @@ export default function ProductsPage() {
             ) : menuUrunleri.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
                     <span className="text-4xl">📋</span>
-                    {role !== 'admin' && katalogUrunleri.length > 0 ? (
+                    {/* Katalog sayısı burada gösterilmiyor: katalog artık yalnızca
+                        "Ürün Ekle" açılınca yükleniyor (okuma tasarrufu). */}
+                    {role !== 'admin' ? (
                         <>
                             <p>Menünüzde ürün yok</p>
-                            <p className="text-xs">Katalogda {katalogUrunleri.length} ürün var — "Ürün Ekle" ile sattıklarınızı seçin.</p>
+                            <p className="text-xs">"Ürün Ekle" ile katalogdan sattıklarınızı seçin.</p>
                         </>
                     ) : (
                         <p>Henüz ürün eklenmemiş</p>
@@ -1069,6 +1115,8 @@ export default function ProductsPage() {
                                                     {Math.round(urun.etkinFiyat ?? urun.fiyat)} ₺
                                                 </span>
                                                 {urun.miktar ? <span className="text-xs text-muted-foreground ml-1">/ {urun.miktar}{urun.birim}</span> : null}
+                                                {/* != null: 0 kcal geçerli bir değer, gizlenmemeli */}
+                                                {urun.kalori != null ? <span className="text-xs text-muted-foreground ml-1">· {urun.kalori} kcal</span> : null}
                                                 {role !== 'admin' && urun.etkinFiyat != null && urun.etkinFiyat !== urun.fiyat && (
                                                     <span className="ml-1.5 text-[11px] text-muted-foreground">
                                                         (merkez {Math.round(urun.fiyat)} ₺)
@@ -1197,7 +1245,9 @@ export default function ProductsPage() {
                                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                                     <Input value={katalogArama} onChange={(e) => setKatalogArama(e.target.value)} placeholder="Ürün veya kategori ara..." className="h-9 pl-8 text-sm" autoFocus />
                                 </div>
-                                {katalogUrunleri.length === 0 ? (
+                                {katalogYukleniyor ? (
+                                    <p className="py-8 text-center text-sm text-muted-foreground">Katalog yükleniyor...</p>
+                                ) : katalogUrunleri.length === 0 ? (
                                     <p className="py-8 text-center text-sm text-muted-foreground">
                                         Katalogdaki tüm ürünler zaten menünüzde.
                                     </p>

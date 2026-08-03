@@ -108,13 +108,13 @@ export default function ReportsPage() {
         if (branches.length === 0) return toast.error('İndirilecek şube bulunamadı.');
 
         setIsDownloadingPdf(true);
-        toast.info('📦 Toplu ZIP hazırlanıyor... Lütfen bekleyin.');
+        toast.info('📄 Raporlar hazırlanıyor — yazdırma penceresinde "PDF olarak kaydet" seçin.');
         try {
             const subeKodlari = branches.map(s => s.kod);
             await reportsApi.bulkPdf(subeKodlari, dateRange.since, dateRange.until);
-            toast.success('Tüm PDF\'ler ZIP olarak indirildi!');
+            toast.success('Tüm raporlar tek PDF olarak hazır.');
         } catch (err) {
-            toast.error(err.message || 'ZIP oluşturulamadı.');
+            toast.error(err.message || 'Raporlar hazırlanamadı.');
         } finally {
             setIsDownloadingPdf(false);
         }
@@ -187,7 +187,7 @@ export default function ReportsPage() {
                         <div className="w-px h-5 bg-border mx-2" />
 
                         <Button size="sm" variant="outline" className="h-8 text-xs bg-card" onClick={handleBulkPdf} disabled={isDownloadingPdf}>
-                            {isDownloadingPdf ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1.5" />} Toplu ZIP
+                            {isDownloadingPdf ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1.5" />} Toplu PDF
                         </Button>
                     </div>
                 </div>

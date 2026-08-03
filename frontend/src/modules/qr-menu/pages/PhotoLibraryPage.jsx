@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Label } from '@/components/ui/label';
+import { gorseliWebpYap } from '../utils/gorsel';
 
 export default function PhotoLibraryPage() {
     const toast = useToast();
@@ -89,7 +90,7 @@ export default function PhotoLibraryPage() {
             let uploadedUrl = null;
             try {
                 const formData = new FormData();
-                formData.append('image', file);
+                formData.append('image', await gorseliWebpYap(file));
                 const { data: uploadData } = await api.post('/upload/image', formData, {
                     headers: { 'Content-Type': 'multipart/form-data' },
                 });
