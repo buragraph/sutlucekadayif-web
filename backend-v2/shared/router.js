@@ -162,6 +162,15 @@ export function honoyaBagla(app, onek, r, onHalkalar = []) {
         const yol = (onek + (k.yol === '/' ? '' : k.yol)) || '/';
         app.on(k.yontem, yol, async (c) => {
             const req = await istekKur(c);
+            // Express wildcard uyumu: '/proxy/*' kalıbında Express yakalananı
+            // req.params[0]'a koyar; Hono ise yıldızı param() içinde VERMEZ.
+            // Kalıptaki yıldızın öncesi statik önek olduğundan, gerçek yolun o
+            // uzunluktan sonrası yakalanan kısımdır. (upload proxy'si buna
+            // dayanır — köprüde eksikti, panel/menü görselleri 400 dönüyordu.)
+            const yildiz = yol.indexOf('*');
+            if (yildiz !== -1 && req.params[0] === undefined) {
+                req.params[0] = decodeURIComponent(c.req.path.slice(yildiz));
+            }
             const res = yanitKur();
             const zincir = [...onHalkalar, ...k.halkalar];
 
