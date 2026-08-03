@@ -1,18 +1,23 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { auth } from '../firebase';
-import {
-    onAuthStateChanged,
-    signInWithEmailAndPassword,
-    signOut,
-    sendPasswordResetEmail,
-} from 'firebase/auth';
-import api from '../services/api';
+import { supabase } from '../supabase';
 import { hasPermission } from '@shared/permissions.js';
 
 const AuthContext = createContext(null);
 
 export function useAuth() {
     return useContext(AuthContext);
+}
+
+// Oturumdan uygulama içi kullanıcı nesnesi. Şekil Faz 1'deki kullanımla aynı
+// tutuldu (uid + email + displayName); rol/şube ayrı context değerleri.
+function kullaniciNesnesi(session) {
+    const u = session?.user;
+    if (!u) return null;
+    return {
+        uid: u.id,
+        email: u.email,
+        displayName: u.user_metadata?.displayName || null,
+    };
 }
 
 export function AuthProvider({ children }) {
@@ -22,63 +27,56 @@ export function AuthProvider({ children }) {
     const [simulatedRole, setSimulatedRole] = useState(null);
     const [loading, setLoading] = useState(true);
 
+    // Rol/şube artık token'ın app_metadata'sında (Firebase custom claims karşılığı).
+    function oturumuUygula(session) {
+        setUser(kullaniciNesnesi(session));
+        setSubeSlug(session?.user?.app_metadata?.subeSlug || null);
+        setRole(session ? session.user.app_metadata?.role || 'sube_sahibi' : null);
+    }
+
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-            if (firebaseUser) {
-                setUser(firebaseUser);
-                // Custom claims'ten bilgileri al. force=true: rol/şube değişiklikleri
-                // en geç sayfa yenilemesinde yansısın (token cache'i ~1 saat eskimesin).
-                try {
-                    const idTokenResult = await firebaseUser.getIdTokenResult(true);
-                    setSubeSlug(idTokenResult.claims.subeSlug || null);
-                    setRole(idTokenResult.claims.role || 'sube_sahibi');
-                } catch (err) {
-                    console.error('Kullanıcı bilgisi alınamadı:', err);
-                }
-            } else {
-                setUser(null);
-                setSubeSlug(null);
-                setRole(null);
-            }
+        // Açılışta mevcut oturum, sonrasında her değişiklik (giriş/çıkış/token yenileme)
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            oturumuUygula(session);
             setLoading(false);
         });
 
-        return () => unsubscribe();
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_olay, session) => {
+            oturumuUygula(session);
+            setLoading(false);
+        });
+
+        return () => subscription.unsubscribe();
     }, []);
 
     async function login(email, password) {
-        const cred = await signInWithEmailAndPassword(auth, email, password);
-        // Claims'lerin (yetkilerin) güncel olması için token'ı zorla yenile
-        await cred.user.getIdToken(true);
-        return cred;
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        return data;
     }
 
     async function logout() {
         setSubeSlug(null);
         setRole(null);
-        return signOut(auth);
+        return supabase.auth.signOut();
     }
 
-    // Şifre belirleme/sıfırlama bağlantısı gönderir. E-posta verilmezse giriş
-    // yapan kullanıcının kendi adresine gönderir (profil sayfası); admin yeni
-    // kullanıcı oluştururken hedef e-postayı parametre olarak geçer.
-    async function resetPassword(hedefEmail) {
-        const email = hedefEmail || auth.currentUser?.email;
-        if (!email) throw new Error('Hesaba ait e-posta bulunamadı');
-        await sendPasswordResetEmail(auth, email);
-        return email;
+    // Kullanıcının kendi parolasını değiştirmesi. E-posta gerektirmez —
+    // panelde SMTP'ye bağlı "şifre sıfırlama maili" akışı yok.
+    async function parolaDegistir(yeniParola) {
+        const { error } = await supabase.auth.updateUser({ password: yeniParola });
+        if (error) throw error;
     }
 
-    // Token'ı zorla yenileyip güncel rol/şube claims'ini state'e yansıtır.
+    // Token'ı zorla yenileyip güncel rol/şube bilgisini state'e yansıtır.
     // Kullanıcı kendi rol/şubesini değiştirdiğinde anında (yeniden giriş gerekmeden) güncellemek için.
     async function refreshClaims() {
-        if (!auth.currentUser) return;
         try {
-            const res = await auth.currentUser.getIdTokenResult(true);
-            setSubeSlug(res.claims.subeSlug || null);
-            setRole(res.claims.role || 'sube_sahibi');
+            const { data, error } = await supabase.auth.refreshSession();
+            if (error) throw error;
+            oturumuUygula(data.session);
         } catch (err) {
-            console.error('Claims yenilenemedi:', err);
+            console.error('Yetkiler yenilenemedi:', err);
         }
     }
 
@@ -105,7 +103,7 @@ export function AuthProvider({ children }) {
         loading,
         login,
         logout,
-        resetPassword,
+        parolaDegistir,
         refreshClaims,
         can,
     };

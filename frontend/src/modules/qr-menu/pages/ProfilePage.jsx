@@ -65,21 +65,28 @@ function ProfilIskelet() {
 }
 
 export default function ProfilePage() {
-    const { resetPassword } = useAuth();
+    const { parolaDegistir } = useAuth();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [resetBusy, setResetBusy] = useState(false);
+    const [yeniParola, setYeniParola] = useState('');
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState(null);
 
+    // Parola doğrudan burada değiştirilir — e-posta/SMTP'ye bağlı bir akış yok.
     const handleResetPassword = async () => {
+        if (yeniParola.length < 8) {
+            toast.error('Parola en az 8 karakter olmalı.');
+            return;
+        }
         setResetBusy(true);
         try {
-            const email = await resetPassword();
-            toast.success(`Şifre sıfırlama bağlantısı ${email} adresine gönderildi.`);
-        } catch {
-            toast.error('Şifre sıfırlama e-postası gönderilemedi.');
+            await parolaDegistir(yeniParola);
+            setYeniParola('');
+            toast.success('Parolanız güncellendi.');
+        } catch (err) {
+            toast.error(err?.message || 'Parola güncellenemedi.');
         }
         setResetBusy(false);
     };
@@ -179,10 +186,20 @@ export default function ProfilePage() {
                             <span className="text-xs text-muted-foreground">Şifre</span>
                             {editing ? (
                                 <>
-                                    <Button variant="outline" size="sm" className="w-fit" onClick={handleResetPassword} disabled={resetBusy}>
-                                        <KeyRound className="size-3.5" /> {resetBusy ? 'Gönderiliyor...' : 'Şifre Sıfırla'}
-                                    </Button>
-                                    <span className="text-[11px] text-muted-foreground">E-postanıza bir sıfırlama bağlantısı gönderilir.</span>
+                                    <div className="flex gap-2">
+                                        <Input
+                                            type="password"
+                                            className="h-8 max-w-[220px]"
+                                            placeholder="Yeni parola"
+                                            autoComplete="new-password"
+                                            value={yeniParola}
+                                            onChange={(e) => setYeniParola(e.target.value)}
+                                        />
+                                        <Button variant="outline" size="sm" className="w-fit" onClick={handleResetPassword} disabled={resetBusy || !yeniParola}>
+                                            <KeyRound className="size-3.5" /> {resetBusy ? 'Kaydediliyor...' : 'Değiştir'}
+                                        </Button>
+                                    </div>
+                                    <span className="text-[11px] text-muted-foreground">En az 8 karakter. Değişiklik anında geçerli olur.</span>
                                 </>
                             ) : (
                                 <span className="text-sm font-medium text-foreground tracking-[0.2em]">••••••••</span>

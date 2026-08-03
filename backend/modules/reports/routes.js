@@ -15,7 +15,7 @@ import { buildReportData, invalidateReportCache } from './services/report-data.j
 import budgetRouter from './budget-routes.js';
 import { generateReportHtml } from './services/report-template.js';
 import { generatePdf } from './services/generate-pdf.js';
-import { getAllSubeler, getSubeByKod, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, updateOverrides, upsertGoogleToplanlar, closeDb, getDb, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings, recalcSubeAggregates, getDataVersion, bumpDataVersion } from './db.js';
+import { getAllSubeler, getSubeByKod, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem, upsertButce, updateOverrides, upsertGoogleToplanlar, closeDb, getDb, upsertToplamErisim, getSettings, saveSettings, getCampaignMappings, getAdsetMappings, recalcSubeAggregates, getDataVersion, bumpDataVersion, getSubeNot, saveSubeNot } from './db.js';
 import { getKonumListe, syncAllKonumlar, upsertKonum, removeKonum } from '../../shared/konum-store.js';
 
 import os from 'os';
@@ -578,6 +578,37 @@ router.get('/sube/:kod', verifyToken, requirePermission('reports.view'), async (
         toplamSonuc: sube.toplam_sonuc || 0,
       },
     });
+  } catch (err) {
+    console.error('[Reports]', err);
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
+  }
+});
+
+// ── Şube notu (yalnızca yönetici) ──
+// `reports.manage` admin'e özel olduğundan ayrı bir izin anahtarına gerek yok.
+// Not, şube dokümanından AYRI koleksiyonda tutulur (bkz. db.js açıklaması):
+// /sube/:kod ve /dashboard-bundle şube dokümanını olduğu gibi yaydığı ve bu
+// uçlara şube sahibi de eriştiği için, not orada dursa şube sahibine sızardı.
+router.get('/sube/:kod/not', verifyToken, requirePermission('reports.manage'), async (req, res) => {
+  try {
+    res.json(await getSubeNot(req.params.kod));
+  } catch (err) {
+    console.error('[Reports]', err);
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
+  }
+});
+
+router.put('/sube/:kod/not', verifyToken, requirePermission('reports.manage'), async (req, res) => {
+  try {
+    const sube = await getSubeByKod(req.params.kod);
+    if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
+
+    const kaydedilen = await saveSubeNot(
+      req.params.kod,
+      req.body.not,
+      req.user.email || req.user.uid
+    );
+    res.json(kaydedilen);
   } catch (err) {
     console.error('[Reports]', err);
     res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });

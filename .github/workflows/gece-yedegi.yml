@@ -1,0 +1,52 @@
+# Gece yedeği — Supabase → R2 (Faz 3 / C3)
+#
+# Neden burada: bu iş 1,8 MB JSON üretip gzip'liyor ve eski dosyaları budamak
+# için R2'yi listeliyor. Cloudflare Workers'ta ikisi de sorunlu — CPU bütçesi
+# istek başına dar, listeleme ise aws-sdk'nın XML yanıtını çözemediği için
+# (DOMParser yok) düşüyordu. GitHub Actions ücretsiz, CPU sınırı yok, aynı
+# `yedekAl()` kodunu çalıştırıyor.
+#
+# Sahiplik: bu workflow AKTİFKEN api2'deki `geceYedegi` fonksiyonu CRON_AKTIF
+# kapısında bekliyor (backend-v2/.env → CRON_AKTIF=false). İkisi birden koşarsa
+# aynı anahtara iki kez yazılır — zararsız ama gereksiz.
+
+name: Gece yedeği
+
+on:
+  schedule:
+    # 00:00 UTC = 03:00 Türkiye (TR'de yaz saati yok, sabit UTC+3).
+    # Meta/Google çekiminden (07:00 TR) ÖNCE koşar: günün verisi bozulursa
+    # bir önceki gecenin temiz kopyası elde kalır.
+    - cron: '0 0 * * *'
+  workflow_dispatch:        # elle tetikleme (tatbikat / acil yedek)
+
+concurrency:
+  group: gece-yedegi
+  cancel-in-progress: false
+
+jobs:
+  yedek:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'          # backend-v2 engines.node ile aynı
+
+      - name: Bağımlılıklar
+        working-directory: backend-v2
+        run: npm ci --omit=dev
+
+      - name: Yedeği al
+        working-directory: backend-v2
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+        run: node scripts/gece-yedegi.mjs

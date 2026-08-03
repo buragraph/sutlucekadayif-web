@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw, Copy } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,14 +11,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 
+// Yeni kullanıcıya verilecek geçici parola. E-posta gönderimine bağlı bir
+// "şifre belirleme" akışı yok; parolayı yönetici iletir, kullanıcı profilinden değiştirir.
+const PAROLA_HARFLERI = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%*-_';
+function uretParola(uzunluk = 14) {
+    const b = crypto.getRandomValues(new Uint8Array(uzunluk));
+    return Array.from(b, (x) => PAROLA_HARFLERI[x % PAROLA_HARFLERI.length]).join('');
+}
+
 export default function UsersPage() {
-    const { user: currentUser, refreshClaims, resetPassword } = useAuth();
+    const { user: currentUser, refreshClaims } = useAuth();
     const toast = useToast();
     const confirm = useConfirm();
     const [users, setUsers] = useState([]);
     const [subeler, setSubeler] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const [yeniKimlik, setYeniKimlik] = useState(null);   // { email, parola } — yaratımdan sonra gösterilir
     const [editingUser, setEditingUser] = useState(null);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({
@@ -95,27 +104,18 @@ export default function UsersPage() {
                 await loadData();
                 toast.success('Kullanıcı güncellendi');
             } else {
+                const parola = uretParola();
                 await api.post('/users', {
                     email: form.email,
+                    password: parola,
                     displayName: form.displayName,
                     subeSlug: form.subeSlug,
                     role: form.role,
                 });
-                // Kullanıcı kendi şifresini belirlesin: e-postasına bağlantı gönder
-                let mailGitti = true;
-                try {
-                    await resetPassword(form.email);
-                } catch (mailErr) {
-                    mailGitti = false;
-                    console.error('Şifre belirleme e-postası gönderilemedi:', mailErr);
-                }
                 closeModal();
                 await loadData();
-                if (mailGitti) {
-                    toast.success('Kullanıcı oluşturuldu, şifre belirleme e-postası gönderildi');
-                } else {
-                    toast.warning('Kullanıcı oluşturuldu ancak şifre belirleme e-postası gönderilemedi. Kullanıcı giriş ekranından "Şifremi unuttum" ile şifre belirleyebilir.');
-                }
+                // Parola yalnızca burada görünür — kullanıcıya yönetici iletir.
+                setYeniKimlik({ email: form.email, parola });
             }
         } catch (err) {
             console.error('İşlem hatası:', err);
@@ -265,8 +265,8 @@ export default function UsersPage() {
 
                         {!editingUser && (
                             <p className="text-sm text-muted-foreground">
-                                Kullanıcıya şifre belirleme bağlantısı e-posta ile gönderilecek.
-                                Şifreyi kullanıcı kendisi oluşturur.
+                                Kullanıcı oluşturulunca geçici bir parola üretilir ve size gösterilir.
+                                Parolayı kullanıcıya siz iletirsiniz; kullanıcı profil sayfasından değiştirebilir.
                             </p>
                         )}
 
@@ -327,6 +327,52 @@ export default function UsersPage() {
                             </Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Yeni kullanıcının geçici parolası — yalnızca bir kez gösterilir */}
+            <Dialog open={!!yeniKimlik} onOpenChange={(open) => !open && setYeniKimlik(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Kullanıcı oluşturuldu</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                            Aşağıdaki geçici parolayı kullanıcıya iletin. Bu parola bir daha gösterilmez;
+                            kullanıcı giriş yaptıktan sonra profil sayfasından kendi parolasını belirleyebilir.
+                        </p>
+                        <div className="space-y-1.5">
+                            <Label>E-posta</Label>
+                            <Input readOnly value={yeniKimlik?.email || ''} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label>Geçici parola</Label>
+                            <div className="flex gap-2">
+                                <Input readOnly value={yeniKimlik?.parola || ''} className="font-mono" />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    title="Kopyala"
+                                    onClick={async () => {
+                                        try {
+                                            await navigator.clipboard.writeText(
+                                                `${yeniKimlik.email} / ${yeniKimlik.parola}`
+                                            );
+                                            toast.success('Kopyalandı');
+                                        } catch {
+                                            toast.error('Kopyalanamadı, elle seçin');
+                                        }
+                                    }}
+                                >
+                                    <Copy className="size-4" />
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={() => setYeniKimlik(null)}>Tamam</Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

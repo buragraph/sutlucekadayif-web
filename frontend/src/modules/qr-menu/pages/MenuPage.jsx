@@ -3,15 +3,10 @@ import { useParams } from 'react-router-dom';
 import api from '../../../services/api';
 import { Search, ChevronUp, Instagram, MessageCircle, X } from 'lucide-react';
 import { proxyImageUrl, proxyR2Url } from '../../../utils/imageProxy';
+import GeriBildirimModal from '../components/GeriBildirimModal';
+import IsBasvuruModal from '../components/IsBasvuruModal';
 
-// Etiket etiketleri (kod → görünen ad)
-const TAG_LABELS = {
-    en_cok_satan: 'Çok Satan',
-    yeni: 'Yeni',
-    onerilen: 'Önerilen',
-    vegan: 'Vegan',
-    acili: 'Acılı',
-};
+import { etiketKisaAd } from '../constants/etiketler';
 
 /* ─── Skeleton Loading ─── */
 function SkeletonLoading() {
@@ -79,10 +74,12 @@ function ProductCard({ urun, index, onClick }) {
                     <span className="pm-card__price">
                         {Math.round(urun.fiyat)}₺
                         {urun.miktar && <span className="pm-card__miktar"> / {urun.miktar}{urun.birim === 'g' ? 'gr' : urun.birim}</span>}
+                        {/* != null: 0 kcal geçerli (su, sade soda) — `&&` ile gizlenirdi */}
+                        {urun.kalori != null && <span className="pm-card__kalori"> · {urun.kalori} kcal</span>}
                     </span>
                     {urun.etiket?.length > 0 && (
                         <span className="pm-card__tag pm-card__tag--inline">
-                            {TAG_LABELS[urun.etiket[0]] || urun.etiket[0]}
+                            {etiketKisaAd(urun.etiket[0])}
                         </span>
                     )}
                 </div>
@@ -119,7 +116,7 @@ function ProductModal({ urun, onClose }) {
                     {urun.etiket?.length > 0 && (
                         <div className="pm-modal__tags">
                             {urun.etiket.map((e) => (
-                                <span key={e} className="pm-modal__tag">{TAG_LABELS[e] || e}</span>
+                                <span key={e} className="pm-modal__tag">{etiketKisaAd(e)}</span>
                             ))}
                         </div>
                     )}
@@ -128,6 +125,7 @@ function ProductModal({ urun, onClose }) {
                     <div className="pm-modal__price">
                         {Math.round(urun.fiyat)}₺
                         {urun.miktar && <span className="pm-modal__miktar"> / {urun.miktar}{urun.birim === 'g' ? 'gr' : urun.birim}</span>}
+                        {urun.kalori != null && <span className="pm-modal__kalori"> · {urun.kalori} kcal</span>}
                     </div>
                 </div>
             </div>
@@ -144,10 +142,11 @@ export default function MenuPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [activeKat, setActiveKat] = useState(null);   // scroll-spy: görünümdeki kategori
-    const [activeTag, setActiveTag] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedUrun, setSelectedUrun] = useState(null);
     const [showScrollTop, setShowScrollTop] = useState(false);
+    const [showGeriBildirim, setShowGeriBildirim] = useState(false);
+    const [showIsBasvuru, setShowIsBasvuru] = useState(false);
 
     const tabRefs = useRef({});      // { katId: <button> }
     const navScrollRef = useRef(null);
@@ -205,21 +204,17 @@ export default function MenuPage() {
         [visibleKategoriler, urunlerByKategori]
     );
 
-    const mevcutEtiketler = useMemo(() => {
-        const set = new Set();
-        tumUrunler.forEach(u => (u.etiket || []).forEach(e => set.add(e)));
-        return [...set].filter(e => TAG_LABELS[e]);
-    }, [tumUrunler]);
+    // Arama, kategori gezinmesinden AYRI bir mod: arama sırasında kategori rayı
+    // gizlenir, yerine düz sonuç listesi gelir.
+    const aramaModu = !!searchQuery.trim();
 
-    const isFiltering = !!(searchQuery.trim() || activeTag);
-
-    // Filtre modunda gösterilecek düz liste (arama > etiket)
-    const filteredProducts = useMemo(() => {
+    // Arama sonuçları (etiketle süzme kaldırıldı — etiketler yalnızca ürün
+    // kartında rozet olarak görünür, filtre kontrolü yok)
+    const aramaSonuclari = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
-        if (q) return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
-        if (activeTag) return tumUrunler.filter(u => u.etiket?.includes(activeTag));
-        return [];
-    }, [searchQuery, activeTag, tumUrunler]);
+        if (!q) return [];
+        return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
+    }, [searchQuery, tumUrunler]);
 
     // Aktif sekmeyi yatay barda ortala (sayfayı kaydırmadan)
     useEffect(() => {
@@ -233,7 +228,6 @@ export default function MenuPage() {
 
     // Kategori seç → yalnızca o kategoriyi göster + menü başına kaydır (sayfa kısa kalsın)
     const selectKat = (id) => {
-        setActiveTag(null);
         setActiveKat(id);
         requestAnimationFrame(() => navbarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     };
@@ -249,9 +243,6 @@ export default function MenuPage() {
             </div>
         );
     }
-
-    // Filtre başlığı
-    const filtreBaslik = searchQuery ? `"${searchQuery}"` : (activeTag ? TAG_LABELS[activeTag] : '');
 
     // Gezinme modunda gösterilecek tek kategori
     const activeKatObj = visibleKategoriler.find(k => k.id === activeKat);
@@ -271,13 +262,16 @@ export default function MenuPage() {
                             <span className="pm-header__branch-name">{sube?.ad || subeSlug}</span>
                         </div>
                         <span className="pm-header__divider" />
-                        <a href="tel:08503049722" className="pm-header__link">
+                        <button type="button" className="pm-header__link" onClick={() => setShowGeriBildirim(true)}>
                             <MessageCircle size={13} /> İletişim
-                        </a>
+                        </button>
                     </div>
                     <div className="pm-header__brand">
                         <img
-                            src={proxyImageUrl('https://qr.sutlucekadayif.com/wp-content/uploads/2025/09/Varlik-1.png')}
+                            /* Logo projede duruyor (public/Varlik-1.png) — eskiden WordPress'ten
+                               çekiliyordu; o site kapanınca tüm şubelerde logo kaybolurdu.
+                               Yerel dosya ayrıca proxy turunu da ortadan kaldırır. */
+                            src="/Varlik-1.png"
                             alt="Sütlüce Kadayıf"
                             className="pm-header__logo"
                             onError={e => { e.target.style.display = 'none'; }}
@@ -295,20 +289,13 @@ export default function MenuPage() {
                         <span className="pm-hero__eyebrow">İmza Lezzetler</span>
                         <h2 className="pm-hero__heading">Geleneksel kadayıfın<br />premium deneyimi.</h2>
                         <p className="pm-hero__desc">Özenle seçilmiş malzemeler, ustalıkla hazırlanan lezzetler ve göz alıcı sunumlarla tatlının ötesinde bir deneyim.</p>
-                        {mevcutEtiketler.includes('en_cok_satan') && (
-                            <div className="pm-hero__actions">
-                                <button
-                                    className="pm-hero__btn pm-hero__btn--primary"
-                                    onClick={() => { setActiveTag('en_cok_satan'); setSearchQuery(''); }}
-                                >
-                                    En Çok Satanlar
-                                </button>
-                            </div>
-                        )}
                     </div>
                 </section>
 
-                {/* ─── Arama + Etiket filtreleri ─── */}
+                {/* ─── Arama ─── */}
+                {/* Etiket filtreleri buradan kategori rayına taşındı: arama altında
+                    iki ayrı ama birbirine benzeyen pill sırası vardı, hangisinin ne
+                    yaptığı anlaşılmıyordu. Artık tek sıra. */}
                 <section className="pm-filter-section">
                     <div className="pm-header__search">
                         <Search size={17} className="pm-header__search-icon" />
@@ -325,40 +312,27 @@ export default function MenuPage() {
                             </button>
                         )}
                     </div>
-                    {mevcutEtiketler.length > 0 && (
-                        <div className="pm-tags">
-                            {mevcutEtiketler.map((tag) => (
-                                <button
-                                    key={tag}
-                                    className={`pm-tag-filter ${activeTag === tag ? 'pm-tag-filter--active' : ''}`}
-                                    onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-                                >
-                                    {TAG_LABELS[tag]}
-                                </button>
-                            ))}
-                        </div>
-                    )}
                 </section>
 
-                {isFiltering ? (
+                {aramaModu ? (
                     /* ═══ FİLTRE MODU — düz sonuç listesi ═══ */
                     <>
                         <section className="pm-section-header">
                             <div>
-                                <span className="pm-section-header__eyebrow">{searchQuery ? 'Arama sonuçları' : 'Filtre'}</span>
-                                <h3 className="pm-section-header__title">{filtreBaslik}</h3>
+                                <span className="pm-section-header__eyebrow">Arama sonuçları</span>
+                                <h3 className="pm-section-header__title">“{searchQuery.trim()}”</h3>
                             </div>
-                            <span className="pm-section-header__count">{filteredProducts.length} ürün</span>
+                            <span className="pm-section-header__count">{aramaSonuclari.length} ürün</span>
                         </section>
                         <section className="pm-grid-section">
-                            {filteredProducts.length === 0 ? (
+                            {aramaSonuclari.length === 0 ? (
                                 <div className="pm-empty">
                                     <span style={{ fontSize: 40 }}>🔍</span>
                                     <p>Sonuç bulunamadı</p>
                                 </div>
                             ) : (
                                 <div className="pm-grid">
-                                    {filteredProducts.map((urun, index) => (
+                                    {aramaSonuclari.map((urun, index) => (
                                         <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
                                     ))}
                                 </div>
@@ -414,9 +388,9 @@ export default function MenuPage() {
                     <h3 className="pm-footer__card-title">İş başvurusu için:</h3>
                     <p className="pm-footer__card-subtitle">Sütlüce Kadayıf şubelerinde çalışmak ister misiniz?</p>
                     <p className="pm-footer__card-desc">Ekibimize katılmak için başvuru formunu doldurabilirsiniz.</p>
-                    <a href="https://qr.sutlucekadayif.com/is-basvurusu/" target="_blank" rel="noopener noreferrer" className="pm-footer__card-btn">
+                    <button type="button" className="pm-footer__card-btn" onClick={() => setShowIsBasvuru(true)}>
                         İş Başvurusu Yap
-                    </a>
+                    </button>
                 </div>
                 <div className="pm-footer__franchise">
                     <h2 className="pm-footer__title">Franchise Fırsatlarıyla Sütlüce Ailesine Katılın</h2>
@@ -433,6 +407,24 @@ export default function MenuPage() {
 
             {/* ─── Product Detail Modal ─── */}
             {selectedUrun && <ProductModal urun={selectedUrun} onClose={() => setSelectedUrun(null)} />}
+
+            {/* ─── Şikayet & Geri Bildirim Formu ─── */}
+            {showGeriBildirim && (
+                <GeriBildirimModal
+                    subeSlug={subeSlug}
+                    subeAd={sube?.ad}
+                    onClose={() => setShowGeriBildirim(false)}
+                />
+            )}
+
+            {/* ─── İş Başvurusu Formu ─── */}
+            {showIsBasvuru && (
+                <IsBasvuruModal
+                    subeSlug={subeSlug}
+                    subeAd={sube?.ad}
+                    onClose={() => setShowIsBasvuru(false)}
+                />
+            )}
 
             {/* ─── Scroll to Top ─── */}
             {showScrollTop && (

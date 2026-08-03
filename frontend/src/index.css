@@ -231,6 +231,13 @@
   color: var(--pm-text-60);
   text-decoration: none;
   transition: color var(--pm-transition);
+  /* İletişim öğesi <button> — tarayıcı varsayılanlarını sıfırla ki
+     yanındaki <a> bağlantılarıyla birebir aynı görünsün */
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .pm-header__link:hover {
@@ -397,34 +404,6 @@
   max-width: 270px;
 }
 
-.pm-hero__actions {
-  margin-top: 20px;
-  display: flex;
-  gap: 10px;
-}
-
-.pm-hero__btn {
-  border: none;
-  cursor: pointer;
-  border-radius: 999px;
-  padding: 12px 22px;
-  font-family: 'Montserrat', sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  transition: all var(--pm-transition);
-}
-
-.pm-hero__btn--primary {
-  background: var(--pm-cream);
-  color: var(--pm-dark);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-}
-
-.pm-hero__btn--primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
-}
-
 /* ─── Category Chips ─── */
 .pm-chips {
   display: flex;
@@ -502,7 +481,8 @@
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
-.pm-chip:hover {
+/* Aktif chip hariç — bkz. .pm-navtab'daki aynı özgüllük tuzağı */
+.pm-chip:not(.pm-chip--active):hover {
   border-color: var(--pm-dark);
   color: var(--pm-text);
 }
@@ -565,7 +545,7 @@
 .pm-grid {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .pm-empty {
@@ -602,8 +582,8 @@
 
 .pm-card__img-wrap {
   position: relative;
-  width: 120px;
-  min-height: 120px;
+  width: 104px;
+  min-height: 104px;
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -625,7 +605,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 48px;
+  font-size: 40px;
   background: linear-gradient(135deg, #e8e3d8, #ddd8cc);
 }
 
@@ -652,7 +632,8 @@
   -webkit-backdrop-filter: blur(4px);
 }
 
-.pm-card__miktar {
+.pm-card__miktar,
+.pm-card__kalori {
   font-size: 10px;
   font-weight: 500;
   color: var(--pm-text-60);
@@ -671,7 +652,7 @@
 }
 
 .pm-card__body {
-  padding: 12px 14px;
+  padding: 11px 13px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -681,7 +662,7 @@
 
 .pm-card__name {
   font-family: 'Marcellus', serif;
-  font-size: 21px;
+  font-size: 18.5px;
   font-weight: 400;
   line-height: 1.3;
   letter-spacing: -0.02em;
@@ -704,12 +685,12 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .pm-card__price {
   font-family: 'Montserrat', sans-serif;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 650;
   color: var(--pm-dark);
 }
@@ -822,6 +803,9 @@
   border-radius: 999px;
   text-decoration: none;
   transition: all var(--pm-transition);
+  /* Artık <button> — tarayıcı varsayılanlarını sıfırla */
+  border: none;
+  cursor: pointer;
 }
 
 .pm-footer__card-btn:hover {
@@ -3869,32 +3853,6 @@ input[type=number] {
    ═══════════════════════════════════════════════ */
 
 /* ── Etiket hızlı filtreleri ── */
-.pm-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-.pm-tag-filter {
-  padding: 7px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--pm-border);
-  background: transparent;
-  color: var(--pm-text-70);
-  font-family: 'Montserrat', sans-serif;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--pm-transition);
-  white-space: nowrap;
-}
-.pm-tag-filter:hover { border-color: var(--pm-dark); color: var(--pm-dark); }
-.pm-tag-filter--active {
-  background: var(--pm-dark);
-  color: var(--pm-cream);
-  border-color: var(--pm-dark);
-}
-
 /* ── Arama temizleme butonu ── */
 .pm-header__search { position: relative; }
 .pm-header__search-clear {
@@ -4005,7 +3963,112 @@ input[type=number] {
   margin: 0 0 18px;
 }
 .pm-modal__price { font-size: 22px; font-weight: 700; color: var(--pm-dark); }
-.pm-modal__miktar { font-size: 14px; font-weight: 500; color: var(--pm-text-50); }
+.pm-modal__miktar,
+.pm-modal__kalori { font-size: 14px; font-weight: 500; color: var(--pm-text-50); }
+
+/* ─── Şikayet & Geri Bildirim Formu (QR menü) ─── */
+.pm-form__sube {
+  margin: 2px 0 18px;
+  font-size: 13px;
+  color: var(--pm-text-50);
+}
+.pm-form__label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--pm-dark);
+}
+.pm-form__opt { font-weight: 400; color: var(--pm-text-50); }
+.pm-form__input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(8, 69, 41, 0.16);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--pm-dark);
+  font-family: inherit;
+  font-size: 16px; /* iOS 16px altındaki alana odaklanınca sayfayı zoomlar — düşürme */
+  outline: none;
+  transition: border-color var(--pm-transition);
+}
+.pm-form__input:focus { border-color: var(--pm-green, #084529); }
+textarea.pm-form__input { resize: vertical; min-height: 90px; }
+
+.pm-form__chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.pm-form__chip {
+  padding: 7px 13px;
+  border: 1px solid rgba(8, 69, 41, 0.18);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--pm-text-60);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--pm-transition);
+}
+.pm-form__chip--active {
+  background: var(--pm-green, #084529);
+  border-color: var(--pm-green, #084529);
+  color: #fff;
+}
+
+.pm-form__row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* honeypot — kullanıcı görmez, ekran okuyucudan da uzak tutulur */
+.pm-form__hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+
+.pm-form__consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 18px 0 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--pm-text-60);
+  cursor: pointer;
+}
+.pm-form__consent input { margin-top: 2px; flex-shrink: 0; }
+.pm-form__consent a { color: var(--pm-green, #084529); text-decoration: underline; }
+
+.pm-form__error {
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(220, 38, 38, 0.08);
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.pm-form__submit {
+  width: 100%;
+  margin-top: 16px;
+  padding: 13px;
+  border: none;
+  border-radius: 999px;
+  background: var(--pm-green, #084529);
+  color: #fff;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--pm-transition);
+}
+.pm-form__submit:disabled { opacity: 0.6; cursor: default; }
+
+.pm-form__success { text-align: center; padding: 8px 0; }
+.pm-form__success-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 14px;
+  border-radius: 999px;
+  background: rgba(8, 69, 41, 0.1);
+  color: var(--pm-green, #084529);
+  font-size: 26px;
+}
 
 @keyframes pmFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pmSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -4112,7 +4175,11 @@ input[type=number] {
   cursor: pointer;
   transition: background var(--pm-transition), color var(--pm-transition);
 }
-.pm-navtab:hover { color: var(--pm-dark); }
+/* Hover YALNIZCA aktif olmayan sekmelere uygulanır. Düz `.pm-navtab:hover`
+   yazılırsa sözde-sınıf yüzünden `--active`'ten daha özgül olur ve aktif
+   sekmenin üzerine gelindiğinde metin de arka plan da koyu yeşile döner —
+   yazı görünmez olur. */
+.pm-navtab:not(.pm-navtab--active):hover { color: var(--pm-dark); }
 .pm-navtab--active { background: var(--pm-dark); color: var(--pm-cream); }
 
 /* ── Kategori bölümleri (scroll-spy hedefleri) ── */
@@ -4164,35 +4231,53 @@ input[type=number] {
 .pm-header__search-input::placeholder { color: var(--pm-text-50); font-weight: 500; }
 
 /* Etiket filtreleri — ikonlu, tek satır kaydırılabilir */
-.pm-tags {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
-  margin-top: 0;
+
+/* ─── Yatay çip rayı (yönetim paneli kategori sekmeleri) ───────────────────
+   Kaydırma çubuğu DURUR, sadece incelir. Ayrıca içeriğin devam ettiği kenara
+   yumuşak bir solma bindirilir; ray sağdan bıçakla kesilmiş gibi durmasın.
+
+   Solma bir MASKE değil, üste bindirilen degrade: maske kullanılsaydı kaydırma
+   çubuğunun ucu da soluklaşırdı. Overlay alttan 12px boş bırakır — tarayıcının
+   "thin" çubuğu ölçülen 11px, böylece çubuk baştan sona net kalır.
+
+   Solma yalnızca o yönde gizli içerik varsa açılır; data-sol / data-sag
+   JS tarafından güncellenir (bkz. KaydirilirRay.jsx). */
+.ray-sarmal { position: relative; }
+
+.ray-sarmal::before,
+.ray-sarmal::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 12px;          /* kaydırma çubuğunun üstünü örtme (ölçülen: 11px) */
+  width: 32px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.ray-sarmal::before { left: 0;  background: linear-gradient(to right, var(--card), transparent); }
+.ray-sarmal::after  { right: 0; background: linear-gradient(to left,  var(--card), transparent); }
+.ray-sarmal[data-sol='1']::before { opacity: 1; }
+.ray-sarmal[data-sag='1']::after  { opacity: 1; }
+
+.ray-kaydir {
   overflow-x: auto;
-  padding-bottom: 2px;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;  /* iOS ivmeli kaydırma */
+  scroll-behavior: smooth;
+  padding-bottom: 4px;                /* çubuk çiplere yapışmasın */
+  scrollbar-width: thin;                              /* Firefox */
+  scrollbar-color: var(--border) transparent;
 }
-.pm-tags::-webkit-scrollbar { display: none; }
-.pm-tag-filter {
-  flex-shrink: 0;
-  padding: 6px 13px;
-  border-radius: 999px;
-  border: 1px solid var(--pm-border);
-  background: transparent;
-  color: var(--pm-text-60);
-  font-family: 'Montserrat', sans-serif;
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background var(--pm-transition), color var(--pm-transition), border-color var(--pm-transition);
+/* Aşağıdaki -webkit- kuralları `scrollbar-width` desteklemeyen eski
+   Chrome/Safari sürümleri içindir; destekleyenlerde standart özellik kazanır. */
+.ray-kaydir::-webkit-scrollbar { height: 6px; }
+.ray-kaydir::-webkit-scrollbar-track { background: transparent; }
+.ray-kaydir::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+.ray-kaydir:hover::-webkit-scrollbar-thumb { background: var(--muted-foreground); }
+
+/* Hareket azaltma tercihine saygı göster */
+@media (prefers-reduced-motion: reduce) {
+  .ray-kaydir { scroll-behavior: auto; }
+  .ray-sarmal::before, .ray-sarmal::after { transition: none; }
 }
-.pm-tag-filter:hover { border-color: rgba(8, 69, 41, 0.3); color: var(--pm-dark); }
-.pm-tag-filter--active {
-  background: var(--pm-dark);
-  color: var(--pm-cream);
-  border-color: var(--pm-dark);
-}
-/* Aktif + hover: krem yazı korunsun (yoksa koyu zeminde kaybolur) */
-.pm-tag-filter--active:hover { color: var(--pm-cream); border-color: var(--pm-dark); }

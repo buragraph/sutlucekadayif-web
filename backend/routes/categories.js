@@ -24,6 +24,46 @@ router.get(
 );
 
 /**
+ * PUT /api/categories/sira
+ * Kategori sırasını topluca günceller. Body: { idler: [katId, ...] }
+ * Dizideki konum sırayı belirler (ilk = 1). Menü kategorileri `sira` alanına
+ * göre listeliyor (bkz. services/menu-builder.js).
+ *
+ * Toplu olmasının sebebi maliyet: PUT /:id her çağrıda 92 şubenin menü JSON'ını
+ * yeniden üretiyor. Sürükle-bırakta 14 kategoriyi tek tek kaydetmek ~1300 menü
+ * üretimi demekti. Burada tek batch yazma + TEK yenileme var.
+ *
+ * NOT: '/:id' rotasından ÖNCE tanımlı olmalı, yoksa "sira" bir kategori kimliği
+ * sanılır.
+ */
+router.put(
+    '/sira',
+    verifyToken,
+    requirePermission('categories.edit'),
+    asyncHandler(async (req, res) => {
+        const { idler } = req.body;
+        if (!Array.isArray(idler) || idler.length === 0) {
+            return res.status(400).json({ error: 'Sıralama listesi boş' });
+        }
+        const temiz = [...new Set(idler.map((x) => String(x).trim()).filter(Boolean))];
+        if (temiz.length > 400) return res.status(400).json({ error: 'Tek seferde en fazla 400 kategori' });
+
+        // Var olmayan kimlik gelirse update() patlar; tek toplu okumayla süzülür.
+        const refs = temiz.map((id) => db.collection('kategoriler').doc(id));
+        const dokumanlar = await db.getAll(...refs);
+
+        const batch = db.batch();
+        let sira = 0;
+        dokumanlar.forEach((d) => { if (d.exists) batch.update(d.ref, { sira: ++sira }); });
+        if (sira === 0) return res.status(404).json({ error: 'Kategori bulunamadı' });
+        await batch.commit();
+
+        await regenerateAllMenuJsons().catch(console.error);
+        res.json({ success: true, guncellenen: sira });
+    })
+);
+
+/**
  * POST /api/categories/sync-counts
  * Tek seferlik: kategori ürün sayılarını senkronize et
  */

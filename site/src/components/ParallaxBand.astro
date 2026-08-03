@@ -1,0 +1,32 @@
+---
+// Tam genişlik "sabit" parallax banner. Masaüstünde background-attachment:fixed
+// ile görsel viewport'a sabitlenir — tarayıcı derler, HİÇ titreme olmaz (JS yok).
+// Dokunmatik/mobilde (bg-fixed iOS'ta bozuk) normal akışa düşer: görsel band ile
+// birlikte kayar, yine düzgün görünür.
+const { img, alt = '' } = Astro.props;
+---
+
+<div
+  class="parallax-band"
+  role="img"
+  aria-label={alt}
+  style={`background-image:url('${img}');`}
+></div>
+
+<style>
+  .parallax-band {
+    width: 100%;
+    height: 46vh;
+    min-height: 320px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  @media (min-width: 768px) {
+    .parallax-band { height: 60vh; }
+  }
+  /* Sadece gerçek işaretçili (masaüstü) cihazlarda sabitle — mobilde bozuk çalışır */
+  @media (min-width: 768px) and (hover: hover) {
+    .parallax-band { background-attachment: fixed; }
+  }
+</style>

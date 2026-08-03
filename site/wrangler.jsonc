@@ -1,0 +1,14 @@
+{
+  // Sütlüce Kadayıf tanıtım sitesi — Astro statik çıktısı, Workers static assets.
+  // CMS (sutlucekadayif-cms) ile aynı desende deploy edilir.
+  "name": "sutlucekadayif-site",
+  "compatibility_date": "2026-07-22",
+
+  "assets": {
+    "directory": "./dist",
+    // Astro her rota için klasör/index.html üretir; trailing slash'ı otomatik yönet
+    "html_handling": "auto-trailing-slash",
+    // SPA DEĞİL — bilinmeyen yol gerçek 404 dönmeli (yanlış URL'ler ana sayfayı göstermesin)
+    "not_found_handling": "none"
+  }
+}

@@ -159,7 +159,12 @@ router.get(
 router.post(
     '/image',
     verifyToken,
-    requirePermission('products.edit'),
+    // Yükleme merkeze ait: bu ucu çağıran üç ekran da (Ürün formu, Kategoriler,
+    // Medya) admin'e kapalı. Eskiden `products.edit` kullanılıyordu ve o izin
+    // şube sahibinde açık olduğu için şube, hiçbir yere bağlayamayacağı görseli
+    // R2'ye yükleyebiliyordu. (DELETE /image kendi şube-sahiplik kontrolünü
+    // koruyor — orada products.edit yerinde.)
+    requirePermission('media.manage'),
     upload.single('image'),
     asyncHandler(async (req, res) => {
         if (!req.file) {

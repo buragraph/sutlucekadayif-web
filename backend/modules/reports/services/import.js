@@ -1,5 +1,5 @@
 import { parse } from 'csv-parse/sync';
-import { upsertSube, upsertMetaToplanlar, upsertGoogleToplanlar, getSubeByKod, getAllSubeler, bumpDataVersion } from '../db.js';
+import { upsertMetaToplanlar, upsertGoogleToplanlar, getSubeByKod, getAllSubeler, bumpDataVersion } from '../db.js';
 
 // ── Türkçe sütun eşleme ──
 
@@ -146,8 +146,14 @@ export async function importMetaCsv(buffer, subeKod) {
     return 0;
   }
 
-  // Şube oluştur/güncelle
-  const sube = await upsertSube(subeKod, `Sütlüce Kadayıf ${subeKod.charAt(0).toUpperCase() + subeKod.slice(1)}`);
+  // YALNIZCA mevcut şubeye yaz — bilinmeyen koddan yeni şube AÇMA (çöp önleme).
+  // Yazma yolları şube dokümanını set(merge) ile oluşturduğu için, açılan çöp
+  // şubeye gerçek harcama da düşüyor ve sonradan silinemez hâle geliyor.
+  const sube = await getSubeByKod(subeKod);
+  if (!sube) {
+    console.log(`⚠️  Şube bulunamadı, içe aktarma atlandı: ${subeKod}`);
+    return 0;
+  }
 
   // Satırları map'le
   const mappedRows = records.map(row => mapRow(row, META_COLUMN_MAP));
@@ -201,13 +207,17 @@ export async function importGoogleCsv(buffer, subeKod, originalFilename = null) 
     return 0;
   }
 
+  // YALNIZCA mevcut şubeye yaz (bkz. importMetaCsv'deki aynı koruma).
+  // Döngü dışında tek okuma — satır başına şube okuması yapılmaz.
+  const sube = await getSubeByKod(subeKod);
+  if (!sube) {
+    console.log(`⚠️  Şube bulunamadı, içe aktarma atlandı: ${subeKod}`);
+    return 0;
+  }
+
   let count = 0;
   for (const row of records) {
     const mapped = mapRow(row, GOOGLE_COLUMN_MAP);
-    
-    // Şube bilgilerini güncelle
-    const ad = mapped.isletme_adi || `Sütlüce Kadayıf ${subeKod.charAt(0).toUpperCase() + subeKod.slice(1)}`;
-    const sube = await upsertSube(subeKod, ad, mapped.adres || null);
 
     const toplamlar = {
       google_arama: parseInt2(mapped.arama_mobil) + parseInt2(mapped.arama_masaustu),

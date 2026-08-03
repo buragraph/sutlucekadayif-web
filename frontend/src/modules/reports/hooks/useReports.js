@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
-import { auth } from '@/firebase';
+import { supabase } from '@/supabase';
 import { API_BASE } from '@/services/api';
 
 // ── API Base ──
@@ -11,12 +11,11 @@ const API = `${API_BASE}/reports`;
 
 // ── Auth-aware fetch wrapper ──
 async function authFetch(url, options = {}) {
-    const user = auth.currentUser;
-    if (user) {
-        const token = await user.getIdToken();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
         options.headers = {
             ...options.headers,
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${session.access_token}`,
         };
     }
     return fetch(url, options);
@@ -248,38 +247,27 @@ export const reportsApi = {
         return data;
     },
 
+    // PDF artık tarayıcıda üretiliyor (Faz 3): sunucudaki Chromium Workers'ta
+    // çalışmıyor. HTML yine `/preview`den geliyor — eski PDF ucunun kullandığı
+    // şablonun ta kendisi, yani tasarım birebir aynı. Geometri: utils/pdf-yazdir.js.
     async generatePdf(subeKod, donemBaslangic, donemBitis) {
-        const res = await authFetch(`${API}/generate-pdf`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subeKod, donemBaslangic, donemBitis }),
-        });
-        if (!res.ok) {
-            const d = await res.json();
-            throw new Error(d.error || 'PDF oluşturulamadı');
-        }
-        const blob = await res.blob();
-        const filename = res.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'Rapor.pdf';
-        const url = window.URL.createObjectURL(blob);
-        Object.assign(document.createElement('a'), { href: url, download: decodeURIComponent(filename) }).click();
-        window.URL.revokeObjectURL(url);
+        const html = await reportsApi.previewReport(subeKod, donemBaslangic, donemBitis);
+        const { raporYazdir } = await import('../utils/pdf-yazdir');
+        return await raporYazdir(html);
     },
 
     async bulkPdf(subeKodlari, donemBaslangic, donemBitis) {
-        const res = await authFetch(`${API}/generate-pdf-bulk`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subeKodlari, donemBaslangic, donemBitis }),
-        });
-        if (!res.ok) {
-            const d = await res.json();
-            throw new Error(d.error || 'ZIP oluşturulamadı');
+        const htmlListesi = [];
+        for (const kod of subeKodlari) {
+            try {
+                htmlListesi.push(await reportsApi.previewReport(kod, donemBaslangic, donemBitis));
+            } catch {
+                /* veri olmayan şube atlanır — eski uç da hatalıları atlıyordu */
+            }
         }
-        const blob = await res.blob();
-        const filename = res.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'Raporlar.zip';
-        const url = window.URL.createObjectURL(blob);
-        Object.assign(document.createElement('a'), { href: url, download: decodeURIComponent(filename) }).click();
-        window.URL.revokeObjectURL(url);
+        if (!htmlListesi.length) throw new Error('Rapor üretilecek veri bulunamadı.');
+        const { topluRaporYazdir } = await import('../utils/pdf-yazdir');
+        return await topluRaporYazdir(htmlListesi);
     },
 
     async previewReport(subeKod, donemBaslangic, donemBitis) {
@@ -525,5 +513,26 @@ export const reportsApi = {
             donemCache: { ...s.donemCache, [kod]: data.sube.donem_ozetleri || [] },
         }));
         return data.sube;
+    },
+
+    // ── Şube notu (yalnızca yönetici) ──
+    // Ayrı uçtan gelir; şube dokümanına dahil DEĞİL, çünkü o doküman şube
+    // sahibine de dönüyor (bkz. backend db.js açıklaması).
+    async getSubeNot(kod) {
+        const res = await authFetch(`${API}/sube/${kod}/not`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Not okunamadı');
+        return data;
+    },
+
+    async saveSubeNot(kod, not) {
+        const res = await authFetch(`${API}/sube/${kod}/not`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ not }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Not kaydedilemedi');
+        return data;
     },
 };

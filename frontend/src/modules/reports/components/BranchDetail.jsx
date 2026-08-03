@@ -3,10 +3,13 @@ import { useReportsStore, fmt, fmtC, formatDateTR, reportsApi, toastFetchSonucla
 import { Plus, ArrowUpDown, ArrowUp, ArrowDown, LayoutDashboard, BarChart2, SlidersHorizontal, Eye, FileDown, Trash2, Settings, ChevronLeft, ChevronRight, AlertTriangle, Wallet, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useAuth } from '../../../context/AuthContext';
+import { SubeNotu } from './SubeNotu';
 
 const ITEMS_PER_PAGE = 5;
 
 export function BranchDetail() {
+    const { role } = useAuth();
     const activeBranchCode = useReportsStore((s) => s.activeBranch);
     const setActiveBranch = useReportsStore((s) => s.setActiveBranch);
     const branches = useReportsStore((s) => s.branches);
@@ -171,6 +174,11 @@ export function BranchDetail() {
                         </div>
                     ))}
                 </div>
+
+                {/* Şube notu — yalnızca yönetici. Rota rol korumalı olmadığı için
+                    (şube sahibi /admin/raporlar adresini elle açabilir) burada
+                    gate ediliyor; backend de reports.manage ile ayrıca koruyor. */}
+                {role === 'admin' && <SubeNotu key={branch.kod} kod={branch.kod} />}
 
                 {/* Bütçe Durumu Kartı */}
                 {(() => {

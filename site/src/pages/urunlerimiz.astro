@@ -1,0 +1,103 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const kategoriler = [
+  {
+    baslik: 'Soğuk Kadayıf',
+    urunler: [
+      { ad: 'Fıstıklı', kg: '950₺', porsiyon: '250₺' },
+      { ad: 'Çikolatalı', kg: '950₺', porsiyon: '250₺' },
+      { ad: 'Fındıklı', kg: '900₺', porsiyon: '220₺' },
+      { ad: 'Cevizli', kg: '900₺', porsiyon: '220₺' },
+      { ad: 'Frambuazlı', kg: '950₺', porsiyon: '250₺' },
+      { ad: 'Yabanmersinli', kg: '950₺', porsiyon: '250₺' },
+      { ad: 'Portakallı', kg: '950₺', porsiyon: '250₺' },
+    ],
+  },
+  {
+    baslik: 'Şerbetli Kadayıf',
+    urunler: [
+      { ad: 'Fıstıklı Basma', kg: '1.300₺', porsiyon: '300₺' },
+      { ad: 'Cevizli Basma', kg: '1.100₺', porsiyon: '250₺' },
+      { ad: 'Fıstıklı Burma', kg: '1.500₺', porsiyon: '350₺' },
+      { ad: 'Cevizli Burma', kg: '1.100₺', porsiyon: '250₺' },
+      { ad: 'Fıstıklı Sarma', kg: '1.500₺', porsiyon: '350₺' },
+      { ad: 'Cevizli Sarma', kg: '1.100₺', porsiyon: '250₺' },
+    ],
+  },
+  {
+    baslik: 'Soğuk Baklava',
+    urunler: [
+      { ad: 'Fıstıklı', kg: '1.200₺', porsiyon: '300₺' },
+      { ad: 'Cevizli', kg: '900₺', porsiyon: '250₺' },
+      { ad: 'Fındıklı', kg: '900₺', porsiyon: '250₺' },
+      { ad: 'Bitter Çikolatalı Kahveli', kg: '1.100₺', porsiyon: '280₺' },
+      { ad: 'Çikolatalı Fıstıklı', kg: '1.100₺', porsiyon: '280₺' },
+    ],
+  },
+  {
+    baslik: 'Şerbetli Baklavalar',
+    urunler: [
+      { ad: 'Fıstık Sarma', kg: '1.250₺', porsiyon: '250₺' },
+      { ad: 'Firuze', kg: '1.600₺', porsiyon: '380₺' },
+      { ad: 'Cevizli Bülbül', kg: '1.100₺', porsiyon: '250₺' },
+      { ad: 'Şöbiyet', kg: '1.400₺', porsiyon: '320₺' },
+      { ad: 'Havuç Dilimi', kg: '1.500₺', porsiyon: '370₺' },
+      { ad: 'Fıstıklı Dürüm', kg: '1.750₺', porsiyon: '400₺' },
+      { ad: 'Midye', kg: '1.400₺', porsiyon: '320₺' },
+      { ad: 'Kuru Baklava', kg: '1.500₺', porsiyon: '370₺' },
+      { ad: 'Klasik Fıstıklı Baklava', kg: '1.300₺', porsiyon: '300₺' },
+      { ad: 'Klasik Cevizli Baklava', kg: '1.100₺', porsiyon: '250₺' },
+      { ad: 'Fıstıklı Özel Baklava', kg: '1.300₺', porsiyon: '300₺' },
+      { ad: 'Cevizli Özel Baklava', kg: '1.100₺', porsiyon: '250₺' },
+      { ad: 'Fıstıkzade Baklava', kg: '1.250₺', porsiyon: '250₺' },
+    ],
+  },
+];
+---
+
+<Layout title="Ürünlerimiz | Sütlüce Kadayıf">
+  <section class="mx-auto max-w-3xl px-6 pt-16 text-center">
+    <p class="font-serif text-lg text-brand">Menümüz</p>
+    <h1 class="mt-2 text-4xl md:text-5xl">Ürünlerimiz</h1>
+    <p class="mx-auto mt-4 max-w-xl text-lg">
+      Soğuk kadayıftan şerbetli baklavaya, doğal ve organik malzemelerle hazırlanan
+      lezzetlerimiz.
+    </p>
+    <span class="mx-auto mt-8 block h-16 w-px bg-ink/20"></span>
+  </section>
+
+  <section class="mx-auto max-w-5xl px-6 py-14 md:py-16">
+    <div class="grid gap-x-16 gap-y-16 lg:grid-cols-2">
+      {kategoriler.map((kat) => (
+        <div>
+          <div class="mb-7 flex items-center justify-center gap-4">
+            <span class="h-px flex-1 max-w-10 bg-ink/25"></span>
+            <h2 class="whitespace-nowrap font-serif text-2xl text-ink">{kat.baslik}</h2>
+            <span class="h-px flex-1 max-w-10 bg-ink/25"></span>
+          </div>
+
+          <ul class="divide-y divide-ink/5">
+            {kat.urunler.map((u) => (
+              <li class="flex items-baseline gap-3 py-3">
+                <span class="whitespace-nowrap text-lg">{u.ad}</span>
+                <span class="mb-1 flex-1 border-b border-dotted border-ink/25"></span>
+                <span class="whitespace-nowrap text-right">
+                  <span class="font-semibold text-brand">{u.porsiyon}</span>
+                  <span class="ml-1.5 text-xs text-body/50">({u.kg}/kg)</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <section class="mx-auto max-w-3xl px-6 pb-16 text-center">
+    <p class="text-sm text-body/70">
+      Fiyatlar porsiyon başınadır; parantez içindeki tutar kilogram fiyatıdır.
+      Bilgilendirme amaçlıdır, şubelerde güncel fiyatlar geçerlidir.
+    </p>
+  </section>
+</Layout>

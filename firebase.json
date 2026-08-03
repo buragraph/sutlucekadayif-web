@@ -3,19 +3,23 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "functions": {
-    "source": "backend",
-    "runtime": "nodejs20",
-    "codebase": "default",
-    "predeploy": [],
-    "ignore": [
-      "node_modules",
-      ".git",
-      "firebase-debug.log",
-      "firebase-debug.*.log",
-      "*.local"
-    ]
-  },
+  "_not": "Eski `default` codebase (backend/, nodejs20) S5'te kaldırıldı — `api` fonksiyonu silindi. Geri dönüş gerekirse bu blok git geçmişinden alınır (30 Ekim'e kadar; Firebase o tarihte nodejs20'yi kapatıyor).",
+  "functions": [
+    {
+      "source": "backend-v2",
+      "runtime": "nodejs22",
+      "codebase": "v2",
+      "predeploy": [],
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local",
+        "scripts"
+      ]
+    }
+  ],
   "emulators": {
     "functions": {
       "port": 5002

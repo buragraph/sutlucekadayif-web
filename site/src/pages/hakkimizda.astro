@@ -1,0 +1,209 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ParallaxBand from '../components/ParallaxBand.astro';
+
+const degerler = [
+  {
+    baslik: 'Sadece lezzet değil,',
+    metin:
+      'Aynı zamanda sürdürülebilirlik ve çevre duyarlılığı da en önemli ilkelerimizden. Doğaya ve insana saygılı üretim süreçlerimizle, geleceğe katkıda bulunurken, geleneksel lezzetleri modern tekniklerle buluşturuyoruz.',
+    img: '/img/hk-imalat.jpg',
+  },
+  {
+    baslik: 'Her detayda, müşterilerimize olan bağlılığımızı hissedecek,',
+    metin:
+      'Her seferinde özenle hazırlanmış tatlarımızın farkını tadacaksınız. Her bir lokmada, hem geçmişin tatlarını, hem de modern zamanın zarafetini buluşturan Sütlüce Kadayıf, tatlıya olan bakış açınızı değiştirmek için burada.',
+    img: '/img/hk-detay-icin.jpg',
+  },
+];
+
+const hikaye = [
+  {
+    ikon: '/img/ikon-sapka.png',
+    baslik: 'Tatlı deyince akla gelen',
+    metin:
+      'ilk şey belki bir damak zevkidir, belki de geçmişin sıcak anıları. Biz, Sütlüce Kadayıf olarak bu iki duyguyu bir araya getirerek, geleneksel tatları modern bir dokunuşla buluşturuyoruz.',
+  },
+  {
+    ikon: '/img/ikon-fistik.png',
+    baslik: 'Anadolu’nun köklü tatlı kültürüne',
+    metin:
+      'olan bağlılığımızla çıktığımız bu yolculukta, lezzet anlayışımızı hafiflik ve zarafetle harmanladık.',
+  },
+  {
+    ikon: '/img/ikon-sut.png',
+    baslik: 'Yöresinden özenle seçilen',
+    metin:
+      'malzemelerle hazırladığımız tatlılarımız, sadece damakta değil, ruhunuzda da iz bırakacak bir tat deneyimi sunuyor.',
+  },
+  {
+    ikon: '/img/ikon-kadayif.png',
+    baslik: 'Hafifliği, dört mevsim keyifle',
+    metin:
+      'tüketilebilen bir lezzet haline getirerek, her lokmada müdavimi olacağınız bir deneyim yaratıyoruz.',
+  },
+];
+---
+
+<Layout title="Hakkımızda | Sütlüce Kadayıf">
+  <!-- Başlık -->
+  <section class="mx-auto max-w-3xl px-6 pt-16 text-center">
+    <p class="font-serif text-lg text-brand">Sütlüce Kadayıf</p>
+    <h1 class="mt-2 text-4xl md:text-5xl">Hakkımızda</h1>
+  </section>
+
+  <!-- Geniş giriş görseli -->
+  <section class="mx-auto max-w-6xl px-6 pt-10">
+    <img src="/img/hk-giris.jpg" alt="Sütlüce Kadayıf lezzet sunumu" class="w-full rounded-3xl object-cover" />
+  </section>
+
+  <!-- Giriş metni -->
+  <section class="mx-auto max-w-3xl px-6 py-12 text-center">
+    <p class="text-lg leading-relaxed md:text-xl">
+      Sütlüce Kadayıf olarak, <span class="text-ink">2500 metrekarelik modern üretim
+      tesisimizde</span>, doğal ve organik malzemelerle el işçiliği ile hazırladığımız
+      sütlü kadayıf üretimini gerçekleştiriyoruz.
+    </p>
+  </section>
+
+  <!-- Değerler: orijinaldeki gibi iki sütun yan yana, her sütunda görsel üstte -->
+  <section class="mx-auto max-w-6xl px-6 py-8 md:py-12">
+    <div class="grid gap-14 md:grid-cols-2 md:gap-12">
+      {degerler.map((d) => (
+        <div>
+          <img
+            src={d.img}
+            alt={d.baslik}
+            class="aspect-[3/4] w-full rounded-3xl object-cover"
+            loading="lazy"
+          />
+          <h2 class="mt-7 text-3xl md:text-4xl">{d.baslik}</h2>
+          <p class="mt-4 text-lg leading-relaxed">{d.metin}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <!-- Ayraç -->
+  <div class="mx-auto max-w-6xl px-6">
+    <div class="flex justify-center py-8 md:py-12">
+      <span class="block h-16 w-px bg-ink/20"></span>
+    </div>
+  </div>
+
+  <!-- Hikayemiz -->
+  <section>
+    <div class="mx-auto max-w-6xl px-6 py-20">
+      <div class="text-center">
+        <p class="font-serif text-lg text-brand">Yolculuğumuz</p>
+        <h2 class="mt-2 text-3xl md:text-5xl">Hikayemiz</h2>
+      </div>
+
+      <!-- Büyük görselli, scroll ile beliren hikaye adımları -->
+      <ol class="mt-20 space-y-24 md:space-y-32">
+        {hikaye.map((h, i) => (
+          <li
+            class:list={[
+              'hikaye-adim grid items-center gap-10 md:grid-cols-2 md:gap-16',
+              i % 2 === 0 ? 'hikaye-sol' : 'hikaye-sag',
+            ]}
+          >
+            <!-- büyük PNG görsel -->
+            <div
+              class:list={[
+                'hikaye-gorsel flex justify-center',
+                i % 2 === 1 && 'md:order-2',
+              ]}
+            >
+              <img
+                src={h.ikon}
+                alt=""
+                aria-hidden="true"
+                class="h-52 w-52 object-contain md:h-72 md:w-72"
+                loading="lazy"
+              />
+            </div>
+
+            <!-- metin -->
+            <div
+              class:list={[
+                'hikaye-metin text-center md:text-left',
+                i % 2 === 1 && 'md:order-1 md:text-right',
+              ]}
+            >
+              <span class="font-serif text-5xl text-lime md:text-6xl">{String(i + 1).padStart(2, '0')}</span>
+              <h3 class="mt-3 font-serif text-3xl leading-snug md:text-4xl">{h.baslik}</h3>
+              <p class="mt-4 text-lg leading-relaxed">{h.metin}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+
+      <p class="hikaye-adim hikaye-kapanis mx-auto mt-24 max-w-2xl text-center text-xl leading-relaxed">
+        <span class="font-serif text-ink">Bugüne dek sürdürdüğümüz</span> bu yolculukta
+        sizleri yeni tatlarla buluşturmayı, her defasında şaşırtmayı ve memnuniyetinizi
+        kazanmayı sürdüreceğiz.
+      </p>
+    </div>
+  </section>
+
+  <!-- Kapanış: sabit parallax band (footer'a sıfır — footer'ın mt-12'sini dengeler) -->
+  <div class="-mb-12">
+    <ParallaxBand img="/img/hk-band.jpg" alt="Sütlüce Kadayıf tatlı sofrası" />
+  </div>
+</Layout>
+
+<style>
+  /* Scroll ile beliren hikaye adımları */
+  .hikaye-adim { opacity: 0; transition: opacity 0.6s ease; }
+
+  /* büyük görsel: küçükten büyüyerek + hafif yukarı süzülerek gelir */
+  .hikaye-gorsel {
+    opacity: 0;
+    scale: 0.7;
+    translate: 0 28px;
+    transition: opacity 0.6s ease, scale 0.8s cubic-bezier(0.34, 1.4, 0.64, 1), translate 0.8s ease;
+  }
+
+  /* metin: görselin zıt yanından kayarak gelir */
+  .hikaye-metin {
+    opacity: 0;
+    translate: 0 0;
+    transition: opacity 0.7s ease 0.15s, translate 0.7s ease 0.15s;
+  }
+  .hikaye-sol .hikaye-metin { translate: 48px 0; }
+  .hikaye-sag .hikaye-metin { translate: -48px 0; }
+  .hikaye-kapanis { translate: 0 24px; transition: opacity 0.7s ease, translate 0.7s ease; }
+
+  .hikaye-adim.gorunur { opacity: 1; }
+  .hikaye-adim.gorunur .hikaye-gorsel { opacity: 1; scale: 1; translate: 0 0; }
+  .hikaye-adim.gorunur .hikaye-metin { opacity: 1; translate: 0 0; }
+  .hikaye-kapanis.gorunur { translate: 0 0; }
+
+  /* Hareket azaltma tercihinde animasyonsuz göster */
+  @media (prefers-reduced-motion: reduce) {
+    .hikaye-adim, .hikaye-gorsel, .hikaye-metin {
+      opacity: 1 !important;
+      translate: none !important;
+      scale: 1 !important;
+      transition: none !important;
+    }
+  }
+</style>
+
+<script>
+  // Adımlar görünüme girince belir (IntersectionObserver)
+  const adimlar = document.querySelectorAll('.hikaye-adim');
+  const io = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add('gorunur');
+          io.unobserve(e.target); // bir kez belirsin, geri kaybolmasın
+        }
+      });
+    },
+    { threshold: 0.3 }
+  );
+  adimlar.forEach((el) => io.observe(el));
+</script>

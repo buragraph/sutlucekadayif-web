@@ -16,6 +16,22 @@
         { "fieldPath": "klasor", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "geri_bildirimler",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "subeSlug", "order": "ASCENDING" },
+        { "fieldPath": "olusturmaZamani", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "is_basvurulari",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "subeSlug", "order": "ASCENDING" },
+        { "fieldPath": "olusturmaZamani", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { auth } from '../firebase';
+import { supabase } from '../supabase';
 
 // Ortak API tabanı — useReports ve imageProxy de bunu kullanır (tek kaynak;
 // env değişkeni/port değişirse yalnızca burası güncellenir)
@@ -12,12 +12,12 @@ const api = axios.create({
     },
 });
 
-// Her istekte Firebase ID Token'ını Authorization header'a ekle
+// Her istekte Supabase access token'ını Authorization header'a ekle.
+// getSession süresi dolmuş token'ı kendisi yeniler.
 api.interceptors.request.use(async (config) => {
-    const user = auth.currentUser;
-    if (user) {
-        const token = await user.getIdToken();
-        config.headers.Authorization = `Bearer ${token}`;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+        config.headers.Authorization = `Bearer ${session.access_token}`;
     }
     return config;
 });

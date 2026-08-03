@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, Eye, EyeOff, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus } from 'lucide-react';
+import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, ListMinus, Store, Pencil } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
@@ -17,14 +18,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
+import { SubeCokluSecici } from '../components/SubeCokluSecici';
+import { KaydirilirRay } from '../components/KaydirilirRay';
 
-const ETIKETLER = [
-    { key: 'en_cok_satan', label: 'En Çok Satan', emoji: '🔥', color: '#ef4444' },
-    { key: 'yeni', label: 'Yeni', emoji: '✨', color: '#8b5cf6' },
-    { key: 'onerilen', label: 'Önerilen', emoji: '⭐', color: '#f59e0b' },
-    { key: 'vegan', label: 'Vegan', emoji: '🌱', color: '#22c55e' },
-    { key: 'acili', label: 'Acılı', emoji: '🌶️', color: '#dc2626' },
-];
+import { ETIKETLER } from '../constants/etiketler';
+import { gorseliWebpYap } from '../utils/gorsel';
 
 // Referans e-ticaret tablosu tarzı noktalı durum rozeti
 const DOT_TONE = {
@@ -188,7 +186,21 @@ export default function ProductsPage() {
     const [viewMode, setViewMode] = useState('list');
     const [editingUrun, setEditingUrun] = useState(null);
     const [savingUrun, setSavingUrun] = useState(false);
-    const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr' });
+    // Şube fiyat düzenleme penceresi (yalnızca merkez izin verdiği ürünlerde)
+    const [fiyatUrun, setFiyatUrun] = useState(null);
+    const [fiyatDeger, setFiyatDeger] = useState('');
+    const [fiyatKaydediliyor, setFiyatKaydediliyor] = useState(false);
+    const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kalori: '', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: [] });
+    // Katalogdan menüye ürün ekleme penceresi (şube sahibi) — ürün OLUŞTURMAZ,
+    // merkezin eklediği ortak ürünlerden şubenin sattıklarını işaretler.
+    const [katalogAcik, setKatalogAcik] = useState(false);
+    const [katalogUrunleri, setKatalogUrunleri] = useState([]);
+    const [katalogYukleniyor, setKatalogYukleniyor] = useState(false);
+    const [katalogArama, setKatalogArama] = useState('');
+    const [katalogSecili, setKatalogSecili] = useState(new Set());
+    const [katalogBusy, setKatalogBusy] = useState(false);
+    // Mevcutluk anahtarı uçuşta olan ürünler — çift tıklamayı engeller
+    const [mevcutBekleyen, setMevcutBekleyen] = useState(new Set());
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [aiLoading, setAiLoading] = useState(false);
@@ -222,6 +234,23 @@ export default function ProductsPage() {
         if (!silent) setLoadingUrunler(false);
     }
 
+    // Katalog (menüye eklenebilecek ortak ürünler) ayrı uçtan gelir: `/products`
+    // artık şubeye yalnızca MENÜSÜNDEKİ ürünleri döndürüyor, katalogun tamamını
+    // her şubeye göndermek sunucuda 510 ürünlük okumaya mal oluyordu.
+    //
+    // Sayfa açılışında DEĞİL, yalnızca "Ürün Ekle" penceresi açılınca yüklenir:
+    // şube sahiplerinin çoğu katalogu hiç açmaz, açılışa bağlasaydık herkes için
+    // okunurdu. Sunucudaki katalog cache'i sürümlüdür, ürün değiştiğinde tazelenir.
+    async function loadKatalog() {
+        setKatalogYukleniyor(true);
+        try {
+            const { data } = await api.get('/products/katalog');
+            setKatalogUrunleri(data.urunler);
+        }
+        catch (err) { toast.error('Katalog yüklenemedi'); }
+        setKatalogYukleniyor(false);
+    }
+
     async function loadKategoriler() {
         try { const { data } = await api.get('/categories'); setKategoriler(data.kategoriler); }
         catch (err) { console.error('Kategoriler yüklenemedi:', err); }
@@ -238,14 +267,16 @@ export default function ProductsPage() {
 
     function openAddUrun() {
         setEditingUrun(null);
-        setUrunForm({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', aciklama: '', sube_slug: subeSlug || '', gorsel: '', etiket: [], miktar: '', birim: 'gr' });
+        // Yeni ortak ürün varsayılan olarak TÜM şubelerin menüsüne düşer (backend
+        // de alan gelmezse aynısını yapar). Merkez isterse seçimi daraltır.
+        setUrunForm({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', aciklama: '', sube_slug: subeSlug || '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kalori: '', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: subeler.map((s) => s.slug) });
         setImageFile(null); setImagePreview(null);
         setViewMode('add');
     }
 
     function openEditUrun(urun) {
         setEditingUrun(urun);
-        setUrunForm({ ad: urun.ad, fiyat: urun.fiyat, kategori: urun.kategori || '', aciklama: urun.aciklama || '', sube_slug: urun.sube_slug || '', gorsel: urun.gorsel || '', etiket: urun.etiket || [], miktar: urun.miktar || '', birim: urun.birim || 'gr' });
+        setUrunForm({ ad: urun.ad, fiyat: urun.fiyat, kategori: urun.kategori || '', aciklama: urun.aciklama || '', sube_slug: urun.sube_slug || '', gorsel: urun.gorsel || '', etiket: urun.etiket || [], miktar: urun.miktar || '', birim: urun.birim || 'gr', kalori: urun.kalori ?? '', kilitli: typeof urun.kilitli === 'boolean' ? (urun.kilitli ? 'evet' : 'hayir') : '', gizli_subeler: urun.gizli_subeler || [], fiyat_serbest: urun.fiyat_serbest || [], menude_subeler: urun.menude_subeler || [] });
         setImageFile(null); setImagePreview(urun.gorsel || null);
         setViewMode('edit');
     }
@@ -256,14 +287,28 @@ export default function ProductsPage() {
         e.preventDefault();
         setSavingUrun(true);
         try {
-            const payload = { ad: urunForm.ad, fiyat: Number(urunForm.fiyat), kategori: urunForm.kategori, aciklama: urunForm.aciklama, etiket: urunForm.etiket || [], miktar: urunForm.miktar ? Number(urunForm.miktar) : null, birim: urunForm.birim || '' };
+            // kalori: '' => null (alan temizlendi), '0' => 0 korunur (suyun kalorisi
+            // gerçekten 0). Bu yüzden `urunForm.kalori ? ... : null` yazılmaz.
+            const payload = { ad: urunForm.ad, fiyat: Number(urunForm.fiyat), kategori: urunForm.kategori, aciklama: urunForm.aciklama, etiket: urunForm.etiket || [], miktar: urunForm.miktar ? Number(urunForm.miktar) : null, birim: urunForm.birim || '', kalori: urunForm.kalori === '' ? null : Number(urunForm.kalori) };
+            // Ürün bazlı kilit — yalnızca admin gönderir. '' => null: bayrak
+            // kaldırılır, kilit yine kategoriden miras alınır.
+            if (role === 'admin') {
+                payload.kilitli = urunForm.kilitli === '' ? null : urunForm.kilitli === 'evet';
+                // Şube bazlı merkez ayarları — yalnızca ortak üründe anlamlı
+                const kat = kategoriler.find((k) => k.id === urunForm.kategori);
+                if (!kat || kat.tur !== 'sube_ozel') {
+                    payload.gizli_subeler = urunForm.gizli_subeler || [];
+                    payload.fiyat_serbest = urunForm.fiyat_serbest || [];
+                    payload.menude_subeler = urunForm.menude_subeler || [];
+                }
+            }
             const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
             if (selectedKat && (selectedKat.tur === 'sube_ozel') && urunForm.sube_slug) {
                 payload.sube_slug = urunForm.sube_slug;
             }
             if (imageFile) {
                 const formData = new FormData();
-                formData.append('image', imageFile);
+                formData.append('image', await gorseliWebpYap(imageFile));
                 formData.append('folder', 'urunler');
                 const { data: uploadData } = await api.post('/upload/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
                 payload.gorsel = uploadData.url;
@@ -295,11 +340,98 @@ export default function ProductsPage() {
         catch (err) { toast.error(err.response?.data?.error || 'Silme işlemi başarısız'); }
     }
 
+    // ── Katalog → menü ──
+    // Şube, merkezin eklediği ortak ürünlerden sattıklarını menüsüne alır.
+    // Tekil çıkarma da çoklu ekleme de aynı uçtan geçer: menü JSON'ı işlem
+    // başına bir kez yenilenir (ürün başına değil).
+    async function menuyeYaz(ids, menude) {
+        const { data } = await api.post('/products/menu', { ids, menude, subeSlug });
+        // Liste ve katalog artık iki ayrı uçtan geliyor; ürün hangi yöne gittiyse
+        // bir listeden çıkıp diğerine geçer. Sunucuya yeniden sormaya gerek yok.
+        if (menude) {
+            const tasinan = katalogUrunleri
+                .filter((u) => ids.includes(u.id))
+                .map((u) => ({ ...u, menude: true }));
+            setKatalogUrunleri((prev) => prev.filter((u) => !ids.includes(u.id)));
+            setUrunler((prev) => [...prev, ...tasinan]);
+        } else {
+            const tasinan = urunler
+                .filter((u) => ids.includes(u.id))
+                .map((u) => ({ ...u, menude: false }));
+            setUrunler((prev) => prev.filter((u) => !ids.includes(u.id)));
+            setKatalogUrunleri((prev) => [...prev, ...tasinan]);
+        }
+        return data.islenen;
+    }
+
+    async function handleKatalogEkle() {
+        const ids = [...katalogSecili];
+        if (ids.length === 0) return;
+        setKatalogBusy(true);
+        try {
+            const n = await menuyeYaz(ids, true);
+            toast.success(`${n} ürün menünüze eklendi`);
+            setKatalogAcik(false); setKatalogSecili(new Set()); setKatalogArama('');
+        } catch (err) { toast.error(err.response?.data?.error || 'Ürün eklenemedi'); }
+        setKatalogBusy(false);
+    }
+
+    // Mevcut / mevcut değil — İYİMSER güncelleme: anahtar anında düşer, istek
+    // başarısız olursa eski değere geri alınır. Sunucu yanıtını beklemek
+    // anahtarı "takılıyor" gibi gösteriyordu.
+    async function handleMevcutToggle(urun, mevcut) {
+        const oncekiMevcutDegil = urun.mevcut_degil || [];
+        setUrunler((prev) => prev.map((u) => (u.id === urun.id ? {
+            ...u,
+            mevcut_degil: mevcut
+                ? oncekiMevcutDegil.filter((s) => s !== subeSlug)
+                : [...oncekiMevcutDegil, subeSlug],
+        } : u)));
+        setMevcutBekleyen((p) => new Set(p).add(urun.id));
+        try {
+            await api.put(`/products/${urun.id}/availability`, { subeSlug, mevcut });
+        } catch (err) {
+            setUrunler((prev) => prev.map((u) => (u.id === urun.id ? { ...u, mevcut_degil: oncekiMevcutDegil } : u)));
+            toast.error(err.response?.data?.error || 'Güncelleme başarısız');
+        }
+        setMevcutBekleyen((p) => { const n = new Set(p); n.delete(urun.id); return n; });
+    }
+
+    async function handleMenudenCikar(urun) {
+        const ok = await confirm(`"${urun.ad}" menünüzden çıkarılsın mı? Katalogdan tekrar ekleyebilirsiniz.`);
+        if (!ok) return;
+        try {
+            await menuyeYaz([urun.id], false);
+            toast.success('Ürün menünüzden çıkarıldı');
+        } catch (err) { toast.error(err.response?.data?.error || 'Ürün çıkarılamadı'); }
+    }
+
     const katMap = {};
     kategoriler.forEach((k) => { katMap[k.id] = k.ad; });
 
-    const filteredUrunler = urunler.filter((u) => {
-        const matchKategori = selectedKategori === 'all' || u.kategori === selectedKategori;
+    // Şube sahibinin listesi = KENDİ menüsündeki ürünler. Menüde olmayan ortak
+    // ürünler "Ürün Ekle" katalog penceresinde durur. `menude` sunucuda hesaplanır
+    // (bkz. backend menudeMi) — burada kural yeniden yazılmaz.
+    const menuUrunleri = urunler.filter((u) => u.menude !== false);
+
+    // Kategori rayı — şube sahibinde YALNIZCA menüsünde ürünü olan kategoriler.
+    // Ortak katalog opt-in olduğu için şubenin hiç ürün almadığı kategoriler
+    // tıklandığında boş liste veriyordu. Ray, arama sonucuna değil şubenin tüm
+    // menüsüne bakar; yoksa kullanıcı yazdıkça sekmeler kaybolurdu.
+    // Admin taksonomiyi bütün görmeli (ürünü kategorilere o dağıtıyor).
+    const doluKatIdleri = new Set(menuUrunleri.map((u) => u.kategori));
+    const gosterilecekKategoriler = role === 'admin'
+        ? kategoriler
+        : kategoriler.filter((k) => doluKatIdleri.has(k.id));
+
+    // Seçili kategori artık rayda yoksa (son ürün menüden çıkarıldı) "Tümü" gibi
+    // davran. Durumu sıfırlamıyoruz: ürün geri eklenince sekme seçili döner.
+    const etkinKategori = selectedKategori !== 'all' && !gosterilecekKategoriler.some((k) => k.id === selectedKategori)
+        ? 'all'
+        : selectedKategori;
+
+    const filteredUrunler = menuUrunleri.filter((u) => {
+        const matchKategori = etkinKategori === 'all' || u.kategori === etkinKategori;
         const matchSearch = !searchTerm || u.ad.toLowerCase().includes(searchTerm.toLowerCase());
         let matchSube = true;
         if (role === 'admin' && selectedSube !== 'all') {
@@ -340,8 +472,10 @@ export default function ProductsPage() {
     const totalPages = Math.ceil(sortedUrunler.length / ITEMS_PER_PAGE);
 
     // ── Toplu işlem yardımcıları ──
-    // Düzenlenebilir (kilitli olmayan) ürünler — şube sahibi ortak ürünleri seçemez
-    const seciliebilir = (u) => !(role !== 'admin' && (kategoriler.find(k => k.id === u.kategori)?.kilitli || u.tur !== 'sube_ozel'));
+    // Kilit kuralı sunucuda çözülür (bkz. backend urunKilitliMi) ve her ürüne
+    // `duzenlenemez` olarak gelir — burada YENİDEN HESAPLAMA, yoksa iki kopya
+    // ayrışır ve arayüz izin verirken backend 403 döner.
+    const seciliebilir = (u) => !u.duzenlenemez;
     const secilebilirSayfa = paginatedUrunler.filter(seciliebilir);
     const tumuSeciliMi = secilebilirSayfa.length > 0 && secilebilirSayfa.every(u => selectedIds.has(u.id));
     const selectedItems = () => urunler.filter(u => selectedIds.has(u.id)).map(u => ({ id: u.id, sube_slug: u.sube_slug }));
@@ -385,7 +519,7 @@ export default function ProductsPage() {
     }
 
     // ── Toplu ekleme ──
-    const yeniBulkRow = () => ({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', miktar: '', birim: 'gr', gorsel: '' });
+    const yeniBulkRow = () => ({ ad: '', fiyat: '', kategori: kategoriler[0]?.id || '', miktar: '', birim: 'gr', kalori: '', gorsel: '' });
     function openBulkAdd() { setBulkAddRows([yeniBulkRow(), yeniBulkRow(), yeniBulkRow()]); setViewMode('bulkAdd'); }
     function addBulkRow() { setBulkAddRows(r => [...r, yeniBulkRow()]); }
     function removeBulkRow(i) { setBulkAddRows(r => r.filter((_, idx) => idx !== i)); }
@@ -399,6 +533,7 @@ export default function ProductsPage() {
                 ad: r.ad.trim(), fiyat: Number(r.fiyat), kategori: r.kategori,
                 sube_slug: role === 'admin' ? (selectedSube !== 'all' && selectedSube !== 'ortak' ? selectedSube : undefined) : subeSlug,
                 miktar: r.miktar ? Number(r.miktar) : null, birim: r.birim || '',
+                kalori: r.kalori === '' ? null : Number(r.kalori),
                 gorsel: r.gorsel && r.gorsel !== 'loading' ? r.gorsel : '',
             }));
             const { data } = await api.post('/products/bulk', { products });
@@ -437,13 +572,13 @@ export default function ProductsPage() {
                 <Card className="flex flex-1 min-h-0 flex-col rounded-2xl">
                     <CardContent className="flex flex-1 min-h-0 flex-col gap-2 pt-5">
                         {/* Sütun başlıkları */}
-                        <div className="hidden md:grid grid-cols-[56px_1fr_110px_1fr_80px_88px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground shrink-0">
-                            <span>Görsel</span><span>Ürün Adı</span><span>Fiyat ₺</span><span>Kategori</span><span>Miktar</span><span>Birim</span><span></span>
+                        <div className="hidden md:grid grid-cols-[56px_1fr_110px_1fr_80px_88px_80px_36px] gap-2 px-1 text-xs font-medium text-muted-foreground shrink-0">
+                            <span>Görsel</span><span>Ürün Adı</span><span>Fiyat ₺</span><span>Kategori</span><span>Miktar</span><span>Birim</span><span>Kalori</span><span></span>
                         </div>
                         {/* Satırlar */}
                         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2 pr-1">
                             {bulkAddRows.map((row, i) => (
-                                <div key={i} className="grid grid-cols-2 md:grid-cols-[56px_1fr_110px_1fr_80px_88px_36px] gap-2 items-center rounded-lg border p-2 md:border-0 md:p-0">
+                                <div key={i} className="grid grid-cols-2 md:grid-cols-[56px_1fr_110px_1fr_80px_88px_80px_36px] gap-2 items-center rounded-lg border p-2 md:border-0 md:p-0">
                                     {/* Görsel — medyadaki "Ürünler" klasöründen seçilir */}
                                     <MediaPicker value={row.gorsel} onSelect={(url) => updateBulkRow(i, 'gorsel', url)}>
                                         <button type="button" className="relative flex size-14 md:size-12 cursor-pointer items-center justify-center overflow-hidden rounded-lg border bg-muted/40 hover:bg-muted">
@@ -473,6 +608,7 @@ export default function ProductsPage() {
                                             <SelectItem value="adet">adet</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                    <Input type="number" min="0" value={row.kalori} onChange={(e) => updateBulkRow(i, 'kalori', e.target.value)} placeholder="kcal" className="h-9 text-sm" />
                                     <Button variant="ghost" size="icon" className="size-9 text-muted-foreground hover:text-destructive justify-self-end" onClick={() => removeBulkRow(i)}><X className="size-4" /></Button>
                                 </div>
                             ))}
@@ -559,6 +695,87 @@ export default function ProductsPage() {
                                                 </select>
                                             </div>
                                         </div>
+
+                                        {/* Ürün bazlı kilit — yalnızca admin, yalnızca şubeye özel ürünlerde.
+                                            Ortak ürünlerde göstermiyoruz: onlar tek doküman olduğu için zaten
+                                            her zaman kilitli, bayrakla açılamaz. */}
+                                        {(() => {
+                                            const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
+                                            if (role !== 'admin' || !selectedKat || selectedKat.tur !== 'sube_ozel') return null;
+                                            const katKilitli = !!selectedKat.kilitli;
+                                            return (
+                                                <div className="space-y-1.5">
+                                                    <Label>Şube düzenleyebilsin mi?</Label>
+                                                    <select
+                                                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
+                                                        value={urunForm.kilitli}
+                                                        onChange={(e) => setUrunForm({ ...urunForm, kilitli: e.target.value })}
+                                                    >
+                                                        <option value="">Kategoriden miras ({katKilitli ? 'kilitli' : 'düzenlenebilir'})</option>
+                                                        <option value="hayir">Şube düzenleyebilir</option>
+                                                        <option value="evet">Kilitli — şube yalnızca mevcut/mevcut değil yapar</option>
+                                                    </select>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {/* Merkez ayarları — yalnızca admin, yalnızca ORTAK ürünlerde.
+                                            Şubeye özel üründe anlamsız: o ürün zaten tek şubeye ait. */}
+                                        {(() => {
+                                            const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
+                                            if (role !== 'admin' || subeler.length === 0) return null;
+                                            if (selectedKat && selectedKat.tur === 'sube_ozel') return null;
+                                            return (
+                                                <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                                                    <p className="text-xs font-medium text-muted-foreground">Şube ayarları</p>
+
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs">
+                                                            Menüsünde gösterecek şubeler
+                                                            <span className="ml-1 font-normal text-muted-foreground">
+                                                                — şube kendi de ekleyip çıkarabilir
+                                                            </span>
+                                                        </Label>
+                                                        <SubeCokluSecici
+                                                            subeler={subeler}
+                                                            secili={urunForm.menude_subeler || []}
+                                                            onChange={(v) => setUrunForm({ ...urunForm, menude_subeler: v })}
+                                                            placeholder="Hiçbiri — hiçbir menüde görünmez"
+                                                        />
+                                                    </div>
+
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs">
+                                                            Bu ürünü göremeyecek şubeler
+                                                            <span className="ml-1 font-normal text-muted-foreground">
+                                                                — panelde de görünmez, açamazlar
+                                                            </span>
+                                                        </Label>
+                                                        <SubeCokluSecici
+                                                            subeler={subeler}
+                                                            secili={urunForm.gizli_subeler || []}
+                                                            onChange={(v) => setUrunForm({ ...urunForm, gizli_subeler: v })}
+                                                            placeholder="Tüm şubeler görebilir"
+                                                        />
+                                                    </div>
+
+                                                    <div className="space-y-1.5">
+                                                        <Label className="text-xs">
+                                                            Kendi fiyatını girebilecek şubeler
+                                                            <span className="ml-1 font-normal text-muted-foreground">
+                                                                — yalnızca kendi menüsünü etkiler
+                                                            </span>
+                                                        </Label>
+                                                        <SubeCokluSecici
+                                                            subeler={subeler}
+                                                            secili={urunForm.fiyat_serbest || []}
+                                                            onChange={(v) => setUrunForm({ ...urunForm, fiyat_serbest: v })}
+                                                            placeholder="Hiçbiri — merkez fiyatı geçerli"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1.5">
                                                 <Label>Miktar <span className="text-muted-foreground font-normal text-xs">(opsiyonel)</span></Label>
@@ -573,11 +790,18 @@ export default function ProductsPage() {
                                                     </select>
                                                 </div>
                                             </div>
+                                            <div className="space-y-1.5">
+                                                <Label>Kalori <span className="text-muted-foreground font-normal text-xs">(opsiyonel)</span></Label>
+                                                <div className="flex items-center gap-1.5">
+                                                    <Input type="number" value={urunForm.kalori} onChange={(e) => setUrunForm({ ...urunForm, kalori: e.target.value })} placeholder="320" min="0" className="flex-1" />
+                                                    <span className="flex h-9 w-16 items-center justify-center rounded-md border border-input px-1.5 text-sm text-muted-foreground">kcal</span>
+                                                </div>
+                                            </div>
                                             {(() => {
                                                 const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
                                                 if (selectedKat && selectedKat.tur === 'sube_ozel' && role === 'admin') {
                                                     return (
-                                                        <div className="space-y-1.5">
+                                                        <div className="space-y-1.5 col-span-2">
                                                             <Label>Şube</Label>
                                                             <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs" value={urunForm.sube_slug} onChange={(e) => setUrunForm({ ...urunForm, sube_slug: e.target.value })} required>
                                                                 <option value="">Şube seçiniz</option>
@@ -633,7 +857,7 @@ export default function ProductsPage() {
                                                 setUrunForm({ ...urunForm, etiket: active ? current.filter(k => k !== tag.key) : [...current, tag.key] });
                                             }} className={`rounded-full border-2 px-3.5 py-1.5 text-xs font-medium transition-all ${active ? 'font-bold shadow-sm' : 'border-border text-muted-foreground hover:border-muted-foreground/40'}`}
                                                 style={active ? { borderColor: tag.color, background: tag.color + '18', color: tag.color } : {}}>
-                                                {tag.emoji} {tag.label}
+                                                {tag.emoji} {tag.ad}
                                             </button>
                                         );
                                     })}
@@ -675,18 +899,32 @@ export default function ProductsPage() {
                                 <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={clearSelection}>Temizle</Button>
                             </div>
                         )}
-                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={async () => {
-                            try { const { data } = await api.get('/products/trash'); setTrashUrunler(data.urunler); setShowTrash(true); }
-                            catch (err) { toast.error('Çöp kutusu yüklenemedi'); }
-                        }}>
-                            <Trash className="size-3.5 mr-1.5" /> Silinenler
-                        </Button>
-                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openBulkAdd}>
-                            <ListPlus className="size-3.5 mr-1.5" /> Toplu Ekle
-                        </Button>
-                        <Button size="sm" className="h-8 text-xs" onClick={openAddUrun}>
-                            <Plus className="size-3.5 mr-1.5" /> Yeni Ürün
-                        </Button>
+                        {/* Ürün OLUŞTURMA ve SİLME yalnızca merkezde. Şube sahibi ortak
+                            katalogtan seçim yapar — "Ürün Ekle" katalog penceresini açar.
+                            "Silinenler" de merkeze ait: şube ortak ürünü silemediği ve
+                            artık şubeye özel ürün oluşturamadığı için çöp kutusuna hiçbir
+                            zaman kayıt düşüremiyor — buton her şubede boş açılıyordu.
+                            (Menüden çıkarma silme değildir; kayıt katalogda kalır.) */}
+                        {role === 'admin' ? (
+                            <>
+                                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={async () => {
+                                    try { const { data } = await api.get('/products/trash'); setTrashUrunler(data.urunler); setShowTrash(true); }
+                                    catch { toast.error('Çöp kutusu yüklenemedi'); }
+                                }}>
+                                    <Trash className="size-3.5 mr-1.5" /> Silinenler
+                                </Button>
+                                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openBulkAdd}>
+                                    <ListPlus className="size-3.5 mr-1.5" /> Toplu Ekle
+                                </Button>
+                                <Button size="sm" className="h-8 text-xs" onClick={openAddUrun}>
+                                    <Plus className="size-3.5 mr-1.5" /> Yeni Ürün
+                                </Button>
+                            </>
+                        ) : (
+                            <Button size="sm" className="h-8 text-xs" onClick={() => { setKatalogSecili(new Set()); setKatalogArama(''); setKatalogAcik(true); loadKatalog(); }}>
+                                <Plus className="size-3.5 mr-1.5" /> Ürün Ekle
+                            </Button>
+                        )}
                     </CardAction>
                 </CardHeader>
                 <CardContent className="flex flex-1 min-h-0 flex-col gap-4 px-0">
@@ -695,23 +933,36 @@ export default function ProductsPage() {
                     <Spinner className="size-8" />
                     <p className="text-sm text-muted-foreground">Ürünler yükleniyor...</p>
                 </div>
-            ) : urunler.length === 0 ? (
+            ) : menuUrunleri.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
                     <span className="text-4xl">📋</span>
-                    <p>Henüz ürün eklenmemiş</p>
+                    {/* Katalog sayısı burada gösterilmiyor: katalog artık yalnızca
+                        "Ürün Ekle" açılınca yükleniyor (okuma tasarrufu). */}
+                    {role !== 'admin' ? (
+                        <>
+                            <p>Menünüzde ürün yok</p>
+                            <p className="text-xs">"Ürün Ekle" ile katalogdan sattıklarınızı seçin.</p>
+                        </>
+                    ) : (
+                        <p>Henüz ürün eklenmemiş</p>
+                    )}
                 </div>
             ) : (
                 <div className="flex flex-col gap-4 flex-1 min-h-0">
                     {/* Toolbar: kategori segment toggle + arama + şube */}
                     <div className="flex flex-col gap-3 px-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="max-w-full overflow-x-auto">
+                        <KaydirilirRay className="max-w-full">
                             <div className="inline-flex w-max items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
-                                {[{ id: 'all', ad: 'Tümü' }, ...kategoriler].map((k) => {
-                                    const active = selectedKategori === k.id;
+                                {[{ id: 'all', ad: 'Tümü' }, ...gosterilecekKategoriler].map((k) => {
+                                    const active = etkinKategori === k.id;
                                     return (
                                         <button
                                             key={k.id}
-                                            onClick={() => setSelectedKategori(k.id)}
+                                            onClick={(e) => {
+                                                setSelectedKategori(k.id);
+                                                // Yarım görünen çipe tıklanınca tamamı görünür alana gelsin
+                                                e.currentTarget.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
+                                            }}
                                             className={`rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
                                         >
                                             {k.ad}
@@ -719,7 +970,7 @@ export default function ProductsPage() {
                                     );
                                 })}
                             </div>
-                        </div>
+                        </KaydirilirRay>
                         <div className="flex items-center gap-2 shrink-0">
                             <div className="relative w-full sm:w-56">
                                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
@@ -766,8 +1017,12 @@ export default function ProductsPage() {
                         <Table className="**:data-[slot=table-cell]:px-4 **:data-[slot=table-head]:px-4">
                             <TableHeader className="border-t **:data-[slot=table-head]:h-11 **:data-[slot=table-head]:font-normal **:data-[slot=table-head]:text-foreground **:data-[slot=table-head]:text-sm">
                                 <TableRow>
-                                    <TableHead className="w-10">
-                                        <Checkbox checked={tumuSeciliMi} onCheckedChange={toggleSelectAllPage} aria-label="Tümünü seç" disabled={secilebilirSayfa.length === 0} />
+                                    {/* Baş sütun: admin'de toplu seçim, şube sahibinde mevcutluk anahtarı.
+                                        Şube ortak ürünü toplu işleme alamadığı için o kutu zaten hep boştu. */}
+                                    <TableHead className={role === 'admin' ? 'w-10' : 'w-20'}>
+                                        {role === 'admin'
+                                            ? <Checkbox checked={tumuSeciliMi} onCheckedChange={toggleSelectAllPage} aria-label="Tümünü seç" disabled={secilebilirSayfa.length === 0} />
+                                            : <span className="text-muted-foreground">Mevcut</span>}
                                     </TableHead>
                                     <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('ad')}>
                                         <span className="inline-flex items-center">Ürün <SortIcon col="ad" /></span>
@@ -779,7 +1034,6 @@ export default function ProductsPage() {
                                         <span className="inline-flex items-center">Kategori <SortIcon col="kategori" /></span>
                                     </TableHead>
                                     {role === 'admin' && <TableHead>Şube</TableHead>}
-                                    {role !== 'admin' && subeSlug && <TableHead>Durum</TableHead>}
                                     <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('tarih')}>
                                         <span className="inline-flex items-center">Tarih <SortIcon col="tarih" /></span>
                                     </TableHead>
@@ -790,21 +1044,32 @@ export default function ProductsPage() {
                                 {paginatedUrunler.map((urun) => {
                                     const mevcutDegil = urun.mevcut_degil || [];
                                     const buSubedeMevcut = !mevcutDegil.includes(subeSlug);
-                                    const isKilitli = role !== 'admin' && (kategoriler.find(k => k.id === urun.kategori)?.kilitli || urun.tur !== 'sube_ozel');
+                                    const isKilitli = !!urun.duzenlenemez; // sunucudan gelir
 
+                                    // Mevcut değilse satır soluklaşır AMA ilk hücre hariç: anahtar artık
+                                    // asıl kontrol, yarı saydam olursa kapalıyken zor okunuyor.
                                     return (
                                         <TableRow
                                             key={urun.id}
-                                            className={`group transition-colors ${!buSubedeMevcut ? 'opacity-50' : ''} ${!isKilitli ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+                                            className={`group transition-colors ${!buSubedeMevcut ? '[&>td:not(:first-child)]:opacity-50' : ''} ${!isKilitli ? 'cursor-pointer hover:bg-muted/40' : ''}`}
                                             onClick={(e) => {
                                                 if (e.target.closest('button')) return;
                                                 if (!isKilitli) openEditUrun(urun);
                                             }}
                                         >
                                             <TableCell onClick={(e) => e.stopPropagation()}>
-                                                {!isKilitli && (
+                                                {role !== 'admin' && subeSlug && urun.tur !== 'sube_ozel' ? (
+                                                    // Mevcutluk anahtarı — /availability yalnızca ortak üründe
+                                                    // çalışır, eski şubeye özel kayıtlar seçim kutusunda kalır.
+                                                    <Switch
+                                                        checked={buSubedeMevcut}
+                                                        onCheckedChange={(v) => handleMevcutToggle(urun, v)}
+                                                        disabled={mevcutBekleyen.has(urun.id)}
+                                                        aria-label={`${urun.ad} — ${buSubedeMevcut ? 'mevcut' : 'mevcut değil'}`}
+                                                    />
+                                                ) : !isKilitli ? (
                                                     <Checkbox checked={selectedIds.has(urun.id)} onCheckedChange={() => toggleSelect(urun.id)} aria-label={`${urun.ad} seç`} />
-                                                )}
+                                                ) : null}
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-3">
@@ -813,24 +1078,62 @@ export default function ProductsPage() {
                                                         : <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted text-xl">🍮</div>}
                                                     <div className="flex flex-col gap-1 min-w-0">
                                                         <span className="font-medium text-foreground truncate">{urun.ad}</span>
-                                                        {urun.etiket?.length > 0 && (
-                                                            <div className="flex gap-1 flex-wrap">
-                                                                {urun.etiket.map(key => {
-                                                                    const tag = ETIKETLER.find(t => t.key === key);
-                                                                    return tag ? (
-                                                                        <span key={key} className="text-[10px] px-1.5 py-px rounded-full font-semibold" style={{ background: tag.color + '18', color: tag.color }}>
-                                                                            {tag.emoji} {tag.label}
+                                                        {/* Rozetler satırı şişirmesin: en fazla 2 tanesi kısa adıyla
+                                                            gösterilir, gerisi "+N" olur (tamamı tooltip'te). Tam adlar
+                                                            uzun olduğu için ("Haftanın En Çok Tercih Edileni") 8 etiketli
+                                                            üründe satır 45px'ten 150px'e çıkıyordu. */}
+                                                        {urun.etiket?.length > 0 && (() => {
+                                                            const GORUNEN = 2;
+                                                            const tumu = urun.etiket.map((k) => ETIKETLER.find((t) => t.key === k)).filter(Boolean);
+                                                            if (tumu.length === 0) return null;
+                                                            const kalan = tumu.length - GORUNEN;
+                                                            return (
+                                                                <div className="flex gap-1 flex-wrap">
+                                                                    {tumu.slice(0, GORUNEN).map((tag) => (
+                                                                        <span key={tag.key} className="text-[10px] px-1.5 py-px rounded-full font-semibold whitespace-nowrap" style={{ background: tag.color + '18', color: tag.color }}>
+                                                                            {tag.emoji} {tag.kisa}
                                                                         </span>
-                                                                    ) : null;
-                                                                })}
-                                                            </div>
-                                                        )}
+                                                                    ))}
+                                                                    {kalan > 0 && (
+                                                                        <span
+                                                                            className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium whitespace-nowrap text-muted-foreground"
+                                                                            title={tumu.map((t) => t.ad).join(', ')}
+                                                                        >
+                                                                            +{kalan}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })()}
                                                     </div>
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                <span className="font-medium tabular-nums text-foreground">{Math.round(urun.fiyat)} ₺</span>
+                                                {/* Şube kendi fiyatını görür (etkinFiyat sunucuda çözülür).
+                                                    Merkez fiyatından farklıysa küçük bir not düşülür. */}
+                                                <span className="font-medium tabular-nums text-foreground">
+                                                    {Math.round(urun.etkinFiyat ?? urun.fiyat)} ₺
+                                                </span>
                                                 {urun.miktar ? <span className="text-xs text-muted-foreground ml-1">/ {urun.miktar}{urun.birim}</span> : null}
+                                                {/* != null: 0 kcal geçerli bir değer, gizlenmemeli */}
+                                                {urun.kalori != null ? <span className="text-xs text-muted-foreground ml-1">· {urun.kalori} kcal</span> : null}
+                                                {role !== 'admin' && urun.etkinFiyat != null && urun.etkinFiyat !== urun.fiyat && (
+                                                    <span className="ml-1.5 text-[11px] text-muted-foreground">
+                                                        (merkez {Math.round(urun.fiyat)} ₺)
+                                                    </span>
+                                                )}
+                                                {/* Fiyat düzenleme, İşlemler sütunundaki etiket ikonu yerine fiyatın
+                                                    yanında: hangi alanı değiştirdiği ikondan anlaşılmıyordu. */}
+                                                {role !== 'admin' && urun.fiyatDuzenlenebilir && (
+                                                    <Button
+                                                        variant="ghost" size="icon"
+                                                        className="ml-1.5 size-6 align-middle text-muted-foreground hover:text-foreground"
+                                                        title="Şube fiyatını düzenle"
+                                                        onClick={() => { setFiyatUrun(urun); setFiyatDeger(String(Math.round(urun.etkinFiyat ?? urun.fiyat))); }}
+                                                    >
+                                                        <Pencil className="size-3" />
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                             <TableCell>
                                                 <span className="text-sm text-muted-foreground">{katMap[urun.kategori] || '—'}</span>
@@ -839,14 +1142,17 @@ export default function ProductsPage() {
                                                 <TableCell>
                                                     {urun.tur === 'sube_ozel' && urun.sube_slug
                                                         ? <DotBadge tone="violet">{urun.sube_slug}</DotBadge>
-                                                        : <DotBadge tone="neutral">Ortak</DotBadge>}
-                                                </TableCell>
-                                            )}
-                                            {role !== 'admin' && subeSlug && (
-                                                <TableCell>
-                                                    <DotBadge tone={buSubedeMevcut ? 'green' : 'red'}>
-                                                        {buSubedeMevcut ? 'Mevcut' : 'Mevcut Değil'}
-                                                    </DotBadge>
+                                                        : (() => {
+                                                            // Ortak ürünün kaç şubenin menüsünde olduğu — merkezin
+                                                            // "bu ürün nerede satılıyor" sorusuna tek bakışta yanıt.
+                                                            const n = (urun.menude_subeler || []).length;
+                                                            const hepsi = subeler.length > 0 && n === subeler.length;
+                                                            return (
+                                                                <DotBadge tone={n === 0 ? 'red' : hepsi ? 'green' : 'neutral'}>
+                                                                    {n === 0 ? 'Hiçbir menüde' : hepsi ? `Tüm şubeler (${n})` : `${n} şube`}
+                                                                </DotBadge>
+                                                            );
+                                                        })()}
                                                 </TableCell>
                                             )}
                                             <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
@@ -859,19 +1165,15 @@ export default function ProductsPage() {
                                                             <Trash2 className="size-3.5" />
                                                         </Button>
                                                     )}
-                                                    {role !== 'admin' && subeSlug && (
-                                                        <Button variant="ghost" size="icon" className="size-7" title={buSubedeMevcut ? 'Mevcut Değil Yap' : 'Mevcut Yap'} onClick={async () => {
-                                                            try {
-                                                                await api.put(`/products/${urun.id}/availability`, { subeSlug, mevcut: !buSubedeMevcut });
-                                                                setUrunler(prev => prev.map(u => u.id === urun.id ? {
-                                                                    ...u,
-                                                                    mevcut_degil: buSubedeMevcut
-                                                                        ? [...(u.mevcut_degil || []), subeSlug]
-                                                                        : (u.mevcut_degil || []).filter(s => s !== subeSlug)
-                                                                } : u));
-                                                            } catch (err) { toast.error('Güncelleme başarısız'); }
-                                                        }}>
-                                                            {buSubedeMevcut ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                                                    {/* Menüden çıkarma — ürünü SİLMEZ, yalnızca bu şubenin
+                                                        menüsünden kaldırır. Katalogdan geri eklenebilir. */}
+                                                    {role !== 'admin' && subeSlug && urun.tur !== 'sube_ozel' && (
+                                                        <Button
+                                                            variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive"
+                                                            title="Menüden çıkar"
+                                                            onClick={() => handleMenudenCikar(urun)}
+                                                        >
+                                                            <ListMinus className="size-3.5" />
                                                         </Button>
                                                     )}
                                                 </div>
@@ -920,6 +1222,82 @@ export default function ProductsPage() {
                 </CardContent>
             </Card>
 
+            {/* Katalogdan Ürün Ekle — şube sahibi.
+                Yeni ürün OLUŞTURMAZ: merkezin ortak kataloğa eklediği, bu şubenin
+                menüsünde henüz olmayan ürünleri listeler. Seçilenler tek istekte
+                eklenir (menü JSON'ı bir kez yenilensin diye). */}
+            <Dialog open={katalogAcik} onOpenChange={(o) => { if (!o) { setKatalogAcik(false); setKatalogSecili(new Set()); } }}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2"><Store className="size-4" /> Katalogdan Ürün Ekle</DialogTitle>
+                    </DialogHeader>
+                    {(() => {
+                        const q = katalogArama.trim().toLocaleLowerCase('tr');
+                        const liste = katalogUrunleri.filter((u) =>
+                            !q || (u.ad || '').toLocaleLowerCase('tr').includes(q) || (katMap[u.kategori] || '').toLocaleLowerCase('tr').includes(q)
+                        );
+                        return (
+                            <div className="space-y-3">
+                                <p className="text-xs text-muted-foreground">
+                                    Ürünleri merkez ekler. Buradan yalnızca şubenizde sattıklarınızı seçersiniz.
+                                </p>
+                                <div className="relative">
+                                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                                    <Input value={katalogArama} onChange={(e) => setKatalogArama(e.target.value)} placeholder="Ürün veya kategori ara..." className="h-9 pl-8 text-sm" autoFocus />
+                                </div>
+                                {katalogYukleniyor ? (
+                                    <p className="py-8 text-center text-sm text-muted-foreground">Katalog yükleniyor...</p>
+                                ) : katalogUrunleri.length === 0 ? (
+                                    <p className="py-8 text-center text-sm text-muted-foreground">
+                                        Katalogdaki tüm ürünler zaten menünüzde.
+                                    </p>
+                                ) : liste.length === 0 ? (
+                                    <p className="py-8 text-center text-sm text-muted-foreground">Sonuç bulunamadı</p>
+                                ) : (
+                                    <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
+                                        {liste.map((u) => {
+                                            const secili = katalogSecili.has(u.id);
+                                            return (
+                                                <button
+                                                    key={u.id}
+                                                    type="button"
+                                                    onClick={() => setKatalogSecili((prev) => {
+                                                        const n = new Set(prev);
+                                                        n.has(u.id) ? n.delete(u.id) : n.add(u.id);
+                                                        return n;
+                                                    })}
+                                                    className={`flex w-full items-center gap-3 rounded-lg border p-2 text-left transition-colors ${secili ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+                                                >
+                                                    <span className={`flex size-4 shrink-0 items-center justify-center rounded-sm border ${secili ? 'border-primary bg-primary text-primary-foreground' : 'border-input'}`}>
+                                                        {secili && <Check className="size-3" />}
+                                                    </span>
+                                                    {u.gorsel
+                                                        ? <img src={proxyImageUrl(u.gorsel)} alt="" className="size-9 shrink-0 rounded-md object-cover ring-1 ring-border" />
+                                                        : <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-base">🍮</span>}
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="block truncate text-sm font-medium text-foreground">{u.ad}</span>
+                                                        <span className="block text-xs text-muted-foreground">{katMap[u.kategori] || '—'}</span>
+                                                    </span>
+                                                    <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
+                                                        {Math.round(u.etkinFiyat ?? u.fiyat)} ₺
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+                    <div className="flex justify-end gap-2 pt-1">
+                        <Button variant="outline" onClick={() => { setKatalogAcik(false); setKatalogSecili(new Set()); }}>İptal</Button>
+                        <Button onClick={handleKatalogEkle} disabled={katalogBusy || katalogSecili.size === 0}>
+                            {katalogBusy ? 'Ekleniyor...' : `${katalogSecili.size > 0 ? katalogSecili.size + ' ' : ''}Ürünü Ekle`}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {/* Trash Dialog */}
             <Dialog open={showTrash} onOpenChange={(open) => !open && setShowTrash(false)}>
                 <DialogContent className="sm:max-w-lg">
@@ -947,6 +1325,13 @@ export default function ProductsPage() {
                                                         {deletedDate.toLocaleDateString('tr-TR')} • {daysLeft > 0 ? `${daysLeft} gün kaldı` : 'Bugün silinecek'}
                                                     </div>
                                                 </div>
+                                                {/* Butonlar yalnızca kullanıcının gerçekten geri alabileceği
+                                                    kayıtlarda. `duzenlenemez` sunucudan gelir — kural burada
+                                                    yeniden yazılsaydı arayüz izin verip backend 403 dönerdi. */}
+                                                {u.duzenlenemez ? (
+                                                    <span className="text-xs text-muted-foreground">Geri alınamaz</span>
+                                                ) : (
+                                                <>
                                                 <Button variant="outline" size="sm" className="h-7 text-xs" onClick={async () => {
                                                     try {
                                                         const queryParam = u.tur === 'sube_ozel' && u.sube_slug ? `?subeSlug=${u.sube_slug}` : '';
@@ -971,6 +1356,8 @@ export default function ProductsPage() {
                                                 }}>
                                                     <Trash2 className="size-3" />Sil
                                                 </Button>
+                                                </>
+                                                )}
                                             </div>
                                         );
                                     })}
@@ -978,6 +1365,61 @@ export default function ProductsPage() {
                             </>
                         )}
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Şube fiyatı — merkez izin verdiyse şube kendi fiyatını girer.
+                Yazılan değer ortak ürünün merkez fiyatını DEĞİL, yalnızca bu
+                şubenin override'ını günceller (backend fiyat_override'a yazar). */}
+            <Dialog open={!!fiyatUrun} onOpenChange={(o) => !o && setFiyatUrun(null)}>
+                <DialogContent className="sm:max-w-sm">
+                    {fiyatUrun && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <Tag className="size-4" /> Şube Fiyatı
+                                </DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-3">
+                                <p className="text-sm text-muted-foreground">
+                                    <span className="font-medium text-foreground">{fiyatUrun.ad}</span>
+                                    {' — '}merkez fiyatı {Math.round(fiyatUrun.fiyat)} ₺
+                                </p>
+                                <div className="space-y-1.5">
+                                    <Label>Şubenizdeki fiyat (₺)</Label>
+                                    <Input
+                                        type="number" min="0" step="0.01" autoFocus
+                                        value={fiyatDeger}
+                                        onChange={(e) => setFiyatDeger(e.target.value)}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Yalnızca kendi menünüzü etkiler, diğer şubeler değişmez.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2 pt-1">
+                                <Button variant="outline" onClick={() => setFiyatUrun(null)}>İptal</Button>
+                                <Button
+                                    disabled={fiyatKaydediliyor || fiyatDeger === ''}
+                                    onClick={async () => {
+                                        setFiyatKaydediliyor(true);
+                                        try {
+                                            const { data } = await api.put(`/products/${fiyatUrun.id}`, { fiyat: Number(fiyatDeger) });
+                                            const yeni = data?.urun?.etkinFiyat ?? Number(fiyatDeger);
+                                            setUrunler((prev) => prev.map((u) => (u.id === fiyatUrun.id ? { ...u, etkinFiyat: yeni } : u)));
+                                            toast.success('Fiyat güncellendi');
+                                            setFiyatUrun(null);
+                                        } catch (err) {
+                                            toast.error(err.response?.data?.error || 'Fiyat güncellenemedi');
+                                        }
+                                        setFiyatKaydediliyor(false);
+                                    }}
+                                >
+                                    {fiyatKaydediliyor ? 'Kaydediliyor...' : 'Kaydet'}
+                                </Button>
+                            </div>
+                        </>
+                    )}
                 </DialogContent>
             </Dialog>
 
