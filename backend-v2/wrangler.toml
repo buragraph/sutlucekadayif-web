@@ -1,0 +1,39 @@
+# Faz 3 / C1 — Cloudflare Workers hedefi.
+# Worker ADI SABİT: S4'te Google OAuth izinli URI listesine bu adla kaydedildi,
+# ad değişirse o kayıt bozulur.
+name = "sutlucekadayif-api"
+main = "worker.js"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+# R2 NATIVE BINDING KULLANILAMIYOR — HESAP AYRIMI:
+#   R2 kovası      → Cloudflare hesabı aea21fdd…7ac5
+#   wrangler oturumu → 5df506e5…72a4 (Dijitalreklam@sutlucekadayif.com)
+# Binding yalnızca kovayla AYNI hesapta çalışır. Bu yüzden Worker şimdilik S3
+# API'siyle konuşuyor (config/depo-s3.js + R2_* secret'ları). Worker, kovanın
+# olduğu hesaba taşınırsa aşağıdaki blok açılıp depo-binding.js'e dönülür:
+# [[r2_buckets]]
+# binding = "DEPO"
+# bucket_name = "sutlucekadayif-web"
+
+# Zamanlanmış iş — Türkiye'de yaz saati uygulaması YOK (sabit UTC+3):
+# 04:00 UTC = 07:00 TR, Meta/Google çekimi.
+#
+# GECE YEDEĞİ ARTIK BURADA DEĞİL: 1,8 MB JSON + gzip Workers'ın istek başına CPU
+# bütçesi için ağır ve S3 listeleme (budama) Workers'ta DOMParser olmadığı için
+# düşüyordu. Yedek → GitHub Actions (.github/workflows/gece-yedegi.yml).
+[triggers]
+crons = ["0 4 * * *"]
+
+[vars]
+FRONTEND_URL = "https://sutlucekadayif-cms.dijitalreklam.workers.dev"
+MENU_R2_PREFIX = "menu"
+CRON_AKTIF = "true"           # C3 yapıldı: çekimin sahibi Worker (api2 false)
+
+# Gizli anahtarlar `wrangler secret put` ile konur, bu dosyada TUTULMAZ:
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, R2_PUBLIC_URL,
+#   GEMINI_API_KEY (varsa) …
+# Liste .env.example ile senkron tutulmalı.
+
+[observability]
+enabled = true
