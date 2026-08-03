@@ -4,8 +4,35 @@ import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import admin from 'firebase-admin';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import { regenerateAffectedMenuJsons, regenerateMenuJsons, regenerateMenuJson } from '../services/menu-cache.js';
+import { getKatalogUrunleri, bumpKatalogVersion } from '../services/katalog-cache.js';
 
 const router = Router();
+
+/**
+ * Başarılı her mutasyondan sonra katalog sürümünü ilerletir.
+ *
+ * Tek tek route'lara `bumpKatalogVersion()` serpiştirmek yerine tek yerde
+ * duruyor: bu dosyada ortak ürüne yazan 15'ten fazla nokta var ve unutulan bir
+ * çağrı, katalogu tüm instance'larda bayat bırakır — kullanıcı eklediği ürünü
+ * listede göremez. Fazladan sürüm artışı (ör. yalnızca şubeye özel ürün
+ * değiştiğinde) zararsızdır; sadece bir sonraki katalog isteğinde yeniden
+ * okunur.
+ *
+ * Sürüm, yanıt gönderilmeden ÖNCE yazılır. `res.on('finish')` daha ucuz olurdu
+ * ama Cloud Run yanıttan sonra instance'ı dondurabilir ve yazma hiç gitmeyebilir.
+ */
+router.use((req, res, next) => {
+    if (req.method === 'GET') return next();
+    const orijinalJson = res.json.bind(res);
+    res.json = (data) => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+            // Sürüm yazılamazsa istek yine de başarılı sayılır (bkz. bumpKatalogVersion)
+            return bumpKatalogVersion().then(() => orijinalJson(data));
+        }
+        return orijinalJson(data);
+    };
+    next();
+});
 
 /**
  * Helper: Ürün dokümanını bul — önce urunler, sonra subeler/{slug}/urunler
@@ -23,16 +50,20 @@ async function findProduct(id, subeSlug) {
     const mainDoc = await mainRef.get();
     if (mainDoc.exists) return { docRef: mainRef, doc: mainDoc, source: 'ortak' };
     
-    // subeSlug yoksa tüm şubelerde ara (fallback) — paralel
+    // subeSlug yoksa tüm şubelerde ara (fallback) — TEK koleksiyon-grubu sorgusu.
+    // Önceden şube listesi okunup her şubede ayrı doküman get'i yapılıyordu:
+    // 88 şube = 88 + 88 okuma, üstelik ürün bulunamasa bile. Şubeye özel ürünler
+    // (geçmişten kalan birkaç kayıt) tek sorguda gelir; okuma dönen doküman
+    // sayısı kadardır.
     if (!subeSlug) {
-        const subeSnap = await db.collection('subeler').get();
-        const results = await Promise.all(subeSnap.docs.map(async (subeDoc) => {
-            const ref = subeDoc.ref.collection('urunler').doc(id);
-            const d = await ref.get();
-            return d.exists ? { docRef: ref, doc: d, source: 'sube_ozel', subeSlug: subeDoc.id } : null;
-        }));
-        const hit = results.find(Boolean);
-        if (hit) return hit;
+        const grupSnap = await db.collectionGroup('urunler').get();
+        const hit = grupSnap.docs.find((d) => d.id === id && d.ref.parent.parent?.id);
+        if (hit) {
+            return {
+                docRef: hit.ref, doc: hit, source: 'sube_ozel',
+                subeSlug: hit.ref.parent.parent.id,
+            };
+        }
     }
     return null;
 }
@@ -127,6 +158,19 @@ const subeDizisi = (v) => [...new Set(
 )];
 
 /**
+ * Opsiyonel sayısal alan (kalori gibi): boş ya da geçersiz girdi `null` olur.
+ *
+ * `v ? Number(v) : null` yazılmaz çünkü iki hata yapar: 0'ı boş sayıp düşürür
+ * (su ve sade sodanın kalorisi gerçekten 0) ve sayı olmayan girdiyi NaN olarak
+ * Firestore'a yazar — menüde "NaN kcal" görünür.
+ */
+const opsiyonelSayi = (v) => {
+    if (v === undefined || v === null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+/**
  * Tüm şube slug'ları — yeni ortak ürünün varsayılan `menude_subeler` değeri.
  * `.select()` alan çekmez, yalnızca doküman kimliklerini getirir (ucuz okuma).
  */
@@ -169,7 +213,17 @@ function canMutateProduct(req, found, katKilit) {
 
 /**
  * GET /api/products
- * Admin: tüm ürünler | Şube sahibi: ortak + kendi şubesi
+ * Admin: tüm ürünler | Şube sahibi: YALNIZCA menüsündeki ürünler
+ *
+ * Şube sahibi için katalogun tamamı okunmaz. Eskiden bütün `ortak_urunler`
+ * çekilip `menudeMi()` ile bellekte eleniyordu: 510 ürünlük katalogta şube
+ * başına 510 okuma, 88 şube günde birer kez açsa 46 bin okuma — tek başına
+ * Firestore'un günlük ücretsiz kotasını doldurmaya yetiyordu. `array-contains`
+ * tek alanlık otomatik indeksi kullanır (bileşik indeks istemez) ve şube başına
+ * ~44 okumaya iner.
+ *
+ * Katalogun tamamı ürün EKLEME ekranı için hâlâ gerekli; o artık ayrı ve
+ * cache'li `GET /products/katalog` yolundan gelir (bkz. aşağısı).
  */
 router.get(
     '/',
@@ -178,28 +232,35 @@ router.get(
     asyncHandler(async (req, res) => {
         let urunler = [];
 
-        // Ortak ürünler (ana collection)
-        const ortakSnap = await db.collection('ortak_urunler').get();
-        ortakSnap.forEach((d) => {
-            const data = d.data();
-            if (!data.deletedAt) urunler.push({ id: d.id, tur: 'ortak', ...data });
-        });
+        // Ortak ürünler — admin hepsini, şube yalnızca menüsündekileri okur
+        // Admin katalogun tamamını görür → paylaşımlı bellek kopyası (sürüm başına
+        // 1 okuma). Şube yalnızca menüsündekileri okur; şubesi atanmamış
+        // kullanıcı için hiç sorgu atılmaz (boş sorgu da 1 okuma faturalanır).
+        if (req.user.role === 'admin') {
+            urunler.push(...await getKatalogUrunleri());
+        } else if (req.user.subeSlug) {
+            const snap = await db.collection('ortak_urunler')
+                .where('menude_subeler', 'array-contains', req.user.subeSlug).get();
+            snap.forEach((d) => {
+                const data = d.data();
+                if (!data.deletedAt) urunler.push({ id: d.id, tur: 'ortak', ...data });
+            });
+        }
 
         if (req.user.role === 'admin') {
             const requestedSube = req.query.sube || 'all';
 
             if (requestedSube === 'all') {
-                // Admin: tüm şubelerin özel ürünlerini paralel getir
-                const subeSnap = await db.collection('subeler').get();
-                const promises = subeSnap.docs.map(subeDoc => subeDoc.ref.collection('urunler').get());
-                const snaps = await Promise.all(promises);
-                
-                snaps.forEach((urunSnap, i) => {
-                    const subeId = subeSnap.docs[i].id;
-                    urunSnap.forEach((d) => {
-                        const data = d.data();
-                        if (!data.deletedAt) urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: subeId, ...data });
-                    });
+                // Şubeye özel ürünlerin TAMAMI tek koleksiyon-grubu sorgusuyla.
+                // Önceden 88 ayrı subcollection sorgusu atılıyordu; Firestore boş
+                // sorguya da 1 okuma faturaladığı için çoğu boş dönen bu sorgular
+                // 88 okumayı boşa harcıyordu.
+                const ozelSnap = await db.collectionGroup('urunler').get();
+                ozelSnap.forEach((d) => {
+                    const data = d.data();
+                    const subeId = d.ref.parent.parent?.id;
+                    if (!subeId || data.deletedAt) return;
+                    urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: subeId, ...data });
                 });
             } else if (requestedSube !== 'ortak') {
                 // Sadece seçili şubenin özel ürünlerini getir
@@ -244,6 +305,47 @@ router.get(
 );
 
 /**
+ * GET /api/products/katalog
+ * Şubenin menüsüne EKLEYEBİLECEĞİ ortak ürünler ("Ürün Ekle" penceresi).
+ *
+ * Bu liste tüm şubelerde aynı veriden üretilir, o yüzden tek cache 88 şubeye
+ * birden yeter: katalog okuması "şube sayısı × katalog" yerine "sürüm başına
+ * bir kez" olur. Cache'in doğruluğu TTL'e değil katalog sürümüne bağlıdır
+ * (bkz. services/katalog-version.js) — ürün değişince tüm instance'larda
+ * anında geçersizleşir.
+ *
+ * Menüdeki ürünler `GET /` yolundan gelir; burası yalnızca menüde OLMAYANLARI
+ * döndürür, iki liste çakışmaz.
+ */
+router.get(
+    '/katalog',
+    verifyToken,
+    requirePermission('products.view'),
+    asyncHandler(async (req, res) => {
+        // Paylaşımlı bellek kopyası — Firestore okuması sürüm başına bir kez
+        const hepsi = await getKatalogUrunleri();
+        const katKilit = await katKilitHaritasi(req);
+
+        const cikti = [];
+        for (const u of hepsi) {
+            // Merkezin bu şubeden gizlediği ürün katalogda da görünmez
+            if (urunGizliMi(req.user, u)) continue;
+            // Zaten menüde olanlar listede duruyor; katalog eklenebilecekleri gösterir
+            if (menudeMi(req.user, u)) continue;
+            cikti.push(yanitProjeksiyonu(req.user, {
+                ...u,
+                duzenlenemez: urunKilitliMi(req.user, u, katKilit),
+                fiyatDuzenlenebilir: fiyatDuzenlenebilirMi(req.user, u),
+                etkinFiyat: etkinFiyat(req.user, u),
+                menude: false,
+            }));
+        }
+
+        res.json({ urunler: cikti });
+    })
+);
+
+/**
  * POST /api/products
  * Yeni ürün oluştur — kategori türüne göre ortak veya şubeye özel
  * Body: { ad, fiyat, kategori, aciklama?, etiket?, sube_slug? }
@@ -253,7 +355,7 @@ router.post(
     verifyToken,
     requirePermission('products.create'),
     asyncHandler(async (req, res) => {
-        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kilitli,
+        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kalori, kilitli,
                 gizli_subeler, fiyat_serbest, menude_subeler } = req.body;
 
         if (!ad || !ad.trim()) {
@@ -290,6 +392,7 @@ router.post(
             gorsel: gorsel || '',
             miktar: miktar ? Number(miktar) : null,
             birim: birim || '',
+            kalori: opsiyonelSayi(kalori),
             createdAt: new Date().toISOString(),
         };
 
@@ -441,6 +544,7 @@ router.post(
                 gorsel: p.gorsel || '',
                 miktar: p.miktar ? Number(p.miktar) : null,
                 birim: p.birim || '',
+                kalori: opsiyonelSayi(p.kalori),
                 createdAt: new Date().toISOString(),
             };
 
@@ -571,7 +675,7 @@ router.put(
     requirePermission('products.edit'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
-        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kilitli,
+        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kalori, kilitli,
                 gizli_subeler, fiyat_serbest, menude_subeler } = req.body;
 
         // Şube sahibi yalnızca kendi şubesinde arar (başka şubeyi hedefleyemez)
@@ -635,6 +739,7 @@ router.put(
         if (gorsel !== undefined) updateData.gorsel = gorsel;
         if (miktar !== undefined) updateData.miktar = miktar ? Number(miktar) : null;
         if (birim !== undefined) updateData.birim = birim;
+        if (kalori !== undefined) updateData.kalori = opsiyonelSayi(kalori);
         // Kilit bayrağını yalnızca admin değiştirebilir (bkz. urunKilitliMi).
         // null gönderilirse bayrak kaldırılır → kilit yine kategoriden miras alınır.
         if (req.user.role === 'admin' && kilitli !== undefined) {
@@ -758,6 +863,8 @@ router.get(
         // görmesi hem çalışmayan "Geri Al"/"Sil" butonları demekti, hem de
         // `...data` ile merkezin gizleme/fiyat/menü listelerini sızdırıyordu.
         if (req.user.role === 'admin') {
+            // Silinmiş ürünler katalog cache'inde YOK (orası deletedAt'i eler),
+            // bu yüzden çöp kutusu doğrudan okur. Çöp kutusu seyrek açılır.
             const mainSnap = await db.collection('ortak_urunler').get();
             mainSnap.forEach((d) => {
                 const data = d.data();
@@ -766,23 +873,28 @@ router.get(
         }
 
         // Şube subcollection'lardan silinen ürünler.
-        // Admin: tüm şubeler (paralel) | Şube sahibi: yalnızca kendi şubesi.
-        let hedefSubeIds;
         if (req.user.role === 'admin') {
-            const subeSnap = await db.collection('subeler').get();
-            hedefSubeIds = subeSnap.docs.map(d => d.id);
-        } else {
-            hedefSubeIds = req.user.subeSlug ? [req.user.subeSlug] : [];
-        }
-        const subeUrunSnaps = await Promise.all(
-            hedefSubeIds.map(slug => db.collection('subeler').doc(slug).collection('urunler').get())
-        );
-        subeUrunSnaps.forEach((urunSnap, i) => {
-            urunSnap.forEach((d) => {
+            // Tek koleksiyon-grubu sorgusu: önce şube listesi okunup her şubeye
+            // ayrı sorgu atılıyordu (88 şube = 88 okuma + 88 boş sorgu, çünkü
+            // Firestore boş sorguyu da faturalar).
+            const ozelSnap = await db.collectionGroup('urunler').get();
+            ozelSnap.forEach((d) => {
                 const data = d.data();
-                if (data.deletedAt) urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: hedefSubeIds[i], ...data });
+                const subeId = d.ref.parent.parent?.id;
+                if (subeId && data.deletedAt) {
+                    urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: subeId, ...data });
+                }
             });
-        });
+        } else if (req.user.subeSlug) {
+            const snap = await db.collection('subeler').doc(req.user.subeSlug)
+                .collection('urunler').get();
+            snap.forEach((d) => {
+                const data = d.data();
+                if (data.deletedAt) {
+                    urunler.push({ id: d.id, tur: 'sube_ozel', sube_slug: req.user.subeSlug, ...data });
+                }
+            });
+        }
 
         // Hesaplanmış kilit alanı — arayüz "Geri Al"/"Sil" butonlarını buna göre
         // gösterir. Kilitli kategorideki şube ürünü geri alınamıyor; kural burada

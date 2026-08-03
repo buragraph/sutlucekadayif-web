@@ -75,6 +75,7 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
         gorsel: urun.gorsel || '',
         miktar: urun.miktar ?? null,
         birim: urun.birim || '',
+        kalori: urun.kalori ?? null,
         kategori: urun.kategori || 'diger',
     });
 
