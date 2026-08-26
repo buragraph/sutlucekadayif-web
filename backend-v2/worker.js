@@ -154,6 +154,18 @@ export default {
             console.log(`[Scheduled] CRON_AKTIF=false — Worker '${event.cron}' işini atladı (sahip api2).`);
             return;
         }
+        // Dakikalık tur: menü yenileme kuyruğunu boşaltır. Tek bir istekte
+        // 88 şube yenilenemiyor (ücretsiz planda 50 alt-istek sınırı), bu
+        // yüzden mutasyon isteği bütçesine sığanı yazıp kalanı kuyruğa
+        // bırakıyor; kuyruk burada dilim dilim eritiliyor.
+        if (event.cron === '* * * * *') {
+            const { menuKuyrugunuIsle } = await import('./modules/qr-menu/services/menu-cache.js');
+            const sonuc = await menuKuyrugunuIsle();
+            if (sonuc.islenen > 0 || sonuc.kalan > 0) {
+                console.log('[Scheduled] Menü kuyruğu:', JSON.stringify(sonuc));
+            }
+            return;
+        }
         if (event.cron === '0 4 * * *') {
             const { runScheduledFetch } = await import('./modules/reports/services/scheduled-fetch.js');
             const sonuc = await runScheduledFetch();

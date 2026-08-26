@@ -21,6 +21,80 @@ const DURUM_TTL = 30_000;
 // kendi kopyasını yazar; geçiş gecesinde (G11) değer `menu` yapılır.
 const R2_PREFIX = process.env.MENU_R2_PREFIX || 'menu';
 
+// ─── Alt-istek bütçesi ve yenileme kuyruğu ───
+// Workers ÜCRETSİZ planında istek başına 50 alt-istek var. Şube başına
+// 1 Supabase sorgusu + 1 R2 yazımı düşüyor; üstüne mutasyon isteğinin kendi
+// ~13 alt-isteği biniyor. 88 şubelik yenileme ~180 alt-istek demek: istek
+// 15. şubede duvara tosluyor, kalanların hatası şube başına yutulduğu için
+// menüler sessizce bayat kalıyordu (iki denemede de tam 15 dosya yazıldı).
+//
+// Çözüm: bütçeye sığan kadarı HEMEN yazılır, kalanı `ayarlar` tablosundaki
+// kuyruğa alınır; dakikalık cron kuyruğu boşaltır. Node tarafında (api2/lokal)
+// böyle bir sınır yok — MENU_INLINE_DILIM verilmezse dilimleme kapalı kalır.
+const KUYRUK_ANAHTARI = 'menu_kuyrugu';
+const INLINE_DILIM = Number(process.env.MENU_INLINE_DILIM || 0);   // 0 = dilimleme yok
+const CRON_DILIM = Number(process.env.MENU_CRON_DILIM || 18);
+
+async function kuyrukOku() {
+    const { data } = await supabase
+        .from('ayarlar').select('deger').eq('anahtar', KUYRUK_ANAHTARI).maybeSingle();
+    const s = data?.deger?.sluglar;
+    return Array.isArray(s) ? s : [];
+}
+
+async function kuyrukYaz(sluglar) {
+    veriYaDaHata(
+        await supabase.from('ayarlar').upsert(
+            {
+                anahtar: KUYRUK_ANAHTARI,
+                deger: { sluglar, zaman: new Date().toISOString() },
+                guncelleme: new Date().toISOString(),
+            },
+            { onConflict: 'anahtar' }
+        ),
+        'menü kuyruğu yazılamadı'
+    );
+}
+
+/** Şubeleri bekleyen-yenileme kuyruğuna ekler (tekilleştirerek). */
+async function kuyrugaEkle(sluglar) {
+    if (sluglar.length === 0) return;
+    const mevcut = await kuyrukOku();
+    await kuyrukYaz([...new Set([...mevcut, ...sluglar])]);
+}
+
+/**
+ * Kuyruktan bir dilim işler — dakikalık cron bunu çağırır.
+ * Yazılamayan şubeler kuyrukta KALIR (kaybolmaz, sonraki turda denenir).
+ */
+export async function menuKuyrugunuIsle(prefix = R2_PREFIX) {
+    const kuyruk = await kuyrukOku();
+    if (kuyruk.length === 0) return { islenen: 0, kalan: 0 };
+    if (await menuYazimiDuraklatildiMi()) {
+        console.log('[MenuCache] ⏸ yazım duraklatıldı, kuyruk bekletiliyor.');
+        return { islenen: 0, kalan: kuyruk.length };
+    }
+
+    const dilim = kuyruk.slice(0, CRON_DILIM);
+    const paylasilan = await paylasilanVeriOku();
+
+    const basarisiz = [];
+    for (let i = 0; i < dilim.length; i += 10) {
+        const grup = dilim.slice(i, i + 10);
+        const sonuc = await Promise.all(grup.map((s) => regenerateMenuJson(s, paylasilan, prefix)));
+        grup.forEach((slug, n) => { if (!sonuc[n]) basarisiz.push(slug); });
+    }
+
+    // Kuyruk BURADA yeniden okunmaz: bu tur sürerken yeni şube eklenmiş olabilir.
+    const guncelKuyruk = await kuyrukOku();
+    const isleneneler = new Set(dilim.filter((s) => !basarisiz.includes(s)));
+    await kuyrukYaz(guncelKuyruk.filter((s) => !isleneneler.has(s)));
+
+    const islenen = dilim.length - basarisiz.length;
+    console.log(`[MenuCache] kuyruk: ${islenen} şube yazıldı, ${guncelKuyruk.length - islenen} bekliyor.`);
+    return { islenen, kalan: guncelKuyruk.length - islenen };
+}
+
 export async function menuYazimiDuraklatildiMi() {
     if (durumCache.v !== null && Date.now() - durumCache.t < DURUM_TTL) return durumCache.v;
     try {
@@ -116,7 +190,17 @@ export async function regenerateMenuJsons(hedefSlugs = null, prefix = R2_PREFIX)
     // PAYLASIM_ESIGI YOK: Firestore'da "filtreli mi paylaşımlı mı" hesabı okuma
     // maliyeti içindi. Postgres'te ortak veriyi bir kez okumak her durumda ucuz.
     const paylasilan = await paylasilanVeriOku();
-    const liste = hedef ?? paylasilan.tumSluglar;
+    let liste = hedef ?? paylasilan.tumSluglar;
+
+    // Bütçeye sığmayanı kuyruğa devret — istek zaman aşımına uğramasın.
+    // (Kuyruk yazımı yenileme döngüsünden ÖNCE: bütçe tükendikten sonra
+    // yapılsa kuyruk da yazılamaz ve iş büsbütün kaybolurdu.)
+    if (INLINE_DILIM > 0 && liste.length > INLINE_DILIM) {
+        const kalan = liste.slice(INLINE_DILIM);
+        liste = liste.slice(0, INLINE_DILIM);
+        await kuyrugaEkle(kalan);
+        console.log(`[MenuCache] ${kalan.length} şube kuyruğa alındı (alt-istek bütçesi).`);
+    }
 
     console.log(`[MenuCache] ${liste.length} şube için JSON yenileniyor...`);
     // Aynı anda çok sayıda R2 yazımı açmamak için 10'luk gruplar

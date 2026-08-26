@@ -22,13 +22,20 @@ compatibility_flags = ["nodejs_compat"]
 # GECE YEDEĞİ ARTIK BURADA DEĞİL: 1,8 MB JSON + gzip Workers'ın istek başına CPU
 # bütçesi için ağır ve S3 listeleme (budama) Workers'ta DOMParser olmadığı için
 # düşüyordu. Yedek → GitHub Actions (.github/workflows/gece-yedegi.yml).
+# "* * * * *" → menü yenileme kuyruğunu eriten dakikalık tur. Kuyruk boşken
+# tek bir Supabase okuması yapıp çıkar (bkz. menu-cache.js#menuKuyrugunuIsle).
 [triggers]
-crons = ["0 4 * * *"]
+crons = ["0 4 * * *", "* * * * *"]
 
 [vars]
 FRONTEND_URL = "https://sutlucekadayif-cms.dijitalreklam.workers.dev"
 MENU_R2_PREFIX = "menu"
 CRON_AKTIF = "true"           # C3 yapıldı: çekimin sahibi Worker (api2 false)
+# Alt-istek bütçesi (ücretsiz plan: 50/istek). Mutasyon isteğinin kendi
+# ~13 alt-isteği + şube başına 2 → inline 10 şube güvenli sınır.
+# Cron turunda mutasyon yükü yok, dilim daha büyük olabiliyor.
+MENU_INLINE_DILIM = "10"
+MENU_CRON_DILIM = "18"
 
 # Gizli anahtarlar `wrangler secret put` ile konur, bu dosyada TUTULMAZ:
 #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, R2_PUBLIC_URL,
