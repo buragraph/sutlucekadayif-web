@@ -193,7 +193,7 @@ export default function BranchReklamPage() {
     const handleDownloadPdf = async (d) => {
         try {
             await reportsApi.generatePdf(activeBranchCode, d.baslangic, d.bitis);
-            toast.success('Yazdırma penceresi açıldı — "PDF olarak kaydet" seçin.');
+            toast.success('Rapor PDF olarak indirildi.');
         } catch (err) {
             toast.error(err.message || 'PDF indirilemedi.');
         }

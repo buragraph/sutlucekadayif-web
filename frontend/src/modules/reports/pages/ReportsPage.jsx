@@ -4,7 +4,7 @@ import { BranchSidebar } from '../components/BranchSidebar';
 import { BranchDetail } from '../components/BranchDetail';
 import { ReportsModals } from '../components/ReportsModals';
 import { Button } from '@/components/ui/button';
-import { CalendarIcon, DownloadCloud, UploadCloud, Settings, FileDown, MapPin, Loader2, Wallet } from 'lucide-react';
+import { CalendarIcon, DownloadCloud, UploadCloud, Settings, MapPin, Loader2, Wallet } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { format } from 'date-fns';
@@ -102,24 +102,6 @@ export default function ReportsPage() {
         await refreshAfterFetch();
     };
 
-    const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
-    const handleBulkPdf = async () => {
-        if (!dateRange.since || !dateRange.until) return toast.error('Tarih aralığı seçin.');
-        if (branches.length === 0) return toast.error('İndirilecek şube bulunamadı.');
-
-        setIsDownloadingPdf(true);
-        toast.info('📄 Raporlar hazırlanıyor — yazdırma penceresinde "PDF olarak kaydet" seçin.');
-        try {
-            const subeKodlari = branches.map(s => s.kod);
-            await reportsApi.bulkPdf(subeKodlari, dateRange.since, dateRange.until);
-            toast.success('Tüm raporlar tek PDF olarak hazır.');
-        } catch (err) {
-            toast.error(err.message || 'Raporlar hazırlanamadı.');
-        } finally {
-            setIsDownloadingPdf(false);
-        }
-    };
-
     const DatePicker = ({ label, value, onChange }) => (
         <Popover>
             <PopoverTrigger asChild>
@@ -184,11 +166,6 @@ export default function ReportsPage() {
                             {(isFetchingMeta || isFetchingGoogle) ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5 mr-1.5" />} Tümünü Çek
                         </Button>
 
-                        <div className="w-px h-5 bg-border mx-2" />
-
-                        <Button size="sm" variant="outline" className="h-8 text-xs bg-card" onClick={handleBulkPdf} disabled={isDownloadingPdf}>
-                            {isDownloadingPdf ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5 mr-1.5" />} Toplu PDF
-                        </Button>
                     </div>
                 </div>
             )}

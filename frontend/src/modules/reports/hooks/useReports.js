@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { toast } from 'sonner';
 import { supabase } from '@/supabase';
 import { API_BASE } from '@/services/api';
+import { parcaYukle } from '../../../shared/utils/parca-yukle';
 
 // ── API Base ──
 // Taban tek kaynaktan (services/api.js). Dikkat: frontend/.env prod URL'sini
@@ -247,27 +248,13 @@ export const reportsApi = {
         return data;
     },
 
-    // PDF artık tarayıcıda üretiliyor (Faz 3): sunucudaki Chromium Workers'ta
-    // çalışmıyor. HTML yine `/preview`den geliyor — eski PDF ucunun kullandığı
-    // şablonun ta kendisi, yani tasarım birebir aynı. Geometri: utils/pdf-yazdir.js.
+    // PDF tarayıcıda üretilip DOĞRUDAN indiriliyor — yazdırma penceresi açılmıyor
+    // (Windows'ta Chrome yazdırma önizlemesi asılı kalıyordu). HTML yine
+    // `/preview`den geliyor; tasarım ve geometri birebir. Bkz. utils/pdf-yazdir.js.
     async generatePdf(subeKod, donemBaslangic, donemBitis) {
         const html = await reportsApi.previewReport(subeKod, donemBaslangic, donemBitis);
-        const { raporYazdir } = await import('../utils/pdf-yazdir');
-        return await raporYazdir(html);
-    },
-
-    async bulkPdf(subeKodlari, donemBaslangic, donemBitis) {
-        const htmlListesi = [];
-        for (const kod of subeKodlari) {
-            try {
-                htmlListesi.push(await reportsApi.previewReport(kod, donemBaslangic, donemBitis));
-            } catch {
-                /* veri olmayan şube atlanır — eski uç da hatalıları atlıyordu */
-            }
-        }
-        if (!htmlListesi.length) throw new Error('Rapor üretilecek veri bulunamadı.');
-        const { topluRaporYazdir } = await import('../utils/pdf-yazdir');
-        return await topluRaporYazdir(htmlListesi);
+        const { raporPdfIndir } = await parcaYukle(() => import('../utils/pdf-yazdir'), 'PDF modülü');
+        return await raporPdfIndir(html, `rapor-${subeKod}-${donemBaslangic}_${donemBitis}`);
     },
 
     async previewReport(subeKod, donemBaslangic, donemBitis) {
