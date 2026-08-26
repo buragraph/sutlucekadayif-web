@@ -248,14 +248,22 @@ export default function BudgetSubmitPage() {
                 {/* Bakiye Seçenekleri */}
                 <div className="space-y-3">
                     <Label className="text-sm font-medium">Bakiye Seçeneği *</Label>
+                    <p className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Reklam bakiyesi</span> reklama harcanan tutardır.
+                        Meta, reklam harcaması üzerinden ayrıca <span className="font-medium text-foreground">konum ücreti</span> alır;
+                        KDV bu ikisinin toplamı üzerinden hesaplanır. Bankaya yatıracağınız tutar sağdaki
+                        <span className="font-medium text-foreground"> ödenecek tutar</span> sütunudur.
+                    </p>
                     <Card>
                         <CardContent className="p-0">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="w-12"></TableHead>
-                                        <TableHead className="text-right">Bakiye</TableHead>
-                                        <TableHead className="text-right">KDV Dahil</TableHead>
+                                        <TableHead className="text-right">Reklam Bakiyesi</TableHead>
+                                        <TableHead className="text-right">Konum Ücreti</TableHead>
+                                        <TableHead className="text-right">KDV</TableHead>
+                                        <TableHead className="text-right">Ödenecek Tutar</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -288,6 +296,14 @@ export default function BudgetSubmitPage() {
                                                     {fmtCurrency(opt.bakiye)}
                                                 </TableCell>
                                                 <TableCell className="text-right text-muted-foreground">
+                                                    {opt.konum_ucreti ? fmtCurrency(opt.konum_ucreti) : '—'}
+                                                </TableCell>
+                                                <TableCell className="text-right text-muted-foreground">
+                                                    {opt.kdv
+                                                        ? fmtCurrency(opt.kdv)
+                                                        : fmtCurrency(Number(opt.kdv_dahil) - Number(opt.bakiye) - Number(opt.konum_ucreti || 0))}
+                                                </TableCell>
+                                                <TableCell className="text-right font-semibold">
                                                     {fmtCurrency(opt.kdv_dahil)}
                                                 </TableCell>
                                             </TableRow>

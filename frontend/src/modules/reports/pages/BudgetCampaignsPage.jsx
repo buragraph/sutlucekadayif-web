@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
     ArrowLeft, Plus, Loader2, Trash2, CheckCircle2,
-    Clock, Users, Wallet, FileText, ExternalLink, ArrowUpDown, Check, Pencil,
+    Clock, Users, Wallet, FileText, ExternalLink, ArrowUpDown, Check, Pencil, FileDown,
+    Banknote, Receipt, CircleDollarSign, Building2,
 } from 'lucide-react';
 import { format, differenceInDays, isPast, parseISO } from 'date-fns';
 import { tr } from 'date-fns/locale';
@@ -21,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { useConfirm } from '../../../shared/components/Toast';
 import api from '../../../services/api';
 import BudgetCampaignForm from '../components/BudgetCampaignForm';
+import { parcaYukle } from '../../../shared/utils/parca-yukle';
 
 const fmtCurrency = (val) => new Intl.NumberFormat('tr-TR').format(val) + ' ₺';
 const fmtDate = (dateStr) => {
@@ -75,6 +77,7 @@ export default function BudgetCampaignsPage() {
     const [devretBusy, setDevretBusy] = useState(null);
     const [addingSube, setAddingSube] = useState(false);
     const [devretildi, setDevretildi] = useState(new Set());
+    const [ciktiBusy, setCiktiBusy] = useState(false);
     const [sortType, setSortType] = useState('status'); // 'status' | 'name_asc' | 'name_desc'
     const confirm = useConfirm();
 
@@ -344,6 +347,26 @@ export default function BudgetCampaignsPage() {
             const opt = bakiyeOpts.find((o) => Number(o.bakiye) === bk);
             return opt && opt.kdv_dahil ? Number(opt.kdv_dahil) : Math.round(bk * kdvOran);
         };
+        // Meta konum ücreti. Kampanya seçeneğinde yazılıysa o kullanılır; eski usul
+        // kurulmuş kampanyalarda alan yoktur ve ücret tahsilata girmemiştir — o
+        // durumda reklam bakiyesi üzerinden %5 ile TAMAMLANIR ki kartlar gerçek
+        // maliyeti göstersin.
+        const KONUM_ORANI = 0.05;
+        const konumOran = (Number(bakiyeOpts[0]?.bakiye) && Number(bakiyeOpts[0]?.konum_ucreti))
+            ? Number(bakiyeOpts[0].konum_ucreti) / Number(bakiyeOpts[0].bakiye) : KONUM_ORANI;
+        // Kampanya kaydında YAZILI olan (tahsilata girmiş) konum ücreti
+        const konumKayitliOf = (b) => {
+            const bk = Number(b.secilen_bakiye) || 0;
+            if (!bk) return 0;
+            const opt = bakiyeOpts.find((o) => Number(o.bakiye) === bk);
+            return opt && opt.konum_ucreti ? Number(opt.konum_ucreti) : 0;
+        };
+        // Gösterilen konum ücreti — yazılı yoksa %5 üzerinden hesaplanır
+        const konumUcretiOf = (b) => {
+            const bk = Number(b.secilen_bakiye) || 0;
+            if (!bk) return 0;
+            return konumKayitliOf(b) || Math.round(bk * konumOran);
+        };
         const toplamButce = bildirimler
             .filter((b) => b.durum === 'gonderildi' || b.durum === 'onaylandi')
             .reduce((sum, b) => sum + kdvDahilOf(b), 0);
@@ -366,7 +389,29 @@ export default function BudgetCampaignsPage() {
         // Önceki dönem devri — YALNIZCA bu döneme işlenmiş (tiklenmiş/Düzenle) gerçek devir.
         // İşlenmemişse 0 → harcanacağa etki etmez. Pozitif eklenir, negatif/aşım düşülür.
         const toplamDevir = katilanlar.reduce((s, b) => s + (Number(b.devredilen) || 0), 0);
-        const harcanacakTutar = toplamBakiye + toplamMerkez + toplamDevir;
+
+        // ── Üst finansal özet ──
+        // KDV ayrıştırması KAYITLI ÇİFTTEN yapılır: `kdv_dahil_tutar` brüt tahsilat,
+        // `secilen_bakiye` aynı kaydın KDV hariç karşılığı. Böylece
+        // "KDV dahil = KDV hariç + KDV tutarı" her zaman birebir tutar; sabit bir
+        // oran varsayılmaz (kampanya seçenekleri farklı oran taşıyabilir).
+        const toplamKonumUcreti = katilanlar.reduce((s, b) => s + konumUcretiOf(b), 0);
+        const kayitliKonumToplam = katilanlar.reduce((s, b) => s + konumKayitliOf(b), 0);
+        // "Hariç" kart hem KDV'den hem konum ücretinden arındırılmış tutarı gösterir
+        // — yani şubenin saf reklam bakiyesi.
+        const konumKdvHaricToplanan = toplamBakiye;
+        // KDV, şubelerden FİİLEN tahsil edilen vergidir; konum ücreti tamamlaması
+        // bu rakamı değiştirmez.
+        const kdvTutari = toplamButce - toplamBakiye - kayitliKonumToplam;
+        // Dahil = saf bakiye + konum ücreti + KDV. Seçenekte konum ücreti zaten
+        // varsa toplam tahsilata eşit çıkar (çift sayım olmaz); yoksa %5 eklenir.
+        const kdvDahilToplanan = toplamBakiye + toplamKonumUcreti + kdvTutari;
+        // Meta konum ücreti reklam bakiyesinin PARÇASI DEĞİLDİR: reklam harcamasının
+        // (şube bütçeleri + merkez desteği) ÜZERİNE eklenen ayrı bir maliyettir.
+        const META_KONUM_ORANI = 0.05;
+        const reklamHarcamasi = toplamBakiye + toplamMerkez;
+        const metaKonumUcreti = reklamHarcamasi * META_KONUM_ORANI;
+        const harcanacakTutar = reklamHarcamasi + metaKonumUcreti;
 
         const sonTarih = kampanya.son_tarih ? parseISO(kampanya.son_tarih) : null;
         const expired = sonTarih ? isPast(sonTarih) : false;
@@ -391,6 +436,99 @@ export default function BudgetCampaignsPage() {
             }
             return 0;
         });
+
+        // Yazdırılabilir kampanya çıktısı — rapor PDF'iyle aynı akış (gizli iframe +
+        // window.print), geometri A4. KAYITLI veriyi basar; tablodaki henüz
+        // onaylanmamış input değişiklikleri çıktıya girmez.
+        const handleCikti = async () => {
+            setCiktiBusy(true);
+            try {
+                // Gerçekleşen harcama bölümü opsiyonel — çekilemezse çıktı onsuz üretilir
+                let harcama = null;
+                try {
+                    const { data } = await api.get('/reports/butce-durum', {
+                        params: { since: kampanya.donem_baslangic, until: kampanya.donem_bitis },
+                    });
+                    const subeler = (data.subeler || []).filter((s) => s.toplamButce > 0);
+                    if (subeler.length > 0) {
+                        harcama = {
+                            toplamButce: data.ozet?.toplamPlanlanan || 0,
+                            toplamHarcama: data.ozet?.toplamHarcama || 0,
+                            toplamKalan: data.ozet?.toplamKalan || 0,
+                            asimSayisi: data.ozet?.asimSayisi || 0,
+                            uyariSayisi: data.ozet?.uyariSayisi || 0,
+                            subeler: [...subeler].sort((a, b) => b.harcama - a.harcama),
+                        };
+                    }
+                } catch {
+                    /* harcama bölümü olmadan devam */
+                }
+
+                const [{ butceCiktiHtml }, { raporPdfIndir }] = await Promise.all([
+                    parcaYukle(() => import('../utils/butce-cikti-sablonu'), 'Çıktı şablonu'),
+                    parcaYukle(() => import('../utils/pdf-yazdir'), 'PDF modülü'),
+                ]);
+
+                const html = butceCiktiHtml({
+                    baslik: kampanya.baslik,
+                    donemBaslangic: kampanya.donem_baslangic,
+                    donemBitis: kampanya.donem_bitis,
+                    sonTarih: kampanya.son_tarih,
+                    durum: status,
+                    aliciAdi: kampanya.alici_adi,
+                    iban: kampanya.iban,
+                    odemeNotu: kampanya.odeme_notu,
+                    bakiyeSecenekleri: bakiyeOpts,
+                    satirlar: sortedBildirimler.map((b) => ({
+                        ad: b.sube_adi || b.sube_kod,
+                        kod: b.sube_kod,
+                        durum: b.durum,
+                        oncekiKatildi: b.onceki_katildi,
+                        oncekiKalan: b.onceki_kalan ?? null,
+                        devredilen: Number(b.devredilen) || 0,
+                        merkezDestegi: Number(b.merkez_destegi) || 0,
+                        bakiye: Number(b.secilen_bakiye) || 0,
+                        konumUcreti: konumUcretiOf(b),
+                        kdvDahil: kdvDahilOf(b),
+                        dekontVar: !!b.dekont_url,
+                        gonderimTarihi: b.gonderim_tarihi,
+                    })),
+                    ozet: {
+                        toplamBakiye,
+                        toplamMerkez,
+                        toplamDevir,
+                        harcanacak: harcanacakTutar,
+                        toplananKdv: kdvDahilToplanan,
+                        onaylananKdv: onaylananButce,
+                        // Ekrandaki üst özetle birebir aynı rakamlar (çelişki olmasın)
+                        kdvHaric: konumKdvHaricToplanan,
+                        kdvTutari,
+                        toplamKonumUcreti,
+                        reklamHarcamasi,
+                        metaKonumUcreti,
+                        metaOrani: META_KONUM_ORANI,
+                    },
+                    katilim: {
+                        toplam: toplamSube,
+                        dolduran: dolduranSayisi,
+                        onaylanan: onaylananSayisi,
+                        gonderildi: gonderildiSayisi,
+                        bekleyen: bekleyenSayisi,
+                        yuzde: tamamlanmaPct,
+                    },
+                    harcama,
+                    olusturma: new Date().toISOString(),
+                });
+
+                // Rapor PDF'iyle aynı geometri: 480px genişlik, ölçülen yükseklikte tek sayfa
+                await raporPdfIndir(html, `butce-${kampanya.donem_baslangic}_${kampanya.donem_bitis}`);
+                toast.success('Çıktı PDF olarak indirildi.');
+            } catch (err) {
+                toast.error(err.message || 'Çıktı oluşturulamadı.');
+            } finally {
+                setCiktiBusy(false);
+            }
+        };
 
         const toggleSort = () => {
             if (sortType === 'status') setSortType('name_asc');
@@ -464,6 +602,12 @@ export default function BudgetCampaignsPage() {
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         )}
+                        <Button variant="outline" onClick={handleCikti} disabled={ciktiBusy}>
+                            {ciktiBusy
+                                ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                : <FileDown className="w-4 h-4 mr-2" />}
+                            Çıktı Al
+                        </Button>
                         <Button variant="outline" onClick={() => { setEditKampanya(kampanya); setModalOpen(true); }}>
                             <Pencil className="w-4 h-4 mr-2" /> Düzenle
                         </Button>
@@ -501,91 +645,95 @@ export default function BudgetCampaignsPage() {
                     </div>
                 )}
 
-                {/* Summary Cards */}
+                {/* Summary Cards — üst finansal özet */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {/* 1. KDV DAHİL TOPLANAN TUTAR */}
                     <div className="rounded-xl border bg-card p-4">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="rounded-lg bg-violet-100 dark:bg-violet-900/30 p-1.5">
-                                <Wallet className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                                <Banknote className="w-4 h-4 text-violet-600 dark:text-violet-400" />
                             </div>
-                            <span className="text-xs text-muted-foreground">Toplanan</span>
+                            <span className="text-xs text-muted-foreground leading-tight">KDV + Konum Ücreti Dahil Toplanan Tutar</span>
                         </div>
-                        <p className="text-xl font-semibold tracking-tight">{fmtCurrency(toplamButce)}</p>
-                        {onaylananButce > 0 && onaylananButce < toplamButce && (
-                            <p className="text-[10px] text-muted-foreground mt-1">{fmtCurrency(onaylananButce)} onaylandı</p>
-                        )}
+                        <p className="text-xl font-semibold tracking-tight tabular-nums">{fmtCurrency(kdvDahilToplanan)}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                            Şubelerden tahsil edilen, KDV ve konum ücreti dahil toplam tutar
+                        </p>
                     </div>
 
+                    {/* 2. KDV HARİÇ TOPLANAN TUTAR */}
                     <div className="rounded-xl border bg-card p-4">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="rounded-lg bg-sky-100 dark:bg-sky-900/30 p-1.5">
-                                <Wallet className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                                <CircleDollarSign className="w-4 h-4 text-sky-600 dark:text-sky-400" />
                             </div>
-                            <span className="text-xs text-muted-foreground">Bakiye</span>
+                            <span className="text-xs text-muted-foreground leading-tight">KDV + Konum Ücreti Hariç Toplanan Tutar</span>
                         </div>
-                        <p className="text-xl font-semibold tracking-tight">{fmtCurrency(toplamBakiye)}</p>
+                        <p className="text-xl font-semibold tracking-tight tabular-nums">{fmtCurrency(konumKdvHaricToplanan)}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                            Şubelerden tahsil edilen tutarın KDV ve konum ücreti hariç karşılığı
+                        </p>
                     </div>
 
+                    {/* 3. KDV TUTARI */}
                     <div className="rounded-xl border bg-card p-4">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-1.5">
-                                <Wallet className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                                <Receipt className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                             </div>
-                            <span className="text-xs text-muted-foreground">Merkez Desteği</span>
+                            <span className="text-xs text-muted-foreground leading-tight">KDV Tutarı</span>
                         </div>
-                        <p className="text-xl font-semibold tracking-tight">{fmtCurrency(toplamMerkez)}</p>
+                        <p className="text-xl font-semibold tracking-tight tabular-nums">{fmtCurrency(kdvTutari)}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                            Şubelerden tahsil edilen toplam tutarın KDV tutarı
+                        </p>
                     </div>
 
-                    <div className="rounded-xl border bg-card p-4">
+                    {/* 4. HARCANACAK TUTAR */}
+                    <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/20 p-4">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="rounded-lg bg-emerald-100 dark:bg-emerald-900/30 p-1.5">
                                 <Wallet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                             </div>
-                            <span className="text-xs text-muted-foreground">Harcanacak Tutar</span>
+                            <span className="text-xs text-emerald-800/80 dark:text-emerald-300/80 leading-tight">Harcanacak Tutar</span>
                         </div>
-                        <p className="text-xl font-semibold tracking-tight">{fmtCurrency(harcanacakTutar)}</p>
-                        <p className="text-[10px] text-muted-foreground mt-1">
-                            Bakiye + Merkez {toplamDevir < 0 ? '− ' + fmtCurrency(Math.abs(toplamDevir)) + ' devir' : toplamDevir > 0 ? '+ ' + fmtCurrency(toplamDevir) + ' devir' : ''}
+                        <p className="text-xl font-semibold tracking-tight tabular-nums text-emerald-700 dark:text-emerald-400">
+                            {fmtCurrency(harcanacakTutar)}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                            Şube reklam bütçeleri + merkezi destek + %5 Meta Konum Ücreti
+                        </p>
+                        <p className="text-[10px] text-emerald-700/80 dark:text-emerald-400/80 mt-0.5 tabular-nums">
+                            Meta konum ücreti: {fmtCurrency(metaKonumUcreti)}
                         </p>
                     </div>
 
-                    <div className="rounded-xl border bg-card p-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <div className="rounded-lg bg-emerald-100 dark:bg-emerald-900/30 p-1.5">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                            </div>
-                            <span className="text-xs text-muted-foreground">Tamamlama</span>
-                        </div>
-                        <p className="text-xl font-semibold tracking-tight">{dolduranSayisi}<span className="text-sm font-normal text-muted-foreground">/{toplamSube}</span></p>
-                        <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
-                            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${tamamlanmaPct}%` }} />
-                        </div>
-                    </div>
-
-                    <div className="rounded-xl border bg-card p-4">
-                        <div className="flex items-center gap-2 mb-2">
-                            <div className="rounded-lg bg-blue-100 dark:bg-blue-900/30 p-1.5">
-                                <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                            </div>
-                            <span className="text-xs text-muted-foreground">Onay Bekleyen</span>
-                        </div>
-                        <p className="text-xl font-semibold tracking-tight">{gonderildiSayisi}</p>
-                        {gonderildiSayisi > 0 && (
-                            <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium mt-1">İşlem gerekli</p>
-                        )}
-                    </div>
-
+                    {/* 6. MERKEZ DESTEĞİ */}
                     <div className="rounded-xl border bg-card p-4">
                         <div className="flex items-center gap-2 mb-2">
                             <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 p-1.5">
-                                <Users className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                                <Building2 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                             </div>
-                            <span className="text-xs text-muted-foreground">Bekleyen</span>
+                            <span className="text-xs text-muted-foreground leading-tight">Merkez Desteği</span>
                         </div>
-                        <p className="text-xl font-semibold tracking-tight">{bekleyenSayisi}</p>
-                        {bekleyenSayisi > 0 && toplamSube > 0 && (
-                            <p className="text-[10px] text-muted-foreground mt-1">%{Math.round((bekleyenSayisi / toplamSube) * 100)} henüz doldurmadı</p>
-                        )}
+                        <p className="text-xl font-semibold tracking-tight tabular-nums">{fmtCurrency(toplamMerkez)}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                            Şubelere verilen merkezi destek
+                        </p>
+                    </div>
+
+                    {/* Katılan şube sayısı */}
+                    <div className="rounded-xl border bg-card p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="rounded-lg bg-emerald-100 dark:bg-emerald-900/30 p-1.5">
+                                <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                            </div>
+                            <span className="text-xs text-muted-foreground leading-tight">Katılan Şube</span>
+                        </div>
+                        <p className="text-xl font-semibold tracking-tight tabular-nums">{dolduranSayisi}</p>
+                        <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                            Kampanyaya katılan şube sayısı
+                        </p>
                     </div>
                 </div>
 
@@ -606,6 +754,7 @@ export default function BudgetCampaignsPage() {
                                     <TableHead className="text-right">Önceki Dönem</TableHead>
                                     <TableHead className="text-right">Merkez Desteği</TableHead>
                                     <TableHead className="text-right">Bakiye</TableHead>
+                                    <TableHead className="text-right">Konum Ücreti</TableHead>
                                     <TableHead className="text-right">KDV Dahil</TableHead>
                                     <TableHead className="w-[100px]">Dekont</TableHead>
                                     <TableHead>Tarih</TableHead>
@@ -615,7 +764,7 @@ export default function BudgetCampaignsPage() {
                             <TableBody>
                                 {sortedBildirimler.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={10} className="text-center py-12 text-muted-foreground">
+                                        <TableCell colSpan={11} className="text-center py-12 text-muted-foreground">
                                             <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
                                             Henüz bildirim yok.
                                         </TableCell>
@@ -714,6 +863,11 @@ export default function BudgetCampaignsPage() {
                                                             onChange={(e) => setEditedBalances(prev => ({ ...prev, [b.sube_kod || b.subeKod]: e.target.value }))}
                                                         />
                                                     </div>
+                                                </TableCell>
+                                                <TableCell className="text-right tabular-nums text-sm">
+                                                    {konumUcretiOf(b)
+                                                        ? <span className="font-medium">{fmtCurrency(konumUcretiOf(b))}</span>
+                                                        : <span className="text-muted-foreground/40">—</span>}
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end">

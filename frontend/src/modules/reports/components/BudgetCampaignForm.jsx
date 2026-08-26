@@ -12,7 +12,19 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import api from '../../../services/api';
 
-// Varsayılan bakiye seçenekleri — KDV dahil tutar formdaki orandan hesaplanır
+// Bir bakiye seçeneğinin tüm bileşenleri.
+// Meta reklam harcamasının üzerinden %5 KONUM ÜCRETİ alıyor; KDV bu ücret DAHİL
+// matrah üzerinden hesaplanır. Örnek: 15.000 bakiye → 750 konum → 15.750 matrah
+// → %14 KDV 2.205 → şubeden tahsil edilen toplam 17.955.
+function secenekHesapla(bakiye, konumOrani, kdvOrani) {
+    const b = Number(bakiye) || 0;
+    const konum = Math.round(b * (Number(konumOrani) || 0) / 100);
+    const matrah = b + konum;
+    const kdv = Math.round(matrah * (Number(kdvOrani) || 0) / 100);
+    return { bakiye: b, konum_ucreti: konum, kdv, kdv_dahil: matrah + kdv };
+}
+
+// Varsayılan bakiye seçenekleri — konum ücreti ve KDV formdaki oranlardan hesaplanır
 const DEFAULT_BAKIYE_OPTIONS = [
     { bakiye: 15000 },
     { bakiye: 20000 },
@@ -38,9 +50,18 @@ export default function BudgetCampaignForm({ onCancel, onSuccess, editKampanya =
     const [aliciAdi, setAliciAdi] = useState(editKampanya?.alici_adi || '');
     const [iban, setIban] = useState(editKampanya?.iban || '');
     const [odemeNotu, setOdemeNotu] = useState(editKampanya?.odeme_notu || '');
+    const [konumOrani, setKonumOrani] = useState(() => {
+        const o = editKampanya?.bakiye_secenekleri?.[0];
+        return (o && o.bakiye && o.konum_ucreti) ? Math.round((o.konum_ucreti / o.bakiye) * 100) : 5;
+    });
     const [kdvOrani, setKdvOrani] = useState(() => {
         const o = editKampanya?.bakiye_secenekleri?.[0];
-        return (o && o.bakiye && o.kdv_dahil) ? Math.round((o.kdv_dahil / o.bakiye - 1) * 100) : 20;
+        if (!o || !o.bakiye) return 20;
+        // Yeni kayıtlar KDV'yi ayrı tutuyor; eskilerde yalnızca kdv_dahil var ve
+        // konum ücreti hiç alınmamış — oran doğrudan bakiyeye göre çözülür.
+        const matrah = o.bakiye + (o.konum_ucreti || 0);
+        if (o.kdv && matrah) return Math.round((o.kdv / matrah) * 100);
+        return o.kdv_dahil ? Math.round((o.kdv_dahil / o.bakiye - 1) * 100) : 20;
     });
     const [bakiyeSecenekleri, setBakiyeSecenekleri] = useState(
         editKampanya?.bakiye_secenekleri?.length
@@ -80,10 +101,11 @@ export default function BudgetCampaignForm({ onCancel, onSuccess, editKampanya =
         const oran = Number(kdvOrani);
         if (!Number.isFinite(oran) || oran <= 0) return toast.error('Geçerli bir KDV oranı girin (ör. 20).');
 
-        const bakiyeListe = bakiyeSecenekleri.map((r) => {
-            const b = Number(r.bakiye);
-            return { bakiye: b, kdv_dahil: Math.round(b * (1 + oran / 100)) };
-        });
+        const konumOran = Number(konumOrani);
+        if (!Number.isFinite(konumOran) || konumOran < 0) {
+            return toast.error('Geçerli bir konum ücreti oranı girin (ör. 5).');
+        }
+        const bakiyeListe = bakiyeSecenekleri.map((r) => secenekHesapla(r.bakiye, konumOran, oran));
 
         setLoading(true);
         try {
@@ -231,11 +253,21 @@ export default function BudgetCampaignForm({ onCancel, onSuccess, editKampanya =
                                 <div className="flex items-center gap-4">
                                     <Label>Bakiye Seçenekleri</Label>
                                     <div className="flex items-center gap-2">
+                                        <Label htmlFor="konumOrani" className="text-muted-foreground whitespace-nowrap text-xs">Konum Ücreti (%)</Label>
+                                        <Input
+                                            id="konumOrani"
+                                            type="number"
+                                            className="w-16 h-8"
+                                            value={konumOrani}
+                                            onChange={(e) => setKonumOrani(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-2">
                                         <Label htmlFor="kdvOrani" className="text-muted-foreground whitespace-nowrap text-xs">KDV Oranı (%)</Label>
                                         <Input 
                                             id="kdvOrani"
                                             type="number" 
-                                            className="w-20 h-8" 
+                                            className="w-16 h-8" 
                                             value={kdvOrani} 
                                             onChange={(e) => setKdvOrani(e.target.value)}
                                         />
@@ -246,13 +278,21 @@ export default function BudgetCampaignForm({ onCancel, onSuccess, editKampanya =
                                 </Button>
                             </div>
 
+                            <div className="hidden sm:grid grid-cols-[1fr_1fr_1fr_1fr_2.25rem] gap-2 px-1 text-[11px] font-medium text-muted-foreground">
+                                <span>Reklam Bakiyesi</span>
+                                <span>Konum Ücreti (%{Number(konumOrani) || 0})</span>
+                                <span>KDV (%{Number(kdvOrani) || 0})</span>
+                                <span>Şubeden Tahsil (KDV Dahil)</span>
+                                <span />
+                            </div>
+
                             <div className="space-y-2 max-h-80 overflow-y-auto p-1">
                                 {bakiyeSecenekleri.map((row, i) => {
-                                    const b = Number(row.bakiye) || 0;
-                                    const kdvli = Math.round(b * (1 + Number(kdvOrani) / 100));
+                                    const h = secenekHesapla(row.bakiye, konumOrani, kdvOrani);
+                                    const dolu = h.bakiye > 0;
                                     return (
-                                    <div key={i} className="flex items-center gap-2">
-                                        <div className="flex-1 relative focus-within:z-10 hover:z-10">
+                                    <div key={i} className="grid grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_1fr_2.25rem] gap-2">
+                                        <div className="relative focus-within:z-10 hover:z-10">
                                             <Input
                                                 type="text"
                                                 placeholder="Bakiye"
@@ -263,15 +303,27 @@ export default function BudgetCampaignForm({ onCancel, onSuccess, editKampanya =
                                                 }}
                                             />
                                         </div>
-                                        <div className="flex-1 relative">
-                                            <Input
-                                                type="text"
-                                                disabled
-                                                value={b ? formatCurrency(kdvli) + ' ₺' : ''}
-                                                placeholder="KDV Dahil (Oto)"
-                                                className="bg-muted/50 cursor-not-allowed text-muted-foreground"
-                                            />
-                                        </div>
+                                        <Input
+                                            type="text"
+                                            disabled
+                                            value={dolu ? formatCurrency(h.konum_ucreti) + ' ₺' : ''}
+                                            placeholder="Konum (Oto)"
+                                            className="bg-muted/50 cursor-not-allowed text-muted-foreground"
+                                        />
+                                        <Input
+                                            type="text"
+                                            disabled
+                                            value={dolu ? formatCurrency(h.kdv) + ' ₺' : ''}
+                                            placeholder="KDV (Oto)"
+                                            className="bg-muted/50 cursor-not-allowed text-muted-foreground"
+                                        />
+                                        <Input
+                                            type="text"
+                                            disabled
+                                            value={dolu ? formatCurrency(h.kdv_dahil) + ' ₺' : ''}
+                                            placeholder="Toplam (Oto)"
+                                            className="bg-muted/50 cursor-not-allowed font-medium"
+                                        />
                                         <Button
                                             type="button"
                                             variant="ghost"
