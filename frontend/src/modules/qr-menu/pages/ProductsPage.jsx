@@ -317,7 +317,14 @@ export default function ProductsPage() {
             }
             if (editingUrun) {
                 const { data } = await api.put(`/products/${editingUrun.id}`, payload);
-                setUrunler(prev => prev.map(u => u.id === editingUrun.id ? data.urun : u));
+                // Sunucu her 2xx yanıtta `urun` DÖNDÜRMEZ: değişiklik yoksa yalnızca
+                // { success: true } gelir. Gövdeye körü körüne güvenilirse listeye
+                // `undefined` girer ve sonraki render `u.menude` okurken çöker.
+                if (data?.urun) {
+                    setUrunler(prev => prev.map(u => u.id === editingUrun.id ? data.urun : u));
+                } else {
+                    await loadUrunler(true);
+                }
             } else {
                 const { data } = await api.post('/products', payload);
                 setUrunler(prev => [...prev, { id: data.id, ...data }]);

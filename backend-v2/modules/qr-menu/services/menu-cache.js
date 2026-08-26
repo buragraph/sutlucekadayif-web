@@ -120,10 +120,26 @@ export async function regenerateMenuJsons(hedefSlugs = null, prefix = R2_PREFIX)
 
     console.log(`[MenuCache] ${liste.length} şube için JSON yenileniyor...`);
     // Aynı anda çok sayıda R2 yazımı açmamak için 10'luk gruplar
+    let yazilan = 0;
     for (let i = 0; i < liste.length; i += 10) {
-        await Promise.all(liste.slice(i, i + 10).map((slug) => regenerateMenuJson(slug, paylasilan, prefix)));
+        const sonuc = await Promise.all(
+            liste.slice(i, i + 10).map((slug) => regenerateMenuJson(slug, paylasilan, prefix))
+        );
+        yazilan += sonuc.filter(Boolean).length;
     }
-    console.log(`[MenuCache] ✅ ${liste.length} şubenin JSON'ı güncellendi`);
+    // Kısmi başarı SESSİZ KALMAMALI. Workers ücretsiz planında istek başına
+    // 50 alt-istek sınırı var; şube başına 1 sorgu + 1 R2 yazımı düştüğü için
+    // ~20 şubeden sonrası "Too many subrequests" ile düşüyor ve regenerateMenuJson
+    // hatayı yutuyordu — geriye kalan şubelerin menüsü haftalarca bayat kalabilir.
+    if (yazilan < liste.length) {
+        console.error(
+            `[MenuCache] ⚠️ EKSİK YENİLEME: ${liste.length} şubeden yalnızca ${yazilan} tanesi yazıldı. ` +
+            `${liste.length - yazilan} şubenin menüsü BAYAT. Muhtemel neden: Workers alt-istek sınırı (50/istek).`
+        );
+    } else {
+        console.log(`[MenuCache] ✅ ${liste.length} şubenin JSON'ı güncellendi`);
+    }
+    return { istenen: liste.length, yazilan };
 }
 
 /** TÜM şubelerin menü JSON'larını yeniler (kategori değişikliği gibi). */

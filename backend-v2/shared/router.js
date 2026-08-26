@@ -211,6 +211,15 @@ export function honoyaBagla(app, onek, r, onHalkalar = []) {
                 console.error('[Worker]', hata);
                 return c.json({ error: hata.message || 'Sunucu hatası oluştu' }, hata.status || 500);
             }
+            // Zincir bitti, hata yok, ama yanıt da YAZILMADI: yukarıdaki yarışı
+            // zaman aşımı kazanmış demektir. res.yanit() burada gövdesiz 200
+            // üretirdi — istemci "başarılı" sanıp boş gövdeyi veri diye işler
+            // (ProductsPage'de listeye `undefined` girip sayfayı çökertmişti).
+            // Sessiz bozulma yerine açık hata.
+            if (!res.bitti) {
+                console.error('[Worker] zaman aşımı — yanıt yazılmadı:', req.method, req.originalUrl);
+                return c.json({ error: 'İstek zaman aşımına uğradı' }, 504);
+            }
             return res.yanit();
         });
     }
