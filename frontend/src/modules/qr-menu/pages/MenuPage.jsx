@@ -5,6 +5,7 @@ import { Search, ChevronUp, Instagram, MessageCircle, X, FileText } from 'lucide
 import { proxyImageUrl, proxyR2Url, proxyKeyUrl } from '../../../utils/imageProxy';
 import GeriBildirimModal from '../components/GeriBildirimModal';
 import IsBasvuruModal from '../components/IsBasvuruModal';
+import AlerjenModal from '../components/AlerjenModal';
 
 import { etiketKisaAd } from '../constants/etiketler';
 
@@ -148,6 +149,8 @@ export default function MenuPage() {
     const [showGeriBildirim, setShowGeriBildirim] = useState(false);
     const [showIsBasvuru, setShowIsBasvuru] = useState(false);
     const [alerjenPdf, setAlerjenPdf] = useState(null);   // R2 key — yoksa buton çıkmaz
+    const [fiyatTarihi, setFiyatTarihi] = useState(null); // 'YYYY-MM-DD' — yoksa satır çıkmaz
+    const [showAlerjen, setShowAlerjen] = useState(false);
 
     const tabRefs = useRef({});      // { katId: <button> }
     const navScrollRef = useRef(null);
@@ -168,13 +171,17 @@ export default function MenuPage() {
         document.title = sube?.ad ? `${sube.ad} — Sütlüce Kadayıf Menü` : 'Sütlüce Kadayıf';
     }, [sube]);
 
-    // Alerjen PDF'i — şube menüsünden AYRI, global ayar dosyası. Menü JSON'una
-    // gömülmedi: PDF her değiştiğinde 88 şubelik JSON'ın yeniden üretilmesi
-    // gerekirdi. Dosya yoksa (404) buton hiç görünmez.
+    // Global ayarlar (alerjen PDF'i + fiyat değiştirilme tarihi) — şube
+    // menüsünden AYRI dosya. Menü JSON'una gömülmediler: her değişimde 88
+    // şubelik JSON'ın yeniden üretilmesi gerekirdi. Dosya yoksa (404) ikisi de
+    // hiç görünmez.
     useEffect(() => {
         fetch(proxyR2Url('https://pub-99104fd4f6324895b46545c23e61887f.r2.dev/menu/_ayarlar.json'))
             .then((r) => (r.ok ? r.json() : null))
-            .then((j) => setAlerjenPdf(j?.alerjenPdf || null))
+            .then((j) => {
+                setAlerjenPdf(j?.alerjenPdf || null);
+                setFiyatTarihi(j?.fiyatTarihi || null);
+            })
             .catch(() => {});
     }, []);
 
@@ -182,15 +189,30 @@ export default function MenuPage() {
         setLoading(true);
         setError(null);
         try {
+            // Basılı QR kodlar WordPress'ten geliyor ve iki şubede slug tire ile
+            // yazılmış (tuzla-aydinli / yahya-kaptan), bizde alt tire. Şube kodunu
+            // değiştirmek FK'ları ve R2 dosya adlarını kırardı; onun yerine ilk
+            // deneme tutmazsa tire↔alt tire çevrilip bir kez daha denenir.
+            const adaylar = [subeSlug, subeSlug.replace(/-/g, '_'), subeSlug.replace(/_/g, '-')]
+                .filter((s, i, d) => d.indexOf(s) === i);
+
             let data;
-            try {
-                const r2Res = await fetch(proxyR2Url(`https://pub-99104fd4f6324895b46545c23e61887f.r2.dev/menu/${subeSlug}.json`));
-                if (r2Res.ok) data = await r2Res.json();
-            } catch (e) { /* R2'de yoksa API'ye düş */ }
+            for (const aday of adaylar) {
+                try {
+                    const r2Res = await fetch(proxyR2Url(`https://pub-99104fd4f6324895b46545c23e61887f.r2.dev/menu/${aday}.json`));
+                    if (r2Res.ok) { data = await r2Res.json(); break; }
+                } catch { /* R2'de yoksa API'ye düş */ }
+            }
 
             if (!data) {
-                const res = await api.get(`/menu/${subeSlug}`);
-                data = res.data;
+                for (const [i, aday] of adaylar.entries()) {
+                    try {
+                        data = (await api.get(`/menu/${aday}`)).data;
+                        break;
+                    } catch (err) {
+                        if (i === adaylar.length - 1) throw err;
+                    }
+                }
             }
 
             setSube(data.sube);
@@ -324,14 +346,19 @@ export default function MenuPage() {
                         )}
                     </div>
                     {alerjenPdf && (
-                        <a
+                        <button
+                            type="button"
                             className="pm-alerjen-btn"
-                            href={proxyKeyUrl(alerjenPdf)}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            onClick={() => setShowAlerjen(true)}
                         >
                             <FileText size={14} /> Alerjen Bilgileri
-                        </a>
+                        </button>
+                    )}
+                    {fiyatTarihi && (
+                        <p className="pm-fiyat-tarihi">
+                            Fiyat Değiştirilme Tarihi:{' '}
+                            {new Date(fiyatTarihi).toLocaleDateString('tr-TR')}
+                        </p>
                     )}
                 </section>
 
@@ -398,13 +425,20 @@ export default function MenuPage() {
 
             {/* ─── Footer ─── */}
             <footer className="pm-footer">
-                <div className="pm-footer__review">
-                    <h2 className="pm-footer__title">Google'da bizi değerlendirin</h2>
-                    <p className="pm-footer__desc">Yorumlarınız, hem bizi mutlu ediyor hem de yeni misafirlerimize ilham veriyor.</p>
-                    <a href="https://g.page/r/sutlucekadayif/review" target="_blank" rel="noopener noreferrer" className="pm-footer__btn">
-                        Bizi Değerlendirin
-                    </a>
-                </div>
+                {/* Değerlendirme adresi ŞUBEYE ÖZEL (menü JSON'ında gelir).
+                    Eskiden koda gömülü tek bir kısa link vardı; o link Google'da
+                    yoktu ve tıklayan müşteri google.com'a düşüyordu. Ayrıca tek
+                    link olduğu için 90 şube aynı işletmeyi değerlendiriyordu.
+                    Linki olmayan şubede bölüm HİÇ gösterilmez. */}
+                {sube?.degerlendirmeLink && (
+                    <div className="pm-footer__review">
+                        <h2 className="pm-footer__title">Google'da bizi değerlendirin</h2>
+                        <p className="pm-footer__desc">Yorumlarınız, hem bizi mutlu ediyor hem de yeni misafirlerimize ilham veriyor.</p>
+                        <a href={sube.degerlendirmeLink} target="_blank" rel="noopener noreferrer" className="pm-footer__btn">
+                            Bizi Değerlendirin
+                        </a>
+                    </div>
+                )}
                 <div className="pm-footer__card">
                     <h3 className="pm-footer__card-title">İş başvurusu için:</h3>
                     <p className="pm-footer__card-subtitle">Sütlüce Kadayıf şubelerinde çalışmak ister misiniz?</p>
@@ -439,6 +473,13 @@ export default function MenuPage() {
             )}
 
             {/* ─── İş Başvurusu Formu ─── */}
+            {showAlerjen && alerjenPdf && (
+                <AlerjenModal
+                    url={proxyKeyUrl(alerjenPdf)}
+                    onClose={() => setShowAlerjen(false)}
+                />
+            )}
+
             {showIsBasvuru && (
                 <IsBasvuruModal
                     subeSlug={subeSlug}

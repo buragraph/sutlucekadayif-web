@@ -90,6 +90,9 @@ export async function listAccounts() {
               name: loc.name,
               title: loc.locationName || loc.title || '',
               storeCode: loc.storeCode || '',
+              // v4'te aynı bilgi `metadata.newReviewUrl` adıyla geliyor.
+              reviewUri: loc.metadata?.newReviewUrl || loc.metadata?.newReviewUri || '',
+              mapsUri: loc.metadata?.mapsUrl || loc.metadata?.mapsUri || '',
               address: loc.address 
                 ? [loc.address.addressLines?.join(', '), loc.address.locality, loc.address.administrativeArea].filter(Boolean).join(', ')
                 : '',
@@ -117,7 +120,7 @@ export async function listAccounts() {
   
   for (const account of accounts) {
     try {
-      const locRes = await fetch(`https://mybusinessbusinessinformation.googleapis.com/v1/${account.name}/locations?readMask=name,title,storefrontAddress,storeCode&pageSize=100`, {
+      const locRes = await fetch(`https://mybusinessbusinessinformation.googleapis.com/v1/${account.name}/locations?readMask=name,title,storefrontAddress,storeCode,metadata&pageSize=100`, {
         headers: { 'Authorization': `Bearer ${accessToken}` }
       });
       if (!locRes.ok) continue;
@@ -128,6 +131,11 @@ export async function listAccounts() {
           name: loc.name,
           title: loc.title,
           storeCode: loc.storeCode || '',
+          // `metadata.newReviewUri`: Google'ın o konum için ürettiği değerlendirme
+          // formu adresi. QR menüdeki "Bizi Değerlendirin" butonu bunu kullanır;
+          // eskiden koda gömülü tek bir link vardı ve o link ölüydü.
+          reviewUri: loc.metadata?.newReviewUri || '',
+          mapsUri: loc.metadata?.mapsUri || '',
           address: loc.storefrontAddress 
             ? [loc.storefrontAddress.addressLines?.join(', '), loc.storefrontAddress.locality, loc.storefrontAddress.administrativeArea].filter(Boolean).join(', ')
             : '',

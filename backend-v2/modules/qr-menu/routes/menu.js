@@ -19,24 +19,43 @@ const router = Router();
 // immutable cache'lediği için sabit isim tarayıcıda bayat kalırdı.
 const ALERJEN_ANAHTARI = 'alerjen_pdf';
 
+// ─── Fiyat değiştirilme tarihi ───
+// Alerjen PDF'iyle aynı dosyayı paylaşır: tek global değer, elle girilir.
+const FIYAT_TARIHI_ANAHTARI = 'fiyat_tarihi';
+
 const PDF_AL = dosyaAl('pdf', {
     tipler: ['application/pdf'],
     enBoy: 20 * 1024 * 1024,
     hataMesaji: 'Sadece PDF dosyası yüklenebilir',
 });
 
-async function alerjenAyarOku() {
+async function ayarOku(anahtar) {
     const { data } = await supabase
-        .from('ayarlar').select('deger').eq('anahtar', ALERJEN_ANAHTARI).maybeSingle();
+        .from('ayarlar').select('deger').eq('anahtar', anahtar).maybeSingle();
     return data?.deger || null;
 }
 
+const alerjenAyarOku = () => ayarOku(ALERJEN_ANAHTARI);
+const fiyatTarihiOku = () => ayarOku(FIYAT_TARIHI_ANAHTARI);
+
 /** Müşteri menüsünün okuduğu global ayar JSON'ını R2'ye yazar.
  *  Alt çizgili ad bilinçli: şube JSON'ları `menu/{kod}.json` yazdığından,
- *  "ayarlar" kodlu bir şube açılırsa çakışmasın. */
-async function alerjenAyarJsonYaz(key) {
+ *  "ayarlar" kodlu bir şube açılırsa çakışmasın.
+ *
+ *  DİKKAT: dosyada birden fazla ayar var; hepsini BİRDEN yazar. Yalnız değişen
+ *  alanı geç, ötekiler veritabanından okunup korunur — yoksa PDF yüklemek
+ *  fiyat tarihini (ya da tersi) sessizce siler. Alanı temizlemek için açıkça
+ *  `null` geç; `undefined` "dokunma" demektir. */
+async function ayarJsonYaz({ alerjenKey, fiyatTarihi } = {}) {
+    const key = alerjenKey !== undefined
+        ? alerjenKey
+        : (await alerjenAyarOku())?.key || null;
+    const tarih = fiyatTarihi !== undefined
+        ? fiyatTarihi
+        : (await fiyatTarihiOku())?.tarih || null;
+
     await uploadFile(
-        Buffer.from(JSON.stringify({ alerjenPdf: key || null })),
+        Buffer.from(JSON.stringify({ alerjenPdf: key || null, fiyatTarihi: tarih || null })),
         'menu/_ayarlar.json',
         'application/json'
     );
@@ -123,7 +142,7 @@ router.post(
             ),
             'alerjen ayarı yazılamadı'
         );
-        await alerjenAyarJsonYaz(key);
+        await ayarJsonYaz({ alerjenKey: key });
 
         // Eski dosya EN SONDA silinir: üstteki adımlardan biri patlarsa
         // yayındaki PDF çalışır kalır. Silme hatası işlemi geri döndürmez.
@@ -146,7 +165,7 @@ router.delete(
     requirePermission('categories.edit'),
     asyncHandler(async (req, res) => {
         const eski = await alerjenAyarOku();
-        await alerjenAyarJsonYaz(null);
+        await ayarJsonYaz({ alerjenKey: null });
         veriYaDaHata(
             await supabase.from('ayarlar').delete().eq('anahtar', ALERJEN_ANAHTARI),
             'alerjen ayarı silinemedi'
@@ -156,6 +175,69 @@ router.delete(
                 console.error('[Alerjen] PDF silinemedi:', e.message));
         }
         res.json({ success: true });
+    })
+);
+
+/**
+ * GET /api/menu/fiyat-tarihi
+ * Menüde gösterilen "Fiyat Değiştirilme Tarihi" (CMS için).
+ * NOT: '/:subeSlug'dan ÖNCE tanımlı olmalı (bkz. cache-durumu notu).
+ */
+router.get(
+    '/fiyat-tarihi',
+    verifyToken,
+    requirePermission('categories.edit'),
+    asyncHandler(async (req, res) => {
+        res.json({ fiyatTarihi: await fiyatTarihiOku() });
+    })
+);
+
+/**
+ * PUT /api/menu/fiyat-tarihi
+ * Tarihi ayarla ya da temizle. Gövde: { tarih: 'YYYY-MM-DD' | null }
+ * Elle girilir — fiyat değişikliğinden otomatik türetilmez, çünkü
+ * `urunler`/`urun_sube` tarafında fiyatın ne zaman değiştiğini tutan alan yok.
+ */
+router.put(
+    '/fiyat-tarihi',
+    verifyToken,
+    requirePermission('categories.edit'),
+    asyncHandler(async (req, res) => {
+        const ham = req.body?.tarih;
+        const tarih = ham == null || ham === '' ? null : String(ham).trim();
+
+        // Menü metnini tarayıcı biçimlendirdiği için burada ISO şart:
+        // serbest metin girilirse müşteri menüsünde "Invalid Date" çıkardı.
+        if (tarih !== null) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(tarih) || Number.isNaN(Date.parse(tarih))) {
+                return res.status(400).json({ error: 'Tarih YYYY-MM-DD biçiminde olmalı' });
+            }
+        }
+
+        if (tarih === null) {
+            veriYaDaHata(
+                await supabase.from('ayarlar').delete().eq('anahtar', FIYAT_TARIHI_ANAHTARI),
+                'fiyat tarihi silinemedi'
+            );
+        } else {
+            veriYaDaHata(
+                await supabase.from('ayarlar').upsert(
+                    {
+                        anahtar: FIYAT_TARIHI_ANAHTARI,
+                        deger: { tarih, zaman: new Date().toISOString() },
+                        guncelleme: new Date().toISOString(),
+                    },
+                    { onConflict: 'anahtar' }
+                ),
+                'fiyat tarihi yazılamadı'
+            );
+        }
+
+        // Ayar JSON'u EN SONDA yazılır: üstteki adım patlarsa menüde eski
+        // tarih doğru kalır, yarım bir durum yayına çıkmaz.
+        await ayarJsonYaz({ fiyatTarihi: tarih });
+
+        res.json({ fiyatTarihi: tarih === null ? null : { tarih } });
     })
 );
 

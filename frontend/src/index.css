@@ -4244,9 +4244,49 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   font-size: 12.5px;
   font-weight: 600;
   text-decoration: none;
+  cursor: pointer;
   transition: border-color var(--pm-transition), color var(--pm-transition);
 }
 .pm-alerjen-btn:hover { border-color: rgba(8, 69, 41, 0.32); color: var(--pm-dark); }
+
+/* Alerjen paneli — formlarla aynı alttan açılan modal, içinde gömülü PDF.
+   Yükseklik sabit veriliyor: <iframe> içeriğine göre büyümediğinden
+   yüzdelik yükseklik boş bir çerçeveyle sonuçlanırdı. */
+.pm-modal--pdf { max-width: 720px; }
+.pm-alerjen-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 18px 20px;
+}
+.pm-alerjen-frame {
+  width: 100%;
+  height: 68vh;
+  min-height: 320px;
+  border: 1px solid var(--pm-border);
+  border-radius: var(--pm-radius-lg, 12px);
+  background: #fff;
+}
+.pm-alerjen-panel__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--pm-text-70);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.pm-alerjen-panel__link:hover { color: var(--pm-dark); text-decoration: underline; }
+
+/* Fiyat değiştirilme tarihi — alerjen butonunun altında tek satır bilgi */
+.pm-fiyat-tarihi {
+  align-self: center;
+  margin: 0;
+  color: var(--pm-text-50);
+  font-size: 11.5px;
+  font-weight: 500;
+}
 .pm-header__search-input::placeholder { color: var(--pm-text-50); font-weight: 500; }
 
 /* Etiket filtreleri — ikonlu, tek satır kaydırılabilir */
