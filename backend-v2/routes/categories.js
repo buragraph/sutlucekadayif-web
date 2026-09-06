@@ -41,7 +41,14 @@ router.get(
         ]);
         // Firestore'da alan YOKSA yanıtta da yoktu (gorsel 3/14, kilitli 2/14,
         // renk 3/14 dokümanda). Null kolonlar kırpılır; '' ve false KORUNUR.
-        const kategoriler = satirlar.map((k) => {
+        // Merkez bir kategoriyi bazı şubelere kapatabiliyor (gizli_subeler).
+        // Kapalı kategori şube sahibine HİÇ dönmez: dönseydi ürünü olmayan boş
+        // bir sekme olarak görünürdü. Admin hepsini görür, düzenleyebilsin diye.
+        const kendiSlug = req.user?.subeSlug;
+        const gorunur = req.user?.role === 'admin'
+            ? satirlar
+            : satirlar.filter((k) => !(k.gizli_subeler || []).includes(kendiSlug));
+        const kategoriler = gorunur.map((k) => {
             const c = { urunSayisi: sayac[k.id] || 0 };
             for (const [alan, deger] of Object.entries(k)) {
                 if (deger !== null && deger !== undefined) c[alan] = deger;
@@ -121,7 +128,7 @@ router.post(
     verifyToken,
     requirePermission('categories.create'),
     asyncHandler(async (req, res) => {
-        const { ad, sira, tur, renk, kilitli, gorsel } = req.body;
+        const { ad, sira, tur, renk, kilitli, gorsel, gizli_subeler } = req.body;
 
         if (!ad || !ad.trim()) {
             return res.status(400).json({ error: 'Kategori adı zorunludur' });
@@ -146,6 +153,11 @@ router.post(
         if (renk) satir.renk = renk;
         if (kilitli !== undefined) satir.kilitli = Boolean(kilitli);
         if (gorsel !== undefined) satir.gorsel = gorsel;
+        // Kategoriyi göremeyecek şubeler — kategorideki TÜM ürünleri kapsar
+        // (bkz. 0014_kategori_gizli_subeler.sql).
+        if (Array.isArray(gizli_subeler)) {
+            satir.gizli_subeler = [...new Set(gizli_subeler.filter((x) => typeof x === 'string' && x.trim()))];
+        }
 
         veriYaDaHata(await supabase.from('kategoriler').insert(satir), 'kategori eklenemedi');
 
@@ -171,7 +183,7 @@ router.put(
     requirePermission('categories.edit'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
-        const { ad, sira, tur, renk, kilitli, gorsel } = req.body;
+        const { ad, sira, tur, renk, kilitli, gorsel, gizli_subeler } = req.body;
 
         const { data: mevcut } = await supabase.from('kategoriler').select('id').eq('id', id).maybeSingle();
         if (!mevcut) {
@@ -185,6 +197,13 @@ router.put(
         if (renk !== undefined) updateData.renk = renk;
         if (kilitli !== undefined) updateData.kilitli = Boolean(kilitli);
         if (gorsel !== undefined) updateData.gorsel = gorsel;
+        // Kategoriyi göremeyecek şubeler — kategorideki TÜM ürünleri kapsar
+        // (bkz. 0014_kategori_gizli_subeler.sql).
+        if (gizli_subeler !== undefined) {
+            updateData.gizli_subeler = Array.isArray(gizli_subeler)
+                ? [...new Set(gizli_subeler.filter((x) => typeof x === 'string' && x.trim()))]
+                : [];
+        }
 
         if (Object.keys(updateData).length > 0) {
             veriYaDaHata(

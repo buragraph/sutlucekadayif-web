@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, GripVertical, Globe, MapPin, ImagePlus, Images, FolderOpen, Package, FileText, ExternalLink } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, GripVertical, Globe, MapPin, ImagePlus, Images, FolderOpen, Package, FileText, ExternalLink, CalendarDays, EyeOff } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { proxyImageUrl, proxyKeyUrl } from '../../../utils/imageProxy';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { gorseliWebpYap } from '../utils/gorsel';
+import { SubeCokluSecici } from '../components/SubeCokluSecici';
 
 const colorPalette = [
     { bg: '#dbeafe', text: '#1e40af', label: 'Mavi' },
@@ -37,6 +38,7 @@ const colorPalette = [
 function KategoriCard({ kat, surukleId, siraKaydediliyor, onSurukleBasla, onSurukleUzerinde, onSurukleBitti, onDuzenle, onSil }) {
     const colorInfo = colorPalette.find(c => c.bg === kat.renk) || { bg: kat.renk || '#dbeafe', text: '#374151' };
     const isOrtak = (kat.tur || 'ortak') === 'ortak';
+    const gizliSayisi = (kat.gizli_subeler || []).length;
 
     return (
         <div
@@ -75,6 +77,14 @@ function KategoriCard({ kat, surukleId, siraKaydediliyor, onSurukleBasla, onSuru
                             <MapPin className="size-2.5 mr-0.5" /> Şubeye Özel
                         </span>
                     )}
+                    {/* Kısıt kartta görünmezse admin hangi kategoriyi kime
+                        kapattığını ancak tek tek açarak anlar. */}
+                    {gizliSayisi > 0 && (
+                        <span className="inline-flex items-center text-[10px] text-destructive"
+                              title={(kat.gizli_subeler || []).join(', ')}>
+                            <EyeOff className="size-2.5 mr-0.5" /> {gizliSayisi} şubede gizli
+                        </span>
+                    )}
                     {kat.renk && (
                         <span className="inline-block size-2.5 rounded-full border border-black/10" style={{ background: kat.renk }} />
                     )}
@@ -101,7 +111,8 @@ export default function CategoriesPage() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState(null);
-    const [form, setForm] = useState({ ad: '', sira: '', tur: 'ortak', renk: '#dbeafe', gorsel: '' });
+    const [form, setForm] = useState({ ad: '', sira: '', tur: 'ortak', renk: '#dbeafe', gorsel: '', gizli_subeler: [] });
+    const [subeler, setSubeler] = useState([]);
     const [saving, setSaving] = useState(false);
     const [replaceState, setReplaceState] = useState(null);
     const [uploading, setUploading] = useState(false);
@@ -114,8 +125,33 @@ export default function CategoriesPage() {
     const [alerjenPdf, setAlerjenPdf] = useState(null);          // { key, ad, boyut, zaman } | null
     const [alerjenYukleniyor, setAlerjenYukleniyor] = useState(false);
     const alerjenInputRef = useRef(null);
+    const [fiyatTarihi, setFiyatTarihi] = useState('');          // 'YYYY-MM-DD' | ''
+    const [fiyatTarihiKayitli, setFiyatTarihiKayitli] = useState('');
+    const [fiyatTarihiYukleniyor, setFiyatTarihiYukleniyor] = useState(false);
 
-    useEffect(() => { loadKategoriler(); loadAlerjenPdf(); }, []);
+    useEffect(() => { loadKategoriler(); loadSubeler(); loadAlerjenPdf(); loadFiyatTarihi(); }, []);
+
+    async function loadFiyatTarihi() {
+        try {
+            const { data } = await api.get('/menu/fiyat-tarihi');
+            const t = data.fiyatTarihi?.tarih || '';
+            setFiyatTarihi(t);
+            setFiyatTarihiKayitli(t);
+        } catch (err) { console.error('Fiyat tarihi yüklenemedi:', err); }
+    }
+
+    async function handleFiyatTarihiKaydet(deger) {
+        setFiyatTarihiYukleniyor(true);
+        try {
+            await api.put('/menu/fiyat-tarihi', { tarih: deger || null });
+            setFiyatTarihi(deger);
+            setFiyatTarihiKayitli(deger);
+            toast.success(deger ? 'Fiyat tarihi güncellendi — menüde yayında' : 'Fiyat tarihi kaldırıldı');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Fiyat tarihi kaydedilemedi');
+        }
+        setFiyatTarihiYukleniyor(false);
+    }
 
     async function loadAlerjenPdf() {
         try {
@@ -168,15 +204,22 @@ export default function CategoriesPage() {
         setLoading(false);
     }
 
-    function openAdd() { setEditing(null); setForm({ ad: '', sira: '', tur: 'ortak', renk: '#dbeafe', gorsel: '' }); setShowModal(true); }
-    function openEdit(kat) { setEditing(kat); setForm({ ad: kat.ad, sira: kat.sira || '', tur: kat.tur || 'ortak', renk: kat.renk || '#dbeafe', gorsel: kat.gorsel || '' }); setShowModal(true); }
+    // Şube listesi yalnızca "bu kategoriyi göremeyecek şubeler" alanı için gerekli.
+    // Hata yutuluyor: liste gelmezse alan boş kalır, kategori düzenlemesi çalışmaya devam eder.
+    async function loadSubeler() {
+        try { const { data } = await api.get('/branches'); setSubeler(data.subeler || []); }
+        catch (err) { console.error('Şubeler yüklenemedi:', err); }
+    }
+
+    function openAdd() { setEditing(null); setForm({ ad: '', sira: '', tur: 'ortak', renk: '#dbeafe', gorsel: '', gizli_subeler: [] }); setShowModal(true); }
+    function openEdit(kat) { setEditing(kat); setForm({ ad: kat.ad, sira: kat.sira || '', tur: kat.tur || 'ortak', renk: kat.renk || '#dbeafe', gorsel: kat.gorsel || '', gizli_subeler: kat.gizli_subeler || [] }); setShowModal(true); }
     function closeModal() { setShowModal(false); setEditing(null); setShowMediaLibrary(false); }
 
     async function handleSubmit(e) {
         e.preventDefault();
         setSaving(true);
         try {
-            const payload = { ad: form.ad, tur: form.tur, renk: form.renk, gorsel: form.gorsel || '' };
+            const payload = { ad: form.ad, tur: form.tur, renk: form.renk, gorsel: form.gorsel || '', gizli_subeler: form.tur === 'sube_ozel' ? [] : (form.gizli_subeler || []) };
             if (form.sira !== '' && form.sira !== undefined) payload.sira = Number(form.sira);
             if (editing) { await api.put(`/categories/${editing.id}`, payload); }
             else { await api.post('/categories', payload); }
@@ -417,6 +460,44 @@ export default function CategoriesPage() {
                 </div>
             </div>
 
+            {/* ── Fiyat Değiştirilme Tarihi ── Alerjen PDF'iyle aynı global ayar
+                dosyasında; elle girilir, tüm şubelerin menüsünde görünür. */}
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                    <CalendarDays className="size-5 text-muted-foreground" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-sm font-medium text-foreground">Fiyat Değiştirilme Tarihi</h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                        {fiyatTarihiKayitli
+                            ? `Menüde "${new Date(fiyatTarihiKayitli).toLocaleDateString('tr-TR')}" olarak görünüyor.`
+                            : 'Girilmedi — menüde tarih satırı görünmez.'}
+                    </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                    <Input
+                        type="date"
+                        value={fiyatTarihi}
+                        disabled={fiyatTarihiYukleniyor}
+                        onChange={(e) => setFiyatTarihi(e.target.value)}
+                        className="h-8 w-[150px] text-xs"
+                    />
+                    <Button size="sm" className="h-8 text-xs"
+                            disabled={fiyatTarihiYukleniyor || fiyatTarihi === fiyatTarihiKayitli}
+                            onClick={() => handleFiyatTarihiKaydet(fiyatTarihi)}>
+                        {fiyatTarihiYukleniyor ? <Spinner className="size-3.5 mr-1.5" /> : null}
+                        Kaydet
+                    </Button>
+                    {fiyatTarihiKayitli && (
+                        <Button size="sm" variant="ghost" className="h-8 text-xs text-destructive hover:text-destructive"
+                                disabled={fiyatTarihiYukleniyor}
+                                onClick={() => handleFiyatTarihiKaydet('')}>
+                            <Trash2 className="size-3.5" />
+                        </Button>
+                    )}
+                </div>
+            </div>
+
             {/* Add/Edit Modal */}
             <Dialog open={showModal} onOpenChange={(open) => !open && closeModal()}>
                 <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md p-0 gap-0 border">
@@ -505,6 +586,26 @@ export default function CategoriesPage() {
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Şube kısıtı — yalnızca ortak kategoride anlamlı.
+                                Şubeye özel kategori zaten tek şubenin; ona ayrıca
+                                "göremeyecek şubeler" sormak kafa karıştırır. */}
+                            {form.tur !== 'sube_ozel' && (
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-medium">
+                                        Bu kategoriyi göremeyecek şubeler
+                                        <span className="ml-1 font-normal text-muted-foreground">
+                                            — kategorideki tüm ürünler o şubelerde gizlenir
+                                        </span>
+                                    </Label>
+                                    <SubeCokluSecici
+                                        subeler={subeler}
+                                        secili={form.gizli_subeler || []}
+                                        onChange={(v) => setForm({ ...form, gizli_subeler: v })}
+                                        placeholder="Tüm şubeler görebilir"
+                                    />
+                                </div>
+                            )}
 
                             {/* Renk */}
                             <div className="space-y-1.5">

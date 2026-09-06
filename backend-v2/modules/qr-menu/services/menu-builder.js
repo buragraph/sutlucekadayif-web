@@ -24,7 +24,7 @@ import { veriYaDaHata } from '../../../utils/veri.js';
 export async function buildMenuData(subeSlug, paylasilan = null) {
     const [subeSatiri, kategoriler, menuUrunleri, ozelUrunler] = await Promise.all([
         paylasilan?.subeler?.get(subeSlug) ?? supabase
-            .from('subeler').select('kod, ad, il, ilce').eq('kod', subeSlug).maybeSingle()
+            .from('subeler').select('kod, ad, il, ilce, google_degerlendirme_link').eq('kod', subeSlug).maybeSingle()
             .then((r) => r.data),
         paylasilan?.kategoriler ?? supabase
             .from('kategoriler').select('*').order('sira', { ascending: true })
@@ -55,6 +55,10 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
         ad: subeSatiri.ad || subeSatiri.kod,
         il: subeSatiri.il || null,
         ilce: subeSatiri.ilce || null,
+        // Google değerlendirme adresi şube başına ayrı (Google'dan gelir, bkz.
+        // scripts/gecis/google-degerlendirme-link.mjs). Yoksa null — menüdeki
+        // "Bizi Değerlendirin" butonu o şubede hiç gösterilmez.
+        degerlendirmeLink: subeSatiri.google_degerlendirme_link || null,
     };
 
     // PUBLIC projeksiyon — müşteri menüsünde gösterilen alanlar SADECE bunlar.
@@ -88,13 +92,23 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
 
     const tumUrunler = [];
 
+    // Kategori bazlı gizleme: merkez bir kategoriyi bu şubeden sakladıysa
+    // içindeki ürünler menüye HİÇ girmez (bkz. 0014_kategori_gizli_subeler.sql).
+    // Ürün seviyesindeki `urun_sube.gizli` sorguda zaten eleniyor.
+    const gizliKategoriler = new Set(
+        kategoriler.filter((k) => (k.gizli_subeler || []).includes(subeSlug)).map((k) => k.id)
+    );
+    const kategoriGizliMi = (u) => gizliKategoriler.has(u.kategori_id);
+
     for (const satir of menuUrunleri) {
         const u = satir.urunler;
+        if (kategoriGizliMi(u)) continue;
         const fiyat = satir.fiyat_override ?? u.fiyat;
         tumUrunler.push(musteriAlanlari(u, Number(fiyat)));
     }
 
     for (const u of ozelUrunler) {
+        if (kategoriGizliMi(u)) continue;
         tumUrunler.push(musteriAlanlari(u, Number(u.fiyat)));
     }
 
@@ -106,7 +120,12 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
         urunlerByKategori[kat].push(urun);
     });
 
-    return { sube, kategoriler: kategoriler.map(kategoriYanit), urunlerByKategori };
+    return {
+        sube,
+        // Gizlenen kategori sekmesi menüde hiç görünmesin
+        kategoriler: kategoriler.filter((k) => !gizliKategoriler.has(k.id)).map(kategoriYanit),
+        urunlerByKategori,
+    };
 }
 
 /**
@@ -116,7 +135,7 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
  */
 export async function paylasilanVeriOku() {
     const [subeSatirlari, kategoriler, ozelUrunler] = await Promise.all([
-        supabase.from('subeler').select('kod, ad, il, ilce').range(0, 9999)
+        supabase.from('subeler').select('kod, ad, il, ilce, google_degerlendirme_link').range(0, 9999)
             .then((r) => veriYaDaHata(r, 'şubeler okunamadı')),
         supabase.from('kategoriler').select('*').order('sira', { ascending: true })
             .then((r) => veriYaDaHata(r, 'kategoriler okunamadı')),

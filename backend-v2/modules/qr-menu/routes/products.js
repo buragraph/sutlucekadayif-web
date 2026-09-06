@@ -157,6 +157,21 @@ async function findProduct(id, subeSlug) {
  * Kategori kilit haritası — { kategoriId: true|false }.
  * Admin için hiç okunmaz, çünkü admin zaten hiçbir zaman kilitli değildir.
  */
+/**
+ * Kategori bazlı gizleme haritası: kategoriId → gizlenen şube kodları.
+ * Ürün seviyesindeki `gizli` ile BİRLİKTE çalışır; biri yeterse ürün gizlidir.
+ */
+async function katGizliHaritasi(req) {
+    if (req.user.role === 'admin') return {};
+    const satirlar = veriYaDaHata(
+        await supabase.from('kategoriler').select('id, gizli_subeler'),
+        'kategoriler okunamadı'
+    );
+    const m = {};
+    satirlar.forEach((k) => { m[k.id] = new Set(k.gizli_subeler || []); });
+    return m;
+}
+
 async function katKilitHaritasi(req) {
     if (req.user.role === 'admin') return {};
     const satirlar = veriYaDaHata(
@@ -193,9 +208,11 @@ function urunKilitliMi(user, urun, katKilit) {
  *   menude_subeler → ŞUBE seçer. Sattığı ürünleri kataloğdan menüsüne ekler.
  *   mevcut_degil   → ŞUBE geçici kapatır (stok yok). Panelde durur, geri açar.
  */
-function urunGizliMi(user, urun) {
+function urunGizliMi(user, urun, katGizli = {}) {
     if (user.role === 'admin') return false;
-    return (urun.gizli_subeler || []).includes(user.subeSlug);
+    if ((urun.gizli_subeler || []).includes(user.subeSlug)) return true;
+    // Kategorisi bu şubeden gizlenmişse ürün de gizlidir.
+    return !!katGizli[urun.kategori]?.has(user.subeSlug);
 }
 
 /** Ortak ürün bu şubenin MENÜSÜNDE mi? (`menude_subeler` bir OPT-IN listesidir) */
@@ -244,10 +261,10 @@ async function tumSubeSluglari() {
  * Yazılan fiyat ortak ürünün `fiyat` alanını DEĞİL, `urun_sube.fiyat_override`
  * satırını günceller — aksi halde bir şubenin değişikliği 88 şubede geçerli olurdu.
  */
-function fiyatDuzenlenebilirMi(user, urun) {
+function fiyatDuzenlenebilirMi(user, urun, katGizli = {}) {
     if (user.role === 'admin') return true;
     if (urun.tur === 'sube_ozel') return false; // kendi ürününde `kilitli` kuralı geçerli
-    if (urunGizliMi(user, urun)) return false;
+    if (urunGizliMi(user, urun, katGizli)) return false;
     return (urun.fiyat_serbest || []).includes(user.subeSlug);
 }
 
@@ -334,13 +351,15 @@ router.get(
         // Her ürüne, İSTEYEN KULLANICI için hesaplanmış yetki alanlarını ekle.
         // Arayüz kuralları yeniden hesaplamaz, bu alanları okur — kural tek yerde yaşar.
         const katKilit = await katKilitHaritasi(req);
+        const katGizli = await katGizliHaritasi(req);
         const cikti = urunler
             // Merkezin bu şubeden gizlediği ürünler panelde de görünmez
-            .filter((u) => !urunGizliMi(req.user, u))
+            // (ürünün kendi gizlisi VEYA kategorisinin gizlisi)
+            .filter((u) => !urunGizliMi(req.user, u, katGizli))
             .map((u) => yanitProjeksiyonu(req.user, {
                 ...u,
                 duzenlenemez: urunKilitliMi(req.user, u, katKilit),
-                fiyatDuzenlenebilir: fiyatDuzenlenebilirMi(req.user, u),
+                fiyatDuzenlenebilir: fiyatDuzenlenebilirMi(req.user, u, katGizli),
                 etkinFiyat: etkinFiyat(req.user, u),
                 menude: menudeMi(req.user, u),
             }));
@@ -372,18 +391,19 @@ router.get(
             ? new Map()
             : await uyelikleriGetir(ortak.map((u) => u.id), req.user.subeSlug);
         const katKilit = await katKilitHaritasi(req);
+        const katGizli = await katGizliHaritasi(req);
 
         const cikti = [];
         for (const satir of ortak) {
             const u = urunNesnesi(satir, uyelikler.get(satir.id) || []);
             // Merkezin bu şubeden gizlediği ürün katalogda da görünmez
-            if (urunGizliMi(req.user, u)) continue;
+            if (urunGizliMi(req.user, u, katGizli)) continue;
             // Zaten menüde olanlar listede duruyor; katalog eklenebilecekleri gösterir
             if (menudeMi(req.user, u)) continue;
             cikti.push(yanitProjeksiyonu(req.user, {
                 ...u,
                 duzenlenemez: urunKilitliMi(req.user, u, katKilit),
-                fiyatDuzenlenebilir: fiyatDuzenlenebilirMi(req.user, u),
+                fiyatDuzenlenebilir: fiyatDuzenlenebilirMi(req.user, u, katGizli),
                 etkinFiyat: etkinFiyat(req.user, u),
                 menude: false,
             }));
@@ -779,6 +799,7 @@ router.put(
         const lookupSlug = req.user.role === 'admin' ? (sube_slug || req.body._subeSlug) : req.user.subeSlug;
         const found = await findProduct(id, lookupSlug);
         const katKilit = await katKilitHaritasi(req);
+        const katGizli = await katGizliHaritasi(req);
         if (!found) {
             return res.status(404).json({ error: 'Ürün bulunamadı' });
         }
@@ -786,7 +807,7 @@ router.put(
 
         // Merkezin gizlediği ürün şube için yok hükmündedir — varlığını sızdırmamak
         // adına 403 değil 404 döner.
-        if (urunGizliMi(req.user, urunVerisi)) {
+        if (urunGizliMi(req.user, urunVerisi, katGizli)) {
             return res.status(404).json({ error: 'Ürün bulunamadı' });
         }
 
@@ -794,7 +815,7 @@ router.put(
         // Şube ortak ürünü düzenleyemez AMA merkez izin verdiyse yalnızca kendi
         // fiyatını ayarlayabilir. Bu fiyat ortak ürünün `fiyat` alanına DEĞİL,
         // urun_sube satırının `fiyat_override` kolonuna yazılır.
-        const yalnizcaFiyat = !tamYetki && fiyatDuzenlenebilirMi(req.user, urunVerisi);
+        const yalnizcaFiyat = !tamYetki && fiyatDuzenlenebilirMi(req.user, urunVerisi, katGizli);
 
         if (!tamYetki && !yalnizcaFiyat) {
             return res.status(403).json({ error: 'Bu ürünü değiştirme yetkiniz yok' });
@@ -1025,8 +1046,11 @@ router.put(
         const { data: uye } = await supabase.from('urun_sube').select('*')
             .eq('urun_id', id).eq('sube_kod', subeSlug).maybeSingle();
 
-        // Merkezin bu şubeden gizlediği ürün şube için yok hükmünde.
-        if (uye?.gizli) {
+        // Merkezin bu şubeden gizlediği ürün şube için yok hükmünde —
+        // ürünün kendi bayrağı ya da kategorisinin gizli listesi.
+        const { data: kat } = await supabase.from('kategoriler')
+            .select('gizli_subeler').eq('id', urun.kategori_id ?? '').maybeSingle();
+        if (uye?.gizli || (kat?.gizli_subeler || []).includes(subeSlug)) {
             return res.status(404).json({ error: 'Ürün bulunamadı' });
         }
         // Menüsünde olmayan ürünün stok durumu anlamsız — şube önce ürünü
