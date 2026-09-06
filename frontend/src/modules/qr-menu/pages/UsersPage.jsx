@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw, Copy } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw, Copy, KeyRound } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,13 +11,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 
-// Yeni kullanıcıya verilecek geçici parola. E-posta gönderimine bağlı bir
-// "şifre belirleme" akışı yok; parolayı yönetici iletir, kullanıcı profilinden değiştirir.
-const PAROLA_HARFLERI = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%*-_';
-function uretParola(uzunluk = 14) {
-    const b = crypto.getRandomValues(new Uint8Array(uzunluk));
-    return Array.from(b, (x) => PAROLA_HARFLERI[x % PAROLA_HARFLERI.length]).join('');
-}
+// GEÇİCİ PAROLA YOK: hesap parolasız açılır, kişi giriş ekranına ilk yazdığı
+// parolayı kendi parolası yapar (bkz. backend routes/parola.js). Yönetici artık
+// hiçbir parola görmüyor ve iletmiyor.
 
 export default function UsersPage() {
     const { user: currentUser, refreshClaims } = useAuth();
@@ -104,18 +100,16 @@ export default function UsersPage() {
                 await loadData();
                 toast.success('Kullanıcı güncellendi');
             } else {
-                const parola = uretParola();
+                // Parola GÖNDERİLMEZ: hesap parolasız açılır.
                 await api.post('/users', {
                     email: form.email,
-                    password: parola,
                     displayName: form.displayName,
                     subeSlug: form.subeSlug,
                     role: form.role,
                 });
                 closeModal();
                 await loadData();
-                // Parola yalnızca burada görünür — kullanıcıya yönetici iletir.
-                setYeniKimlik({ email: form.email, parola });
+                setYeniKimlik({ email: form.email });
             }
         } catch (err) {
             console.error('İşlem hatası:', err);
@@ -151,6 +145,23 @@ export default function UsersPage() {
         } catch (err) {
             console.error('Sıfırlama hatası:', err);
             toast.error(err.response?.data?.error || 'Sıfırlama başarısız');
+        }
+    }
+
+    // Parola sıfırlama: yeni parola ATANMAZ, hesap "ilk giriş" durumuna döner —
+    // kişi giriş ekranında yeni parolasını kendisi belirler.
+    async function handleParolaSifirla(u) {
+        const ok = await confirm(
+            `${u.displayName || u.email} kullanıcısının parolası sıfırlansın mı? ` +
+            'Mevcut parolası geçersiz olur; giriş ekranında yazacağı ilk parola yeni parolası olur.'
+        );
+        if (!ok) return;
+        try {
+            await api.put(`/users/${u.uid}`, { parolaSifirla: true });
+            toast.success('Parola sıfırlandı — kullanıcı ilk girişte yenisini belirleyecek');
+        } catch (err) {
+            console.error('Parola sıfırlama hatası:', err);
+            toast.error(err.response?.data?.error || 'Parola sıfırlanamadı');
         }
     }
 
@@ -227,6 +238,11 @@ export default function UsersPage() {
                                             <Button variant="ghost" size="icon" className="size-8" onClick={() => openEditModal(u)} title="Düzenle">
                                                 <Pencil className="size-3.5" />
                                             </Button>
+                                            {u.uid !== currentUser?.uid && (
+                                                <Button variant="ghost" size="icon" className="size-8" onClick={() => handleParolaSifirla(u)} title="Parolayı sıfırla">
+                                                    <KeyRound className="size-3.5" />
+                                                </Button>
+                                            )}
                                             {!isSubeSahibi && u.role === 'sube_sahibi' && (
                                                 <Button variant="ghost" size="icon" className="size-8" onClick={() => handleResetOnboarding(u)} title="İlk giriş formunu sıfırla">
                                                     <RotateCcw className="size-3.5" />
@@ -265,8 +281,8 @@ export default function UsersPage() {
 
                         {!editingUser && (
                             <p className="text-sm text-muted-foreground">
-                                Kullanıcı oluşturulunca geçici bir parola üretilir ve size gösterilir.
-                                Parolayı kullanıcıya siz iletirsiniz; kullanıcı profil sayfasından değiştirebilir.
+                                Parola belirlemenize gerek yok. Kullanıcı giriş ekranına e-postasını
+                                ve istediği parolayı yazdığında o parola hesabına kaydedilir.
                             </p>
                         )}
 
@@ -330,7 +346,7 @@ export default function UsersPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Yeni kullanıcının geçici parolası — yalnızca bir kez gösterilir */}
+            {/* Hesap açıldı — parola dağıtımı yok, kişi ilk girişte kendi belirler */}
             <Dialog open={!!yeniKimlik} onOpenChange={(open) => !open && setYeniKimlik(null)}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
@@ -338,17 +354,14 @@ export default function UsersPage() {
                     </DialogHeader>
                     <div className="space-y-3">
                         <p className="text-sm text-muted-foreground">
-                            Aşağıdaki geçici parolayı kullanıcıya iletin. Bu parola bir daha gösterilmez;
-                            kullanıcı giriş yaptıktan sonra profil sayfasından kendi parolasını belirleyebilir.
+                            Hesap parolasız açıldı. Kullanıcıya yalnızca e-posta adresini bildirin:
+                            giriş ekranında bu adresi ve istediği parolayı yazdığında o parola
+                            hesabına kaydedilir ve girişi tamamlanır.
                         </p>
                         <div className="space-y-1.5">
                             <Label>E-posta</Label>
-                            <Input readOnly value={yeniKimlik?.email || ''} />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label>Geçici parola</Label>
                             <div className="flex gap-2">
-                                <Input readOnly value={yeniKimlik?.parola || ''} className="font-mono" />
+                                <Input readOnly value={yeniKimlik?.email || ''} className="font-mono" />
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -356,9 +369,7 @@ export default function UsersPage() {
                                     title="Kopyala"
                                     onClick={async () => {
                                         try {
-                                            await navigator.clipboard.writeText(
-                                                `${yeniKimlik.email} / ${yeniKimlik.parola}`
-                                            );
+                                            await navigator.clipboard.writeText(yeniKimlik.email);
                                             toast.success('Kopyalandı');
                                         } catch {
                                             toast.error('Kopyalanamadı, elle seçin');

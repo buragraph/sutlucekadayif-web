@@ -1,5 +1,4 @@
 import { Router } from '../shared/router.js';
-import crypto from 'node:crypto';
 import { supabase } from '../config/supabase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import {
@@ -10,6 +9,7 @@ import {
     kullaniciYarat,
     tumKullanicilar,
 } from '../shared/kullanici-dizini.js';
+import { ilerlemeDevral } from '../modules/academy/devir.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { veriYaDaHata } from '../utils/veri.js';
 
@@ -87,15 +87,14 @@ router.post(
             subeSlug = req.user.subeSlug;
         }
 
-        // Şifre gönderilmediyse rastgele güçlü bir şifre atanır; kullanıcıya
-        // parolasını yönetici iletir (panelde "şifremi unuttum" akışı yok).
-        const gecerliSifre =
-            password && String(password).length >= 6
-                ? password
-                : `Gecici-${crypto.randomBytes(24).toString('base64url')}`;
+        // Parola BOŞ bırakılabilir: hesap parolasız açılır ve kişi giriş
+        // ekranına ilk yazdığı parolayı kendi parolası yapar (bkz. routes/parola.js).
+        // Eskiden burada rastgele bir parola üretiliyordu ama hiçbir yerde
+        // gösterilmediği için hesap kullanılamaz kalıyordu.
+        const parolaVerildi = !!password && String(password).length >= 6;
         const yeni = await kullaniciYarat({
             email,
-            password: gecerliSifre,
+            password: parolaVerildi ? password : undefined,
             displayName: displayName || null,
             role,
             subeSlug: subeSlug || null,
@@ -106,11 +105,14 @@ router.post(
         try {
             veriYaDaHata(
                 await supabase.from('kullanici_sube').upsert(
-                    { uid: yeni.id, role, sube_slug: subeSlug || null },
+                    { uid: yeni.id, role, sube_slug: subeSlug || null, parola_kuruldu: parolaVerildi },
                     { onConflict: 'uid' }
                 ),
                 'kullanıcı kaydı yazılamadı'
             );
+
+            // WP'den devralınan ilerleme varsa bu hesaba bağla (sessiz, bkz. devir.js)
+            await ilerlemeDevral(yeni.id, email);
         } catch (err) {
             await kullaniciSil(yeni.id).catch(() => {});
             throw err;
@@ -138,7 +140,7 @@ router.put(
     requirePermission('users.assignRole'),
     asyncHandler(async (req, res) => {
         const { uid } = req.params;
-        let { email, displayName, subeSlug, role } = req.body;
+        let { email, displayName, subeSlug, role, parolaSifirla } = req.body;
 
         // Şube sahibi güvenliği: Sadece kendi şubesindeki çalışanları düzenleyebilir
         if (req.user.role === 'sube_sahibi') {
@@ -157,6 +159,18 @@ router.put(
             ...(email ? { email } : {}),
             ...(displayName !== undefined ? { displayName: displayName || null } : {}),
         });
+
+        // Parola sıfırlama: yeni parola ATAMAYIZ, hesabı "ilk giriş" durumuna
+        // döndürürüz — kişi giriş ekranında yeni parolasını kendi belirler
+        // (bkz. routes/parola.js). Yönetici düz metin parola görmez/iletmez.
+        if (parolaSifirla) {
+            veriYaDaHata(
+                await supabase.from('kullanici_sube')
+                    .update({ parola_kuruldu: false }).eq('uid', uid),
+                'parola sıfırlanamadı'
+            );
+            console.log(`🔑 ${uid}: parola sıfırlandı, ilk giriş bekleniyor`);
+        }
 
         // Şube/rol güncelle
         if (subeSlug !== undefined || role !== undefined) {
