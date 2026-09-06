@@ -1,5 +1,5 @@
-import { Router } from '../shared/router.js';
-import { uploadFile, deleteFile, getFile, urlToKey, isKeyAllowed } from '../config/r2.js';
+import { Router, akisGonder } from '../shared/router.js';
+import { uploadFile, deleteFile, getFile, getFileStream, urlToKey, isKeyAllowed } from '../config/r2.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import { supabase } from '../config/supabase.js';
 import { dosyaAl } from '../shared/dosya.js';
@@ -12,7 +12,8 @@ import crypto from 'crypto';
 // POST /api/upload/image için izinli R2 klasör önekleri. Yalnızca mevcut
 // çağıranların gönderdiği ('urunler') değer whitelist'te — bilinmeyen/keyfi
 // değer (ör. "dekontlar/x", "../../y") sanitize edilip varsayılana düşer.
-const ALLOWED_UPLOAD_FOLDERS = new Set(['urunler']);
+// 'academy': kurs kapak görselleri (bkz. AcademyAdmin kurs modalı).
+const ALLOWED_UPLOAD_FOLDERS = new Set(['urunler', 'academy']);
 
 // GET /api/upload/dekont/* sunumunda depolanan (yükleme anında saldırgan
 // tarafından ayarlanabilen) ContentType'a GÜVENİLMEZ — uzantıdan sabit,
@@ -43,7 +44,12 @@ const GORSEL_AL = dosyaAl('image', {
 
 /**
  * GET /api/upload/proxy/*
- * R2'deki görseli doğrudan backend üzerinden sun
+ * R2'deki dosyayı doğrudan backend üzerinden sun (r2.dev erişilemiyor).
+ *
+ * Gövde AKIŞLA geçirilir, belleğe alınmaz: akademi videoları 100 MB'ı aşıyor
+ * ve eski `getFile` sürümü Worker'ın bellek sınırını patlatıp "error code:
+ * 1102" döndürüyordu. Range istekleri de karşılanır — videoda ileri sarma
+ * ve Safari'de oynatma buna bağlı.
  */
 router.get(
     '/proxy/*',
@@ -65,7 +71,8 @@ router.get(
         res.set('Access-Control-Allow-Origin', '*');
 
         try {
-            const result = await getFile(key);
+            const aralik = req.headers?.range || req.headers?.Range || undefined;
+            const result = await getFileStream(key, aralik);
             if (!result) return res.status(404).json({ error: 'Dosya bulunamadı' });
 
             const contentType = result.tur || 'image/webp';
@@ -77,8 +84,15 @@ router.get(
             } else {
                 res.set('Cache-Control', 'public, max-age=31536000, immutable');
             }
+            // Range desteğini duyur; yoksa tarayıcı videoda ileri saramaz.
+            res.set('Accept-Ranges', 'bytes');
+            if (result.boyut != null) res.set('Content-Length', String(result.boyut));
+            if (result.aralikBasligi) {
+                res.set('Content-Range', result.aralikBasligi);
+                res.status(206);
+            }
 
-            res.send(result.govde);
+            akisGonder(res, result.akis);
         } catch (err) {
             if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
                 return res.status(404).json({ error: 'Görsel bulunamadı' });

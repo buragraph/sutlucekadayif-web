@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import Plyr from 'plyr';
 import 'plyr/dist/plyr.css';
 import { parseYouTubeInput } from '../utils/youtube';
+import { proxyR2Url } from '../../../utils/imageProxy';
 
 export default function VideoPlayer({
     videoId,
@@ -22,6 +23,10 @@ export default function VideoPlayer({
     );
 
     const isPlaylistMode = videoType === 'playlist';
+    // Doğrudan dosya (R2'deki MP4) — YouTube değil, HTML5 <video> ile oynatılır.
+    // R2 alan adı ağdan erişilemediği için kaynak proxy üzerinden verilir.
+    const isFileMode = videoType === 'file';
+    const dosyaSrc = useMemo(() => (isFileMode ? proxyR2Url(parsedId) : ''), [isFileMode, parsedId]);
 
     useEffect(() => {
         if (!parsedId) return;
@@ -49,7 +54,7 @@ export default function VideoPlayer({
                 }
             }
         };
-    }, [parsedId, isPlaylistMode]);
+    }, [parsedId, isPlaylistMode, isFileMode]);
 
     const initYTPlayer = () => {
         if (!iframeRef.current) return;
@@ -161,6 +166,14 @@ export default function VideoPlayer({
         return (
             <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: '0.75rem' }}>
                 <div ref={iframeRef} id="youtube-playlist-player" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
+            </div>
+        );
+    }
+
+    if (isFileMode) {
+        return (
+            <div style={{ position: 'relative' }} className="plyr-container">
+                <video ref={videoRef} src={dosyaSrc} playsInline preload="metadata" title={title} />
             </div>
         );
     }

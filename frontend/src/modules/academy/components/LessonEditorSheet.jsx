@@ -57,10 +57,13 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
         onClose();
     };
 
-    // YouTube girdisi doğrulama + önizleme
+    // Video girdisi doğrulama + önizleme. YouTube dışında doğrudan video
+    // dosyası da geçerli (WP'den taşınan dersler R2'de MP4 olarak duruyor).
     const videoParse = useMemo(() => parseYouTubeInput(fileUrl.trim()), [fileUrl]);
     const videoGecerli = !fileUrl.trim() ? null : (
-        videoParse.type === 'playlist' || (videoParse.type === 'video' && /^[a-zA-Z0-9_-]{11}$/.test(videoParse.id || ''))
+        videoParse.type === 'playlist'
+        || videoParse.type === 'file'
+        || (videoParse.type === 'video' && /^[a-zA-Z0-9_-]{11}$/.test(videoParse.id || ''))
     );
 
     const handleFileUpload = async (e) => {
@@ -123,7 +126,7 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
             if (!fileUrl.trim()) return toast.error('Video linki gerekli');
             // Tanınmayan format kaydı engellemesin (eski kayıtlar/nadir URL biçimleri) — onayla geç
             if (!videoGecerli) {
-                const yes = await confirm('YouTube linki tanınamadı. Çalışmayan bir link kaydedilirse ders açılmaz. Yine de kaydedilsin mi?');
+                const yes = await confirm('Video linki tanınamadı. Çalışmayan bir link kaydedilirse ders açılmaz. Yine de kaydedilsin mi?');
                 if (!yes) return;
             }
         }
@@ -211,18 +214,24 @@ export default function LessonEditorSheet({ open, courseId, lesson, onClose, onS
 
                     {form.lessonType === 'video' && (
                         <div className="space-y-1.5">
-                            <Label className="text-xs font-medium">YouTube Video URL veya ID</Label>
+                            <Label className="text-xs font-medium">Video linki</Label>
                             <Input
                                 value={fileUrl}
                                 onChange={(e) => setFileUrl(e.target.value)}
                                 placeholder="Örn: https://youtube.com/watch?v=... veya dQw4w9WgXcQ"
                                 className="h-9"
                             />
-                            <p className="text-[10px] text-muted-foreground">YouTube video linki, video ID veya playlist linki yapıştırın.</p>
+                            <p className="text-[10px] text-muted-foreground">YouTube linki/ID'si, playlist linki ya da doğrudan video dosyası (.mp4) adresi yapıştırın.</p>
                             {videoGecerli === false && (
                                 <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
                                     <AlertTriangle className="size-3.5 shrink-0" />
-                                    Bu girdi bir YouTube video/playlist linkine benzemiyor — kaydetmeden önce kontrol edin.
+                                    Bu girdi bir YouTube linkine ya da video dosyasına benzemiyor — kaydetmeden önce kontrol edin.
+                                </div>
+                            )}
+                            {videoParse.type === 'file' && (
+                                <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                                    <Video className="size-3.5 shrink-0" />
+                                    <span><span className="font-medium text-foreground">Video dosyası ✓</span> — YouTube değil, doğrudan dosyadan oynatılır.</span>
                                 </div>
                             )}
                             {videoGecerli && videoParse.type === 'video' && (

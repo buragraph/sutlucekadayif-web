@@ -39,6 +39,27 @@ export const depoS3 = {
             throw e;
         }
     },
+    // Gövdeyi belleğe ALMADAN akış olarak verir; `aralik` verilirse kısmi
+    // içerik ister (HTTP Range). Büyük dosyalar (akademi videoları) `oku` ile
+    // servis edilemiyor: 169 MB'lık MP4 Worker'ın bellek sınırını aşıp
+    // "error code: 1102" ile ölüyordu.
+    async okuAkis(key, aralik) {
+        try {
+            const r = await s3.send(new GetObjectCommand({
+                Bucket: BUCKET, Key: key, Range: aralik || undefined,
+            }));
+            return {
+                akis: r.Body,
+                tur: r.ContentType ?? null,
+                boyut: r.ContentLength ?? null,
+                // 'bytes 0-1023/169000000' → istemciye aynen geri verilir
+                aralikBasligi: r.ContentRange ?? null,
+            };
+        } catch (e) {
+            if (e.name === 'NoSuchKey' || e.$metadata?.httpStatusCode === 404) return null;
+            throw e;
+        }
+    },
     async listele(onek) {
         const cikti = [];
         let devam;

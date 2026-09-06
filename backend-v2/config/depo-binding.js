@@ -22,6 +22,31 @@ export function depoBinding(kova) {
                 boyut: nesne.size ?? null,
             };
         },
+        // bkz. depo-s3.js okuAkis — büyük dosyalar için akış + Range.
+        async okuAkis(key, aralik) {
+            const eslesme = /^bytes=(\d*)-(\d*)$/.exec(aralik || '');
+            let istek;
+            if (eslesme) {
+                const [, bas, son] = eslesme;
+                istek = bas === ''
+                    ? { suffix: Number(son) }
+                    : { offset: Number(bas), ...(son === '' ? {} : { length: Number(son) - Number(bas) + 1 }) };
+            }
+            const nesne = await kova.get(key, istek ? { range: istek } : undefined);
+            if (!nesne) return null;
+            const toplam = nesne.size ?? null;
+            const r = nesne.range;
+            const bas = r?.offset ?? 0;
+            const uzunluk = r?.length ?? toplam;
+            return {
+                akis: nesne.body,
+                tur: nesne.httpMetadata?.contentType ?? null,
+                boyut: uzunluk,
+                aralikBasligi: istek && toplam != null
+                    ? `bytes ${bas}-${bas + uzunluk - 1}/${toplam}`
+                    : null,
+            };
+        },
         async listele(onek) {
             const cikti = [];
             let imlec;

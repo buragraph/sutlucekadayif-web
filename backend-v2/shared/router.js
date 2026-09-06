@@ -12,6 +12,8 @@
 // Gövdelerin dokunduğu yüzey ölçüldü ve ikisinde de aynı:
 //   req: user, body, params, query, file, headers, method, originalUrl
 //   res: status, json, send, set, type, redirect, removeHeader
+//   + akisGonder(res, akis): gövdeyi belleğe almadan akıtmak için ortak yol
+//     (Express'te pipe, Workers'ta Response gövdesi) — bkz. dosya sonu.
 
 const YONTEMLER = ['get', 'post', 'put', 'delete', 'patch'];
 
@@ -127,6 +129,10 @@ function yanitKur() {
                 : t === 'json' ? 'application/json' : t;
             return res;
         },
+        // Gövdeyi belleğe almadan akıtır (büyük dosya proxy'si). Doğrudan
+        // ÇAĞIRMA: rota gövdeleri Express'te de koştuğu için `akisGonder()`
+        // yardımcısını kullan.
+        akis(v) { sonuc = { tur: 'akis', veri: v }; isaretle(); return res; },
         json(v) { sonuc = { tur: 'json', veri: v }; isaretle(); return res; },
         send(v) { sonuc = { tur: 'metin', veri: v }; isaretle(); return res; },
         redirect(hedef) { sonuc = { tur: 'yonlendir', veri: hedef }; isaretle(); return res; },
@@ -137,6 +143,9 @@ function yanitKur() {
                 return new Response(JSON.stringify(sonuc.veri), {
                     status: kod, headers: { 'Content-Type': 'application/json', ...basliklar },
                 });
+            }
+            if (sonuc?.tur === 'akis') {
+                return new Response(sonuc.veri, { status: kod, headers: basliklar });
             }
             if (sonuc?.tur === 'metin') {
                 const v = sonuc.veri;
@@ -223,4 +232,23 @@ export function honoyaBagla(app, onek, r, onHalkalar = []) {
             return res.yanit();
         });
     }
+}
+
+/**
+ * Gövdeyi akış olarak gönderir — iki ortamda da çalışır.
+ * Express'te gerçek `res` bir Node stream'i; Workers'ta köprünün `res.akis`'i
+ * Response gövdesini kurar. Rota gövdeleri ayrım yapmasın diye burada.
+ * @param {object} res - rota gövdesine gelen yanıt nesnesi
+ * @param {any} akis   - Node Readable (Express) ya da web ReadableStream (Workers)
+ */
+export function akisGonder(res, akis) {
+    if (typeof res.akis === 'function') return res.akis(akis);
+    // Express: S3 SDK Node tarafında Readable döndürür.
+    if (typeof akis?.pipe === 'function') return akis.pipe(res);
+    // Web ReadableStream Express'e düşerse (beklenmiyor) baytları topla.
+    return (async () => {
+        const parcalar = [];
+        for await (const p of akis) parcalar.push(p);
+        res.send(Buffer.concat(parcalar.map((p) => Buffer.from(p))));
+    })();
 }
