@@ -1247,8 +1247,12 @@ export default function ProductsPage() {
                                                         {urun.gorsel
                                                             ? <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad} className="size-11 shrink-0 rounded-lg object-cover ring-1 ring-border" />
                                                             : <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted text-xl">🍮</div>}
-                                                        <div className="flex flex-col gap-1 min-w-0">
-                                                            <span className="font-medium text-foreground truncate">{urun.ad}</span>
+                                                        {/* max-w: hücre içeriğine göre büyüdüğü için üst
+                                                            sınır olmadan `truncate` hiç devreye girmez ve
+                                                            merkezin çok uzun adlı ürünleri tabloyu yana
+                                                            kaydırırdı. Tam ad title'da. */}
+                                                        <div className="flex min-w-0 max-w-[22rem] flex-col gap-1">
+                                                            <span className="truncate font-medium text-foreground" title={urun.ad}>{urun.ad}</span>
                                                             {/* Rozetler satırı şişirmesin: en fazla 2 tanesi kısa adıyla
                                                                 gösterilir, gerisi "+N" olur (tamamı tooltip'te). Tam adlar
                                                                 uzun olduğu için ("Haftanın En Çok Tercih Edileni") 8 etiketli
@@ -1495,9 +1499,12 @@ export default function ProductsPage() {
                                                     {u.gorsel
                                                         ? <img src={proxyImageUrl(u.gorsel)} alt="" className="size-9 shrink-0 rounded-md object-cover ring-1 ring-border" />
                                                         : <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-base">🍮</span>}
+                                                    {/* Kısalan ada tam metni title ile ver: merkezin
+                                                        katalogunda içindeki aromaları tek tek sayan
+                                                        çok uzun adlar var. */}
                                                     <span className="min-w-0 flex-1">
-                                                        <span className="block truncate text-sm font-medium text-foreground">{u.ad}</span>
-                                                        <span className="block text-xs text-muted-foreground">{katMap[u.kategori] || '—'}</span>
+                                                        <span className="block truncate text-sm font-medium text-foreground" title={u.ad}>{u.ad}</span>
+                                                        <span className="block truncate text-xs text-muted-foreground">{katMap[u.kategori] || '—'}</span>
                                                     </span>
                                                     <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
                                                         {Math.round(u.etkinFiyat ?? u.fiyat)} ₺
