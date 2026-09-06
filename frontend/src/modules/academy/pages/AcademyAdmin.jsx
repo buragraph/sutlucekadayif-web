@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Pencil, Trash2, ChevronDown, ChevronRight, Video, FileText, Users, BarChart3, Search, Check, HelpCircle, RefreshCw, Download, UserX, BookOpen, GripVertical, MoreHorizontal } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, ChevronDown, ChevronRight, Video, FileText, Users, BarChart3, Search, Check, HelpCircle, RefreshCw, Download, UserX, BookOpen, GripVertical, MoreHorizontal, Image as ImageIcon, X } from 'lucide-react';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -8,6 +8,8 @@ import api from '../../../services/api';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import LessonEditorSheet from '../components/LessonEditorSheet';
 import { parseYouTubeInput } from '../utils/youtube';
+import { gorseliWebpYap } from '../../qr-menu/utils/gorsel';
+import { proxyImageUrl } from '../../../utils/imageProxy';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,7 +46,7 @@ const DERS_TIPI = {
     quiz: { bar: 'bg-emerald-500', Icon: HelpCircle, etiket: 'Sınav' },
 };
 
-const bosKursForm = { title: '', description: '', hedefSahip: true, hedefCalisan: true, tumSubeler: true, seciliSubeler: [] };
+const bosKursForm = { title: '', description: '', thumbnailUrl: '', hedefSahip: true, hedefCalisan: true, tumSubeler: true, seciliSubeler: [] };
 
 // Video dersin YouTube küçük resmi (satırda önizleme) — geçersiz/boş linkte null
 function videoThumb(lesson) {
@@ -78,6 +80,7 @@ export default function AcademyAdmin() {
 
     // Kurs modalı
     const [showCourseModal, setShowCourseModal] = useState(false);
+    const [kapakYukleniyor, setKapakYukleniyor] = useState(false);
     const [editingCourse, setEditingCourse] = useState(null);
     const [courseForm, setCourseForm] = useState(bosKursForm);
     const courseInitialRef = useRef('');
@@ -141,6 +144,7 @@ export default function AcademyAdmin() {
         const f = {
             title: course?.title || '',
             description: course?.description || '',
+            thumbnailUrl: course?.thumbnailUrl || '',
             // targetRoles/targetSubeler boş = herkes/tüm şubeler
             hedefSahip: !course?.targetRoles?.length || course.targetRoles.includes('sube_sahibi'),
             hedefCalisan: !course?.targetRoles?.length || course.targetRoles.includes('calisan'),
@@ -156,6 +160,27 @@ export default function AcademyAdmin() {
                 .catch(() => setBranchOptions([]));
         }
     };
+    // Kapak görseli: dönüşüm TARAYICIDA (sunucuda sharp yok, bkz. utils/gorsel.js);
+    // uç WebP bekliyor. Klasör 'academy' — upload.js allow-list'inde tanımlı.
+    const handleKapakYukle = async (e) => {
+        const dosya = e.target.files?.[0];
+        e.target.value = '';                 // aynı dosya tekrar seçilebilsin
+        if (!dosya) return;
+        setKapakYukleniyor(true);
+        try {
+            const govde = new FormData();
+            govde.append('image', await gorseliWebpYap(dosya));
+            govde.append('folder', 'academy');
+            const { data } = await api.post('/upload/image', govde, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            setCourseForm(f => ({ ...f, thumbnailUrl: data.url }));
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Görsel yüklenemedi');
+        }
+        setKapakYukleniyor(false);
+    };
+
     const requestCloseCourseModal = async () => {
         if (JSON.stringify(courseForm) !== courseInitialRef.current) {
             const yes = await confirm('Kaydedilmemiş değişiklikler var. Kapatırsanız kaybolacak. Yine de kapatılsın mı?');
@@ -171,6 +196,7 @@ export default function AcademyAdmin() {
         const payload = {
             title: courseForm.title,
             description: courseForm.description,
+            thumbnailUrl: courseForm.thumbnailUrl,
             targetRoles: courseForm.hedefSahip && courseForm.hedefCalisan ? [] : [courseForm.hedefSahip ? 'sube_sahibi' : 'calisan'],
             targetSubeler: courseForm.tumSubeler ? [] : courseForm.seciliSubeler,
         };
@@ -725,6 +751,37 @@ export default function AcademyAdmin() {
                         <div className="flex flex-col gap-1.5">
                             <Label className="text-xs font-medium">Açıklama</Label>
                             <Textarea value={courseForm.description} onChange={e => setCourseForm(f => ({ ...f, description: e.target.value }))} placeholder="Kısa açıklama girin..." rows={3} className="resize-none" />
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                            <Label className="text-xs font-medium">Kapak Görseli</Label>
+                            <p className="text-[10px] text-muted-foreground -mt-1">
+                                Kurs kartında görünür. Yüklenmezse yer tutucu çıkar. En fazla 800px'e küçültülüp WebP'e çevrilir.
+                            </p>
+                            {courseForm.thumbnailUrl ? (
+                                <div className="relative overflow-hidden rounded-md border">
+                                    <img src={proxyImageUrl(courseForm.thumbnailUrl)} alt="" className="h-32 w-full object-cover" />
+                                    <Button
+                                        type="button" variant="secondary" size="icon"
+                                        className="absolute right-2 top-2 size-7"
+                                        title="Görseli kaldır"
+                                        onClick={() => setCourseForm(f => ({ ...f, thumbnailUrl: '' }))}
+                                    >
+                                        <X className="size-3.5" />
+                                    </Button>
+                                </div>
+                            ) : (
+                                <label className={cn(
+                                    'flex h-24 items-center justify-center gap-2 rounded-md border border-dashed text-xs text-muted-foreground',
+                                    kapakYukleniyor ? 'cursor-default' : 'cursor-pointer hover:bg-muted/40'
+                                )}>
+                                    {kapakYukleniyor
+                                        ? <><Spinner className="size-4" /> Yükleniyor…</>
+                                        : <><ImageIcon className="size-4" /> Görsel seç</>}
+                                    <input type="file" accept="image/*" className="hidden"
+                                           disabled={kapakYukleniyor} onChange={handleKapakYukle} />
+                                </label>
+                            )}
                         </div>
 
                         <div className="flex flex-col gap-2 border-t pt-4">

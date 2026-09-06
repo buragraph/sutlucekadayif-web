@@ -3,6 +3,7 @@ import { GraduationCap, Settings, BookOpen, ChevronRight, Check } from 'lucide-r
 import { useAuth } from '../../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../../../services/api';
+import { proxyImageUrl } from '../../../utils/imageProxy';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -74,11 +75,16 @@ export default function AcademyDashboard() {
                                 className="group cursor-pointer flex flex-col overflow-hidden rounded-xl bg-card border border-foreground/20 transition-colors hover:border-foreground/35"
                                 onClick={() => navigate(`/admin/akademi/kurs/${course.id}`)}
                             >
+                                {/* Görsel MUTLAK konumlu: kart bir flex sütun ve kutunun
+                                    yüksekliği belirsiz kalıyor; akıştaki <img height:100%>
+                                    yüzdeyi çözemeyip kendi doğal oranına düşüyor, aspect-[16/9]
+                                    yok sayılıyordu. Sonuç: 800x534 kapak 197px, 800x625 kapak
+                                    230px kutu üretiyor, kartlar eşit olmuyordu. */}
                                 <div className="relative aspect-[16/9] bg-muted/50 border-b shrink-0">
                                     {course.thumbnailUrl ? (
-                                        <img src={course.thumbnailUrl} alt={course.title} className="size-full object-cover" />
+                                        <img src={proxyImageUrl(course.thumbnailUrl)} alt={course.title} className="absolute inset-0 size-full object-cover" />
                                     ) : (
-                                        <div className="flex size-full items-center justify-center text-muted-foreground/30">
+                                        <div className="absolute inset-0 flex size-full items-center justify-center text-muted-foreground/30">
                                             <BookOpen className="size-8" />
                                         </div>
                                     )}
