@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
+import UrunTalepModal from '../components/UrunTalepModal';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, ListMinus, Store, Pencil } from 'lucide-react';
+import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, ListMinus, Store, Pencil, Send } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { proxyImageUrl } from '../../../utils/imageProxy';
@@ -22,6 +23,7 @@ import { SubeCokluSecici } from '../components/SubeCokluSecici';
 import { KaydirilirRay } from '../components/KaydirilirRay';
 
 import { ETIKETLER } from '../constants/etiketler';
+import UrunKarti from '../components/UrunKarti';
 import { gorseliWebpYap } from '../utils/gorsel';
 
 // Referans e-ticaret tablosu tarzı noktalı durum rozeti
@@ -164,22 +166,27 @@ function MediaPicker({ value, onSelect, children }) {
 }
 
 export default function ProductsPage() {
-    const { subeSlug, role } = useAuth();
+    const { subeSlug, role, realRole, simulatedRole } = useAuth();
     const toast = useToast();
     const confirm = useConfirm();
     const [selectedKategori, setSelectedKategori] = useState('all');
     const [selectedSube, setSelectedSube] = useState('ortak');
     const [searchTerm, setSearchTerm] = useState('');
     const [subeComboOpen, setSubeComboOpen] = useState(false);
+    // Şube sahibinin ASIL ekseni kategori değil DURUM: ortalama şubede 72 ürünün
+    // 23'ü kapalı ve günlük iş "ne bitti / ne geri geldi". Kategori ikincil kaldı.
+    const [durumFiltre, setDurumFiltre] = useState('hepsi');   // hepsi | satista | kapali
     const [sortCol, setSortCol] = useState(null);
     const [sortDir, setSortDir] = useState('asc');
 
-    const ITEMS_PER_PAGE = 10;
+    // Tabloda 10 satır ekrana sığıyor; grid 4-5 sütun olduğu için 10 kalem
+    // yarım satır bırakıyor — şube görünümünde sayfa boyu büyütülür.
+    const ITEMS_PER_PAGE = role === 'admin' ? 10 : 24;
     const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, selectedKategori, selectedSube, sortCol, sortDir]);
+    }, [searchTerm, selectedKategori, selectedSube, sortCol, sortDir, durumFiltre]);
 
     const [urunler, setUrunler] = useState([]);
     const [loadingUrunler, setLoadingUrunler] = useState(true);
@@ -193,6 +200,7 @@ export default function ProductsPage() {
     const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kalori: '', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: [] });
     // Katalogdan menüye ürün ekleme penceresi (şube sahibi) — ürün OLUŞTURMAZ,
     // merkezin eklediği ortak ürünlerden şubenin sattıklarını işaretler.
+    const [talepAcik, setTalepAcik] = useState(false);
     const [katalogAcik, setKatalogAcik] = useState(false);
     const [katalogUrunleri, setKatalogUrunleri] = useState([]);
     const [katalogYukleniyor, setKatalogYukleniyor] = useState(false);
@@ -413,13 +421,31 @@ export default function ProductsPage() {
         } catch (err) { toast.error(err.response?.data?.error || 'Ürün çıkarılamadı'); }
     }
 
+    // Admin "Şube Sahibi"/"Çalışan" simülasyonundayken sunucu kararları hâlâ
+    // GERÇEK token'a göre geliyor; ekranın yanıltmaması için şube kuralları
+    // istemcide uygulanır (liste, kilit, fiyat kalemi).
+    const rolSimulasyonu = realRole === 'admin' && !!simulatedRole && simulatedRole !== 'admin';
+
     const katMap = {};
     kategoriler.forEach((k) => { katMap[k.id] = k.ad; });
 
     // Şube sahibinin listesi = KENDİ menüsündeki ürünler. Menüde olmayan ortak
     // ürünler "Ürün Ekle" katalog penceresinde durur. `menude` sunucuda hesaplanır
     // (bkz. backend menudeMi) — burada kural yeniden yazılmaz.
-    const menuUrunleri = urunler.filter((u) => u.menude !== false);
+    //
+    // ROL SİMÜLASYONU: sunucu listeyi GERÇEK role göre veriyor, yani admin
+    // simülasyona geçtiğinde katalogun tamamı (448) geliyor — şubenin menüsünde
+    // olmayan 376 ürünün anahtarına basınca uç haklı olarak "Ürün menünüzde
+    // değil" diyordu. Simülasyondayken listeyi de şubeye indiriyoruz:
+    // menüde olanlar + merkezin o şubeden gizlemedikleri + yalnızca kendi
+    // şubesine ait özel ürünler (bkz. backend GET /products şube dalı).
+    const simulasyonaGoreSuz = (u) => {
+        if (!rolSimulasyonu) return true;
+        if ((u.gizli_subeler || []).includes(subeSlug)) return false;
+        if (u.tur === 'sube_ozel') return u.sube_slug === subeSlug;
+        return (u.menude_subeler || []).includes(subeSlug);
+    };
+    const menuUrunleri = urunler.filter((u) => u.menude !== false).filter(simulasyonaGoreSuz);
 
     // Kategori rayı — şube sahibinde YALNIZCA menüsünde ürünü olan kategoriler.
     // Ortak katalog opt-in olduğu için şubenin hiç ürün almadığı kategoriler
@@ -437,18 +463,32 @@ export default function ProductsPage() {
         ? 'all'
         : selectedKategori;
 
+    const subeyeUyar = (u) => {
+        if (role !== 'admin' || selectedSube === 'all') return true;
+        return selectedSube === 'ortak'
+            ? u.tur !== 'sube_ozel'
+            : u.tur === 'sube_ozel' && u.sube_slug === selectedSube;
+    };
+
+    // Sekme sayıları ARAMAYA bakmaz — yazdıkça sayılar oynasa ray güvenilmez
+    // olurdu (aynı gerekçe rayın kendisi için de geçerli, bkz. yukarıdaki not).
+    const sayimTabani = menuUrunleri.filter(subeyeUyar);
+    const katSayim = sayimTabani.reduce((m, u) => m.set(u.kategori, (m.get(u.kategori) || 0) + 1), new Map());
+
+    // Şubede satışta mı? (şubeye özel eski ürünlerde anahtar yok, satışta sayılır)
+    const satistaMi = (u) => !(u.mevcut_degil || []).includes(subeSlug);
+    const durumSayim = {
+        hepsi: sayimTabani.length,
+        satista: sayimTabani.filter(satistaMi).length,
+        kapali: sayimTabani.filter((u) => !satistaMi(u)).length,
+    };
+
     const filteredUrunler = menuUrunleri.filter((u) => {
         const matchKategori = etkinKategori === 'all' || u.kategori === etkinKategori;
         const matchSearch = !searchTerm || u.ad.toLowerCase().includes(searchTerm.toLowerCase());
-        let matchSube = true;
-        if (role === 'admin' && selectedSube !== 'all') {
-            if (selectedSube === 'ortak') {
-                matchSube = u.tur !== 'sube_ozel';
-            } else {
-                matchSube = u.tur === 'sube_ozel' && u.sube_slug === selectedSube;
-            }
-        }
-        return matchKategori && matchSearch && matchSube;
+        const matchDurum = durumFiltre === 'hepsi'
+            || (durumFiltre === 'satista' ? satistaMi(u) : !satistaMi(u));
+        return matchKategori && matchSearch && matchDurum && subeyeUyar(u);
     });
 
     const toggleSort = (col) => {
@@ -475,14 +515,45 @@ export default function ProductsPage() {
         return 0;
     });
 
-    const paginatedUrunler = sortedUrunler.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
-    const totalPages = Math.ceil(sortedUrunler.length / ITEMS_PER_PAGE);
+    // Şube menüsü en fazla 126 kalem (ortalama 72) — grid'i sayfalamak, kategori
+    // gruplarını sayfa ortasında ikiye bölüyordu. Şube sahibinde tamamı basılır
+    // (kartlar `loading="lazy"`), sayfalama yalnızca admin tablosunda kalır.
+    const sayfalamaVar = role === 'admin';
+    const paginatedUrunler = sayfalamaVar
+        ? sortedUrunler.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
+        : sortedUrunler;
+    const totalPages = sayfalamaVar ? Math.ceil(sortedUrunler.length / ITEMS_PER_PAGE) : 1;
 
-    // ── Toplu işlem yardımcıları ──
+    // "Tümü" seçiliyken grid kategori kategori bölünür: 70+ kartlık kesintisiz
+    // akışta şube sahibi nerede olduğunu kaybediyordu. Kategori seçiliyse tek
+    // grup (başlık gereksiz — sekme zaten onu söylüyor).
+    const gridGruplari = etkinKategori !== 'all'
+        ? [{ id: etkinKategori, ad: null, urunler: paginatedUrunler }]
+        : gosterilecekKategoriler
+            .map((k) => ({ id: k.id, ad: k.ad, urunler: paginatedUrunler.filter((u) => u.kategori === k.id) }))
+            .filter((g) => g.urunler.length > 0);
+
+    // ── Kilit ──
     // Kilit kuralı sunucuda çözülür (bkz. backend urunKilitliMi) ve her ürüne
     // `duzenlenemez` olarak gelir — burada YENİDEN HESAPLAMA, yoksa iki kopya
     // ayrışır ve arayüz izin verirken backend 403 döner.
-    const seciliebilir = (u) => !u.duzenlenemez;
+    //
+    // TEK İSTİSNA — ROL SİMÜLASYONU: sunucu kararını GERÇEK token'dan veriyor,
+    // yani admin "Şube Sahibi" moduna geçtiğinde `duzenlenemez` yine false
+    // geliyordu ve ekran, gerçek şube sahibinin göremeyeceği düzenle/sil
+    // eylemlerini gösteriyordu. Sunucunun kararını ezmiyoruz, yalnızca
+    // simülasyondayken üzerine ekliyoruz: şube sahibi ortak ürünü düzenleyemez.
+    const kilitliMi = (u) => !!u.duzenlenemez || (rolSimulasyonu && u.tur !== 'sube_ozel');
+
+    // Fiyat kalemi de aynı tuzağa düşüyordu: `fiyatDuzenlenebilir` sunucuda
+    // admin için her zaman true (bkz. fiyatDuzenlenebilirMi). Simülasyonda şube
+    // kuralı uygulanır: ortak üründe yalnızca merkez `fiyat_serbest` verdiyse.
+    const fiyatiDuzenlenebilirMi = (u) => (rolSimulasyonu
+        ? u.tur !== 'sube_ozel' && (u.fiyat_serbest || []).includes(subeSlug)
+        : !!u.fiyatDuzenlenebilir);
+
+    // ── Toplu işlem yardımcıları ──
+    const seciliebilir = (u) => !kilitliMi(u);
     const secilebilirSayfa = paginatedUrunler.filter(seciliebilir);
     const tumuSeciliMi = secilebilirSayfa.length > 0 && secilebilirSayfa.every(u => selectedIds.has(u.id));
     const selectedItems = () => urunler.filter(u => selectedIds.has(u.id)).map(u => ({ id: u.id, sube_slug: u.sube_slug }));
@@ -956,12 +1027,74 @@ export default function ProductsPage() {
                 </div>
             ) : (
                 <div className="flex flex-col gap-4 flex-1 min-h-0">
-                    {/* Toolbar: kategori segment toggle + arama + şube */}
-                    <div className="flex flex-col gap-3 px-4 lg:flex-row lg:items-center lg:justify-between">
-                        <KaydirilirRay className="max-w-full">
+                    {/* Tek toolbar satırı: solda filtreler (durum + kategori),
+                        sağda arama + sıralama. Dar ekranda satır alt satıra sarıyor
+                        (referans kalıbı: yatay kaydırma yok, flex-wrap var). */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {role !== 'admin' && (
+                            <div className="inline-flex items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
+                                {[
+                                    { id: 'satista', ad: 'Satışta' },
+                                    { id: 'kapali', ad: 'Kapalı' },
+                                    { id: 'hepsi', ad: 'Tümü' },
+                                ].map((d) => {
+                                    const active = durumFiltre === d.id;
+                                    return (
+                                        <button
+                                            key={d.id}
+                                            onClick={() => setDurumFiltre(d.id)}
+                                            className={`rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
+                                        >
+                                            {d.ad}
+                                            <span className={`ml-1.5 tabular-nums ${active ? 'text-muted-foreground' : 'opacity-60'}`}>
+                                                {durumSayim[d.id]}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {/* KATEGORİ SEÇİMİ ROLE GÖRE:
+                            Şube sahibinde 11-15 kategori var ve yatay çip rayı dar
+                            ekranda çalışmıyordu (375px'te 15 çipten yalnızca 2'si
+                            görünüyor). Tasarım referansında (next-shadcn-admin-dashboard)
+                            çip/segment rayı hiçbir yerde 5 öğeyi geçmiyor; 6+ seçenek
+                            için Select kullanılmış ve seçili değer tetikleyicide
+                            "Kategori: X" biçiminde gösteriliyor (users.tsx kalıbı).
+                            Ayrıca referansta hiçbir filtre satırı yatay kaydırmıyor,
+                            hepsi wrap ediyor.
+                            Admin taksonomiyi bir bütün görmek istediği için onda ray kalır. */}
+                        {role !== 'admin' ? (
+                            <Select
+                                value={etkinKategori}
+                                onValueChange={(v) => setSelectedKategori(v)}
+                            >
+                                <SelectTrigger size="sm" className="h-8 w-full min-w-0 text-xs sm:w-auto sm:min-w-[11rem]">
+                                    <span className="flex min-w-0 items-center gap-1.5 truncate">
+                                        <span className="shrink-0 text-muted-foreground">Kategori:</span>
+                                        <SelectValue />
+                                    </span>
+                                </SelectTrigger>
+                                <SelectContent align="start">
+                                    {[{ id: 'all', ad: 'Tümü' }, ...gosterilecekKategoriler].map((k) => (
+                                        <SelectItem key={k.id} value={k.id} className="text-xs">
+                                            {k.ad}
+                                            <span className="ml-1.5 tabular-nums text-muted-foreground">
+                                                {k.id === 'all' ? sayimTabani.length : (katSayim.get(k.id) || 0)}
+                                            </span>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        ) : (
+                            // min-w-0: flex satırında öğenin varsayılan `min-width:auto`
+                            // değeri, rayın içerik genişliğinin altına inmesini engelliyor.
+                            <KaydirilirRay className="min-w-0 lg:flex-1">
                             <div className="inline-flex w-max items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
                                 {[{ id: 'all', ad: 'Tümü' }, ...gosterilecekKategoriler].map((k) => {
                                     const active = etkinKategori === k.id;
+                                    const adet = k.id === 'all' ? sayimTabani.length : (katSayim.get(k.id) || 0);
                                     return (
                                         <button
                                             key={k.id}
@@ -973,12 +1106,17 @@ export default function ProductsPage() {
                                             className={`rounded-md px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'}`}
                                         >
                                             {k.ad}
+                                            {/* Sayı sekmenin kendisinde: şube "Dondurmalar"a
+                                                tıklamadan kaç ürünü olduğunu görmeli. */}
+                                            <span className={`ml-1.5 tabular-nums ${active ? 'text-muted-foreground' : 'opacity-60'}`}>{adet}</span>
                                         </button>
                                     );
                                 })}
                             </div>
                         </KaydirilirRay>
-                        <div className="flex items-center gap-2 shrink-0">
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
                             <div className="relative w-full sm:w-56">
                                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                                 <Input
@@ -988,6 +1126,28 @@ export default function ProductsPage() {
                                     className="h-8 pl-8 text-xs"
                                 />
                             </div>
+                            {role !== 'admin' && (
+                                // Sıralama tablo başlıklarındaydı; grid'de başlık yok,
+                                // aynı sortCol/sortDir durumunu buradan sürüyoruz.
+                                <select
+                                    value={sortCol ? `${sortCol}:${sortDir}` : ''}
+                                    onChange={(e) => {
+                                        const [c, d] = e.target.value.split(':');
+                                        setSortCol(c || null);
+                                        setSortDir(d || 'asc');
+                                    }}
+                                    className="h-8 rounded-md border border-input bg-transparent px-2 text-xs"
+                                    aria-label="Sıralama"
+                                >
+                                    <option value="">Varsayılan sıra</option>
+                                    <option value="ad:asc">İsim (A→Z)</option>
+                                    <option value="ad:desc">İsim (Z→A)</option>
+                                    <option value="fiyat:asc">Fiyat (artan)</option>
+                                    <option value="fiyat:desc">Fiyat (azalan)</option>
+                                    <option value="kategori:asc">Kategori</option>
+                                    <option value="tarih:desc">En yeni</option>
+                                </select>
+                            )}
                             {role === 'admin' && subeler.length > 0 && (
                                 <Popover open={subeComboOpen} onOpenChange={setSubeComboOpen}>
                                     <PopoverTrigger asChild>
@@ -1021,181 +1181,229 @@ export default function ProductsPage() {
 
                     {/* Tablo */}
                     <div className="flex-1 min-h-0 overflow-auto">
-                        <Table className="**:data-[slot=table-cell]:px-4 **:data-[slot=table-head]:px-4">
-                            <TableHeader className="border-t **:data-[slot=table-head]:h-11 **:data-[slot=table-head]:font-normal **:data-[slot=table-head]:text-foreground **:data-[slot=table-head]:text-sm">
-                                <TableRow>
-                                    {/* Baş sütun: admin'de toplu seçim, şube sahibinde mevcutluk anahtarı.
-                                        Şube ortak ürünü toplu işleme alamadığı için o kutu zaten hep boştu. */}
-                                    <TableHead className={role === 'admin' ? 'w-10' : 'w-20'}>
-                                        {role === 'admin'
-                                            ? <Checkbox checked={tumuSeciliMi} onCheckedChange={toggleSelectAllPage} aria-label="Tümünü seç" disabled={secilebilirSayfa.length === 0} />
-                                            : <span className="text-muted-foreground">Mevcut</span>}
-                                    </TableHead>
-                                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('ad')}>
-                                        <span className="inline-flex items-center">Ürün <SortIcon col="ad" /></span>
-                                    </TableHead>
-                                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('fiyat')}>
-                                        <span className="inline-flex items-center">Fiyat <SortIcon col="fiyat" /></span>
-                                    </TableHead>
-                                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('kategori')}>
-                                        <span className="inline-flex items-center">Kategori <SortIcon col="kategori" /></span>
-                                    </TableHead>
-                                    {role === 'admin' && <TableHead>Şube</TableHead>}
-                                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('tarih')}>
-                                        <span className="inline-flex items-center">Tarih <SortIcon col="tarih" /></span>
-                                    </TableHead>
-                                    <TableHead className="w-20 text-right">İşlemler</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody className="**:data-[slot=table-row]:border-border/50 **:data-[slot=table-cell]:py-3">
-                                {paginatedUrunler.map((urun) => {
-                                    const mevcutDegil = urun.mevcut_degil || [];
-                                    const buSubedeMevcut = !mevcutDegil.includes(subeSlug);
-                                    const isKilitli = !!urun.duzenlenemez; // sunucudan gelir
+                        {/* GÖRÜNÜM ROLE GÖRE: admin katalog yönetiyor (sıralama, toplu seçim,
+                            "kaç şubede açık", tarih) — sütun gerektiriyor, tablo kalıyor.
+                            Şube sahibinin işi "satıyor muyum, fiyatı ne": görsel odaklı grid. */}
+                        {role === 'admin' ? (
+                            <Table className="**:data-[slot=table-cell]:px-4 **:data-[slot=table-head]:px-4">
+                                <TableHeader className="border-t **:data-[slot=table-head]:h-11 **:data-[slot=table-head]:font-normal **:data-[slot=table-head]:text-foreground **:data-[slot=table-head]:text-sm">
+                                    <TableRow>
+                                        {/* Baş sütun: admin'de toplu seçim, şube sahibinde mevcutluk anahtarı.
+                                            Şube ortak ürünü toplu işleme alamadığı için o kutu zaten hep boştu. */}
+                                        <TableHead className={role === 'admin' ? 'w-10' : 'w-20'}>
+                                            {role === 'admin'
+                                                ? <Checkbox checked={tumuSeciliMi} onCheckedChange={toggleSelectAllPage} aria-label="Tümünü seç" disabled={secilebilirSayfa.length === 0} />
+                                                : <span className="text-muted-foreground">Mevcut</span>}
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('ad')}>
+                                            <span className="inline-flex items-center">Ürün <SortIcon col="ad" /></span>
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('fiyat')}>
+                                            <span className="inline-flex items-center">Fiyat <SortIcon col="fiyat" /></span>
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('kategori')}>
+                                            <span className="inline-flex items-center">Kategori <SortIcon col="kategori" /></span>
+                                        </TableHead>
+                                        {role === 'admin' && <TableHead>Şube</TableHead>}
+                                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort('tarih')}>
+                                            <span className="inline-flex items-center">Tarih <SortIcon col="tarih" /></span>
+                                        </TableHead>
+                                        <TableHead className="w-20 text-right">İşlemler</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody className="**:data-[slot=table-row]:border-border/50 **:data-[slot=table-cell]:py-3">
+                                    {paginatedUrunler.map((urun) => {
+                                        const mevcutDegil = urun.mevcut_degil || [];
+                                        const buSubedeMevcut = !mevcutDegil.includes(subeSlug);
+                                        const isKilitli = kilitliMi(urun);
 
-                                    // Mevcut değilse satır soluklaşır AMA ilk hücre hariç: anahtar artık
-                                    // asıl kontrol, yarı saydam olursa kapalıyken zor okunuyor.
-                                    return (
-                                        <TableRow
-                                            key={urun.id}
-                                            className={`group transition-colors ${!buSubedeMevcut ? '[&>td:not(:first-child)]:opacity-50' : ''} ${!isKilitli ? 'cursor-pointer hover:bg-muted/40' : ''}`}
-                                            onClick={(e) => {
-                                                if (e.target.closest('button')) return;
-                                                if (!isKilitli) openEditUrun(urun);
-                                            }}
-                                        >
-                                            <TableCell onClick={(e) => e.stopPropagation()}>
-                                                {role !== 'admin' && subeSlug && urun.tur !== 'sube_ozel' ? (
-                                                    // Mevcutluk anahtarı — /availability yalnızca ortak üründe
-                                                    // çalışır, eski şubeye özel kayıtlar seçim kutusunda kalır.
-                                                    <Switch
-                                                        checked={buSubedeMevcut}
-                                                        onCheckedChange={(v) => handleMevcutToggle(urun, v)}
-                                                        disabled={mevcutBekleyen.has(urun.id)}
-                                                        aria-label={`${urun.ad} — ${buSubedeMevcut ? 'mevcut' : 'mevcut değil'}`}
-                                                    />
-                                                ) : !isKilitli ? (
-                                                    <Checkbox checked={selectedIds.has(urun.id)} onCheckedChange={() => toggleSelect(urun.id)} aria-label={`${urun.ad} seç`} />
-                                                ) : null}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-3">
-                                                    {urun.gorsel
-                                                        ? <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad} className="size-11 shrink-0 rounded-lg object-cover ring-1 ring-border" />
-                                                        : <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted text-xl">🍮</div>}
-                                                    <div className="flex flex-col gap-1 min-w-0">
-                                                        <span className="font-medium text-foreground truncate">{urun.ad}</span>
-                                                        {/* Rozetler satırı şişirmesin: en fazla 2 tanesi kısa adıyla
-                                                            gösterilir, gerisi "+N" olur (tamamı tooltip'te). Tam adlar
-                                                            uzun olduğu için ("Haftanın En Çok Tercih Edileni") 8 etiketli
-                                                            üründe satır 45px'ten 150px'e çıkıyordu. */}
-                                                        {urun.etiket?.length > 0 && (() => {
-                                                            const GORUNEN = 2;
-                                                            const tumu = urun.etiket.map((k) => ETIKETLER.find((t) => t.key === k)).filter(Boolean);
-                                                            if (tumu.length === 0) return null;
-                                                            const kalan = tumu.length - GORUNEN;
-                                                            return (
-                                                                <div className="flex gap-1 flex-wrap">
-                                                                    {tumu.slice(0, GORUNEN).map((tag) => (
-                                                                        <span key={tag.key} className="text-[10px] px-1.5 py-px rounded-full font-semibold whitespace-nowrap" style={{ background: tag.color + '18', color: tag.color }}>
-                                                                            {tag.emoji} {tag.kisa}
-                                                                        </span>
-                                                                    ))}
-                                                                    {kalan > 0 && (
-                                                                        <span
-                                                                            className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium whitespace-nowrap text-muted-foreground"
-                                                                            title={tumu.map((t) => t.ad).join(', ')}
-                                                                        >
-                                                                            +{kalan}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            );
-                                                        })()}
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                {/* Şube kendi fiyatını görür (etkinFiyat sunucuda çözülür).
-                                                    Merkez fiyatından farklıysa küçük bir not düşülür. */}
-                                                <span className="font-medium tabular-nums text-foreground">
-                                                    {Math.round(urun.etkinFiyat ?? urun.fiyat)} ₺
-                                                </span>
-                                                {urun.miktar ? <span className="text-xs text-muted-foreground ml-1">/ {urun.miktar}{urun.birim}</span> : null}
-                                                {/* != null: 0 kcal geçerli bir değer, gizlenmemeli */}
-                                                {urun.kalori != null ? <span className="text-xs text-muted-foreground ml-1">· {urun.kalori} kcal</span> : null}
-                                                {role !== 'admin' && urun.etkinFiyat != null && urun.etkinFiyat !== urun.fiyat && (
-                                                    <span className="ml-1.5 text-[11px] text-muted-foreground">
-                                                        (merkez {Math.round(urun.fiyat)} ₺)
-                                                    </span>
-                                                )}
-                                                {/* Fiyat düzenleme, İşlemler sütunundaki etiket ikonu yerine fiyatın
-                                                    yanında: hangi alanı değiştirdiği ikondan anlaşılmıyordu. */}
-                                                {role !== 'admin' && urun.fiyatDuzenlenebilir && (
-                                                    <Button
-                                                        variant="ghost" size="icon"
-                                                        className="ml-1.5 size-6 align-middle text-muted-foreground hover:text-foreground"
-                                                        title="Şube fiyatını düzenle"
-                                                        onClick={() => { setFiyatUrun(urun); setFiyatDeger(String(Math.round(urun.etkinFiyat ?? urun.fiyat))); }}
-                                                    >
-                                                        <Pencil className="size-3" />
-                                                    </Button>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <span className="text-sm text-muted-foreground">{katMap[urun.kategori] || '—'}</span>
-                                            </TableCell>
-                                            {role === 'admin' && (
-                                                <TableCell>
-                                                    {urun.tur === 'sube_ozel' && urun.sube_slug
-                                                        ? <DotBadge tone="violet">{urun.sube_slug}</DotBadge>
-                                                        : (() => {
-                                                            // Ortak ürünün kaç şubenin menüsünde olduğu — merkezin
-                                                            // "bu ürün nerede satılıyor" sorusuna tek bakışta yanıt.
-                                                            const n = (urun.menude_subeler || []).length;
-                                                            const hepsi = subeler.length > 0 && n === subeler.length;
-                                                            return (
-                                                                <DotBadge tone={n === 0 ? 'red' : hepsi ? 'green' : 'neutral'}>
-                                                                    {n === 0 ? 'Hiçbir menüde' : hepsi ? `Tüm şubeler (${n})` : `${n} şube`}
-                                                                </DotBadge>
-                                                            );
-                                                        })()}
+                                        // Mevcut değilse satır soluklaşır AMA ilk hücre hariç: anahtar artık
+                                        // asıl kontrol, yarı saydam olursa kapalıyken zor okunuyor.
+                                        return (
+                                            <TableRow
+                                                key={urun.id}
+                                                className={`group transition-colors ${!buSubedeMevcut ? '[&>td:not(:first-child)]:opacity-50' : ''} ${!isKilitli ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+                                                onClick={(e) => {
+                                                    if (e.target.closest('button')) return;
+                                                    if (!isKilitli) openEditUrun(urun);
+                                                }}
+                                            >
+                                                <TableCell onClick={(e) => e.stopPropagation()}>
+                                                    {role !== 'admin' && subeSlug && urun.tur !== 'sube_ozel' ? (
+                                                        // Mevcutluk anahtarı — /availability yalnızca ortak üründe
+                                                        // çalışır, eski şubeye özel kayıtlar seçim kutusunda kalır.
+                                                        <Switch
+                                                            checked={buSubedeMevcut}
+                                                            onCheckedChange={(v) => handleMevcutToggle(urun, v)}
+                                                            disabled={mevcutBekleyen.has(urun.id)}
+                                                            aria-label={`${urun.ad} — ${buSubedeMevcut ? 'mevcut' : 'mevcut değil'}`}
+                                                        />
+                                                    ) : !isKilitli ? (
+                                                        <Checkbox checked={selectedIds.has(urun.id)} onCheckedChange={() => toggleSelect(urun.id)} aria-label={`${urun.ad} seç`} />
+                                                    ) : null}
                                                 </TableCell>
-                                            )}
-                                            <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                                                {urun.createdAt ? new Date(urun.createdAt).toLocaleDateString('tr-TR') : '—'}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex justify-end gap-1">
-                                                    {!isKilitli && (
-                                                        <Button variant="ghost" size="icon" className="size-7 text-destructive hover:text-destructive hover:bg-destructive/10" title="Sil" onClick={() => handleUrunDelete(urun)}>
-                                                            <Trash2 className="size-3.5" />
-                                                        </Button>
+                                                <TableCell>
+                                                    <div className="flex items-center gap-3">
+                                                        {urun.gorsel
+                                                            ? <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad} className="size-11 shrink-0 rounded-lg object-cover ring-1 ring-border" />
+                                                            : <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted text-xl">🍮</div>}
+                                                        <div className="flex flex-col gap-1 min-w-0">
+                                                            <span className="font-medium text-foreground truncate">{urun.ad}</span>
+                                                            {/* Rozetler satırı şişirmesin: en fazla 2 tanesi kısa adıyla
+                                                                gösterilir, gerisi "+N" olur (tamamı tooltip'te). Tam adlar
+                                                                uzun olduğu için ("Haftanın En Çok Tercih Edileni") 8 etiketli
+                                                                üründe satır 45px'ten 150px'e çıkıyordu. */}
+                                                            {urun.etiket?.length > 0 && (() => {
+                                                                const GORUNEN = 2;
+                                                                const tumu = urun.etiket.map((k) => ETIKETLER.find((t) => t.key === k)).filter(Boolean);
+                                                                if (tumu.length === 0) return null;
+                                                                const kalan = tumu.length - GORUNEN;
+                                                                return (
+                                                                    <div className="flex gap-1 flex-wrap">
+                                                                        {tumu.slice(0, GORUNEN).map((tag) => (
+                                                                            <span key={tag.key} className="text-[10px] px-1.5 py-px rounded-full font-semibold whitespace-nowrap" style={{ background: tag.color + '18', color: tag.color }}>
+                                                                                {tag.emoji} {tag.kisa}
+                                                                            </span>
+                                                                        ))}
+                                                                        {kalan > 0 && (
+                                                                            <span
+                                                                                className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium whitespace-nowrap text-muted-foreground"
+                                                                                title={tumu.map((t) => t.ad).join(', ')}
+                                                                            >
+                                                                                +{kalan}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {/* Şube kendi fiyatını görür (etkinFiyat sunucuda çözülür).
+                                                        Merkez fiyatından farklıysa küçük bir not düşülür. */}
+                                                    <span className="font-medium tabular-nums text-foreground">
+                                                        {Math.round(urun.etkinFiyat ?? urun.fiyat)} ₺
+                                                    </span>
+                                                    {urun.miktar ? <span className="text-xs text-muted-foreground ml-1">/ {urun.miktar}{urun.birim}</span> : null}
+                                                    {/* != null: 0 kcal geçerli bir değer, gizlenmemeli */}
+                                                    {urun.kalori != null ? <span className="text-xs text-muted-foreground ml-1">· {urun.kalori} kcal</span> : null}
+                                                    {role !== 'admin' && urun.etkinFiyat != null && urun.etkinFiyat !== urun.fiyat && (
+                                                        <span className="ml-1.5 text-[11px] text-muted-foreground">
+                                                            (merkez {Math.round(urun.fiyat)} ₺)
+                                                        </span>
                                                     )}
-                                                    {/* Menüden çıkarma — ürünü SİLMEZ, yalnızca bu şubenin
-                                                        menüsünden kaldırır. Katalogdan geri eklenebilir. */}
-                                                    {role !== 'admin' && subeSlug && urun.tur !== 'sube_ozel' && (
+                                                    {/* Fiyat düzenleme, İşlemler sütunundaki etiket ikonu yerine fiyatın
+                                                        yanında: hangi alanı değiştirdiği ikondan anlaşılmıyordu. */}
+                                                    {role !== 'admin' && fiyatiDuzenlenebilirMi(urun) && (
                                                         <Button
-                                                            variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive"
-                                                            title="Menüden çıkar"
-                                                            onClick={() => handleMenudenCikar(urun)}
+                                                            variant="ghost" size="icon"
+                                                            className="ml-1.5 size-6 align-middle text-muted-foreground hover:text-foreground"
+                                                            title="Şube fiyatını düzenle"
+                                                            onClick={() => { setFiyatUrun(urun); setFiyatDeger(String(Math.round(urun.etkinFiyat ?? urun.fiyat))); }}
                                                         >
-                                                            <ListMinus className="size-3.5" />
+                                                            <Pencil className="size-3" />
                                                         </Button>
                                                     )}
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <span className="text-sm text-muted-foreground">{katMap[urun.kategori] || '—'}</span>
+                                                </TableCell>
+                                                {role === 'admin' && (
+                                                    <TableCell>
+                                                        {urun.tur === 'sube_ozel' && urun.sube_slug
+                                                            ? <DotBadge tone="violet">{urun.sube_slug}</DotBadge>
+                                                            : (() => {
+                                                                // Ortak ürünün kaç şubenin menüsünde olduğu — merkezin
+                                                                // "bu ürün nerede satılıyor" sorusuna tek bakışta yanıt.
+                                                                const n = (urun.menude_subeler || []).length;
+                                                                const hepsi = subeler.length > 0 && n === subeler.length;
+                                                                return (
+                                                                    <DotBadge tone={n === 0 ? 'red' : hepsi ? 'green' : 'neutral'}>
+                                                                        {n === 0 ? 'Hiçbir menüde' : hepsi ? `Tüm şubeler (${n})` : `${n} şube`}
+                                                                    </DotBadge>
+                                                                );
+                                                            })()}
+                                                    </TableCell>
+                                                )}
+                                                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                                                    {urun.createdAt ? new Date(urun.createdAt).toLocaleDateString('tr-TR') : '—'}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex justify-end gap-1">
+                                                        {!isKilitli && (
+                                                            <Button variant="ghost" size="icon" className="size-7 text-destructive hover:text-destructive hover:bg-destructive/10" title="Sil" onClick={() => handleUrunDelete(urun)}>
+                                                                <Trash2 className="size-3.5" />
+                                                            </Button>
+                                                        )}
+                                                        {/* Menüden çıkarma — ürünü SİLMEZ, yalnızca bu şubenin
+                                                            menüsünden kaldırır. Katalogdan geri eklenebilir. */}
+                                                        {role !== 'admin' && subeSlug && urun.tur !== 'sube_ozel' && (
+                                                            <Button
+                                                                variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive"
+                                                                title="Menüden çıkar"
+                                                                onClick={() => handleMenudenCikar(urun)}
+                                                            >
+                                                                <ListMinus className="size-3.5" />
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+
+                        ) : (
+                            <div className="flex flex-col gap-6 p-4">
+                                {gridGruplari.length === 0 && (
+                                    <p className="py-12 text-center text-sm text-muted-foreground">
+                                        {durumFiltre === 'kapali' ? 'Kapalı ürününüz yok — hepsi satışta.'
+                                            : durumFiltre === 'satista' ? 'Satışta ürününüz yok.'
+                                            : 'Sonuç bulunamadı.'}
+                                    </p>
+                                )}
+                                {gridGruplari.map((grup) => (
+                                <div key={grup.id} className="flex flex-col gap-2">
+                                    {grup.ad && (
+                                        <div className="flex items-baseline gap-2 border-b pb-1.5">
+                                            <h3 className="text-sm font-medium text-foreground">{grup.ad}</h3>
+                                            <span className="text-xs text-muted-foreground">{grup.urunler.length} ürün</span>
+                                        </div>
+                                    )}
+                                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                                {grup.urunler.map((urun) => {
+                                    const mevcutDegil = urun.mevcut_degil || [];
+                                    const ortakUrun = !!subeSlug && urun.tur !== 'sube_ozel';
+                                    return (
+                                        <UrunKarti
+                                            key={urun.id}
+                                            urun={urun}
+                                            mevcut={!mevcutDegil.includes(subeSlug)}
+                                            kilitli={kilitliMi(urun)}
+                                            bekliyor={mevcutBekleyen.has(urun.id)}
+                                                    onMevcutDegistir={ortakUrun ? handleMevcutToggle : null}
+                                            onDuzenle={openEditUrun}
+                                            onFiyat={fiyatiDuzenlenebilirMi(urun) ? ((u) => { setFiyatUrun(u); setFiyatDeger(String(Math.round(u.etkinFiyat ?? u.fiyat))); }) : null}
+                                            onMenudenCikar={ortakUrun ? handleMenudenCikar : null}
+                                            onSil={handleUrunDelete}
+                                        />
                                     );
                                 })}
-                            </TableBody>
-                        </Table>
+                                    </div>
+                                </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* Alt bilgi + sayfalama */}
                     <div className="flex flex-col gap-3 px-4 pb-1 shrink-0 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-muted-foreground text-sm">
-                            {sortedUrunler.length} üründen {sortedUrunler.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, sortedUrunler.length)} arası gösteriliyor
+                            {sayfalamaVar
+                                ? `${sortedUrunler.length} üründen ${sortedUrunler.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1}-${Math.min(currentPage * ITEMS_PER_PAGE, sortedUrunler.length)} arası gösteriliyor`
+                                : `${sortedUrunler.length} ürün`}
                         </p>
                         {totalPages > 1 && (() => {
                             const pageNumbers = totalPages <= 3
@@ -1259,7 +1467,13 @@ export default function ProductsPage() {
                                         Katalogdaki tüm ürünler zaten menünüzde.
                                     </p>
                                 ) : liste.length === 0 ? (
-                                    <p className="py-8 text-center text-sm text-muted-foreground">Sonuç bulunamadı</p>
+                                    <div className="py-8 text-center space-y-2">
+                                        <p className="text-sm text-muted-foreground">Sonuç bulunamadı</p>
+                                        <Button variant="outline" size="sm" className="h-8 text-xs"
+                                                onClick={() => { setKatalogAcik(false); setTalepAcik(true); }}>
+                                            <Send className="size-3.5 mr-1.5" /> "{katalogArama.trim()}" için talep oluştur
+                                        </Button>
+                                    </div>
                                 ) : (
                                     <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
                                         {liste.map((u) => {
@@ -1296,14 +1510,34 @@ export default function ProductsPage() {
                             </div>
                         );
                     })()}
-                    <div className="flex justify-end gap-2 pt-1">
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                        <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground"
+                                onClick={() => { setKatalogAcik(false); setTalepAcik(true); }}>
+                            <Send className="size-3.5 mr-1.5" /> Aradığınız yok mu? Talep açın
+                        </Button>
+                        <div className="flex gap-2">
                         <Button variant="outline" onClick={() => { setKatalogAcik(false); setKatalogSecili(new Set()); }}>İptal</Button>
                         <Button onClick={handleKatalogEkle} disabled={katalogBusy || katalogSecili.size === 0}>
                             {katalogBusy ? 'Ekleniyor...' : `${katalogSecili.size > 0 ? katalogSecili.size + ' ' : ''}Ürünü Ekle`}
                         </Button>
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <UrunTalepModal
+                acik={talepAcik}
+                onKapat={() => setTalepAcik(false)}
+                kategoriler={kategoriler}
+                onGonderildi={() => toast.success('Talebiniz merkeze iletildi')}
+                onKatalogtanEkle={async (urunId) => {
+                    try {
+                        await menuyeYaz([urunId], true);
+                        toast.success('Ürün menünüze eklendi');
+                        loadUrunler();
+                    } catch (err) { toast.error(err.response?.data?.error || 'Ürün eklenemedi'); }
+                }}
+            />
 
             {/* Trash Dialog */}
             <Dialog open={showTrash} onOpenChange={(open) => !open && setShowTrash(false)}>
