@@ -48,6 +48,7 @@ import usersRouter from './routes/users.js';
 import categoriesRouter from './routes/categories.js';
 import branchesRouter from './routes/branches.js';
 import onboardingRouter from './routes/onboarding.js';
+import parolaRouter from './routes/parola.js';
 import profilRouter from './routes/profil.js';
 import basvurularRouter from './routes/basvurular.js';
 import geribildirimRouter from './routes/geribildirim.js';
@@ -57,6 +58,7 @@ import mediaRouter from './routes/media.js';
 import aiRouter from './routes/ai.js';
 import menuRouter from './modules/qr-menu/routes/menu.js';
 import productsRouter from './modules/qr-menu/routes/products.js';
+import urunTalepleriRouter from './modules/qr-menu/routes/urun-talepleri.js';
 import academyCoursesRouter from './modules/academy/routes/courses.js';
 import academyLessonsRouter from './modules/academy/routes/lessons.js';
 import academyUploadRouter from './modules/academy/routes/upload.js';
@@ -163,6 +165,8 @@ app.use('/api/users', authLimiter, expressRotasi(express.Router, usersRouter));
 app.use('/api/categories', expressRotasi(express.Router, categoriesRouter));
 app.use('/api/branches', expressRotasi(express.Router, branchesRouter));
 app.use('/api/onboarding', expressRotasi(express.Router, onboardingRouter));
+// PUBLIC: ilk girişte parola belirleme (bkz. routes/parola.js) — auth yok, kendi oran sınırı var
+app.use('/api/parola', expressRotasi(express.Router, parolaRouter));
 app.use('/api/profil', expressRotasi(express.Router, profilRouter));
 app.use('/api/basvurular', expressRotasi(express.Router, basvurularRouter));
 app.use('/api/geribildirim', expressRotasi(express.Router, geribildirimRouter));
@@ -174,6 +178,7 @@ app.use('/api/ai', expressRotasi(express.Router, aiRouter));
 // QR Menü Modülü
 app.use('/api/menu', expressRotasi(express.Router, menuRouter));
 app.use('/api/products', expressRotasi(express.Router, productsRouter));
+app.use('/api/urun-talepleri', expressRotasi(express.Router, urunTalepleriRouter));
 
 // Akademi Modülü
 app.use('/api/academy/courses', expressRotasi(express.Router, academyCoursesRouter));

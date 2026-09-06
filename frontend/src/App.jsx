@@ -12,6 +12,7 @@ import UsersPage from './modules/qr-menu/pages/UsersPage';
 import ProfilePage from './modules/qr-menu/pages/ProfilePage';
 import BranchesPage from './modules/qr-menu/pages/BranchesPage';
 import CategoriesPage from './modules/qr-menu/pages/CategoriesPage';
+import UrunTalepleriPage from './modules/qr-menu/pages/UrunTalepleriPage';
 import PhotoLibraryPage from './modules/qr-menu/pages/PhotoLibraryPage';
 import AcademyDashboard from './modules/academy/pages/AcademyDashboard';
 import AcademyAdmin from './modules/academy/pages/AcademyAdmin';
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="/admin/profil" element={<ProfilePage />} />
             <Route path="/admin/subeler" element={<BranchesPage />} />
             <Route path="/admin/qr-menu/kategoriler" element={<CategoriesPage />} />
+            <Route path="/admin/qr-menu/talepler" element={<UrunTalepleriPage />} />
             <Route path="/admin/medya" element={<ProtectedRoute role="admin"><PhotoLibraryPage /></ProtectedRoute>} />
             <Route path="/admin/basvurular" element={<ProtectedRoute role="admin"><BasvurularPage /></ProtectedRoute>} />
             <Route path="/admin/geri-bildirim" element={<GeriBildirimPage />} />

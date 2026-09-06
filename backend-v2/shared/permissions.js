@@ -30,6 +30,15 @@ const PERMISSIONS = {
     // yalnızca hangilerini sattığını seçer (bkz. menude_subeler).
     'products.toggleMenu': ['admin', 'sube_sahibi'],
 
+    // ── Ürün Talepleri ──
+    // Şube ürün OLUŞTURAMAZ (products.create admin'de); bunun yerine talep açar,
+    // merkez onaylayınca ürün katalogda doğar ve yalnız talep eden şubenin
+    // menüsünde açılır. Amaç mükerrer isimli ürünleri baştan engellemek.
+    'urunTalep.create': ['sube_sahibi'],
+    // Şube YALNIZCA kendi taleplerini görür — kapsam rota katmanında daraltılır.
+    'urunTalep.view': ['admin', 'sube_sahibi'],
+    'urunTalep.manage': ['admin'],
+
     // ── Şube Yönetimi ──
     'branches.view': ['admin', 'sube_sahibi'],
     'branches.create': ['admin'],

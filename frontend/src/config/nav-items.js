@@ -40,6 +40,9 @@ export function getNavGroups(can, role) {
                         ...(can('categories.create')
                             ? [{ title: 'Kategoriler', url: '/admin/qr-menu/kategoriler', icon: FolderOpen }]
                             : []),
+                        ...(can('urunTalep.view')
+                            ? [{ title: 'Ürün Talepleri', url: '/admin/qr-menu/talepler', icon: Inbox }]
+                            : []),
                         ...(can('geribildirim.view')
                             ? [{ title: 'Geri Bildirim', url: '/admin/geri-bildirim', icon: MessageSquare }]
                             : []),

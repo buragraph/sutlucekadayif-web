@@ -19,6 +19,7 @@ import usersRouter from './routes/users.js';
 import categoriesRouter from './routes/categories.js';
 import branchesRouter from './routes/branches.js';
 import onboardingRouter from './routes/onboarding.js';
+import parolaRouter from './routes/parola.js';
 import profilRouter from './routes/profil.js';
 import basvurularRouter from './routes/basvurular.js';
 import geribildirimRouter from './routes/geribildirim.js';
@@ -28,6 +29,7 @@ import mediaRouter from './routes/media.js';
 import aiRouter from './routes/ai.js';
 import menuRouter from './modules/qr-menu/routes/menu.js';
 import productsRouter from './modules/qr-menu/routes/products.js';
+import urunTalepleriRouter from './modules/qr-menu/routes/urun-talepleri.js';
 import academyCoursesRouter from './modules/academy/routes/courses.js';
 import academyLessonsRouter from './modules/academy/routes/lessons.js';
 import academyUploadRouter from './modules/academy/routes/upload.js';
@@ -48,6 +50,9 @@ const IZINLI = [
     'http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175',
     'http://localhost:4321',
     'https://sutlucekadayif.com', 'https://www.sutlucekadayif.com',
+    // Basılı QR kodlar bu alan adını taşıyor (WordPress'ten devralınıyor);
+    // listede olmazsa menü sayfasının API yedeği tarayıcıda bloklanır.
+    'https://qr.sutlucekadayif.com',
 ];
 function kaynakUygun(kaynak) {
     if (!kaynak) return true;
@@ -102,6 +107,7 @@ const MOUNTLAR = [
     ['/api/categories', categoriesRouter],
     ['/api/branches', branchesRouter],
     ['/api/onboarding', onboardingRouter],
+    ['/api/parola', parolaRouter],          // PUBLIC — ilk girişte parola belirleme
     ['/api/profil', profilRouter],
     ['/api/basvurular', basvurularRouter],
     ['/api/geribildirim', geribildirimRouter],
@@ -111,6 +117,7 @@ const MOUNTLAR = [
     ['/api/ai', aiRouter],
     ['/api/menu', menuRouter],
     ['/api/products', productsRouter],
+    ['/api/urun-talepleri', urunTalepleriRouter],
     ['/api/academy/courses', academyCoursesRouter],
     ['/api/academy/lessons', academyLessonsRouter],
     ['/api/academy/upload', academyUploadRouter],

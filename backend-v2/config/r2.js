@@ -54,6 +54,16 @@ export async function getFile(key) {
 }
 
 /**
+ * Dosyayı AKIŞ olarak oku. Bulunamazsa null.
+ * @param {string} key
+ * @param {string} [aralik] - HTTP Range başlığı ('bytes=0-1023')
+ * @returns {Promise<{akis: any, tur: string|null, boyut: number|null, aralikBasligi: string|null}|null>}
+ */
+export async function getFileStream(key, aralik) {
+    return await d().okuAkis(key, aralik);
+}
+
+/**
  * Önekle eşleşen anahtarlar (yedek budama için).
  * @returns {Promise<{key: string, boyut: number, tarih: Date|null}[]>}
  */
@@ -92,7 +102,7 @@ export function urlToKey(url) {
  *   erişimi yalnızca kendi özel, yetkilendirmeli endpoint'inden
  *   (`GET /api/upload/dekont/*`) gider; genel proxy veya silme yollarından asla.
  * - Yukarıdakiler geçerse: yalnızca izinli önek listesindeki
- *   (`urunler/`, `menu/`, `academy/`) bir önekle başlıyorsa true.
+ *   (`urunler/`, `menu/`, `academy/`, `talep/`) bir önekle başlıyorsa true.
  *
  * @param {string} key - Kontrol edilecek R2 anahtarı
  * @param {{forDelete?: boolean}} [opts] - forDelete: kontrolün bir silme
@@ -110,7 +120,10 @@ export function isKeyAllowed(key, { forDelete = false } = {}) {
     // Dekontlar (banka makbuzları) bu genel yollardan ASLA okunamaz/silinemez.
     if (key.startsWith('dekontlar/')) return false;
 
-    const ALLOWED_PREFIXES = ['urunler/', 'menu/', 'academy/'];
+    // 'talep/': şube sahibinin ürün talebine eklediği görsel. Talep onaylanınca
+    // aynı anahtar ürüne geçiyor (bkz. urun-talepleri.js onayla), o yüzden nesne
+    // yerinde kalıyor ve okunabilir olmalı.
+    const ALLOWED_PREFIXES = ['urunler/', 'menu/', 'academy/', 'talep/'];
     return ALLOWED_PREFIXES.some((p) => key.startsWith(p));
 }
 
