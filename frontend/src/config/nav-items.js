@@ -13,6 +13,7 @@ import {
     Inbox,
     MessageSquare,
     BriefcaseBusiness,
+    Store,
 } from 'lucide-react';
 
 /**
@@ -42,6 +43,10 @@ export function getNavGroups(can, role) {
                             : []),
                         ...(can('urunTalep.view')
                             ? [{ title: 'Ürün Talepleri', url: '/admin/qr-menu/talepler', icon: Inbox }]
+                            : []),
+                        // Şubeler arası denetim görünümü — yalnızca merkez.
+                        ...(role === 'admin'
+                            ? [{ title: 'Şube Değişiklikleri', url: '/admin/qr-menu/sube-degisiklikleri', icon: Store }]
                             : []),
                         ...(can('geribildirim.view')
                             ? [{ title: 'Geri Bildirim', url: '/admin/geri-bildirim', icon: MessageSquare }]

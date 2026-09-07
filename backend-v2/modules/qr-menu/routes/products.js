@@ -1065,6 +1065,73 @@ router.delete(
 );
 
 /**
+ * GET /api/products/sube-sapmalari
+ * Şubelerin merkez kaydından SAPTIĞI yerler — admin denetimi için.
+ *
+ * Üç sapma türü tek listede: "mevcut değil" işaretleri, şubenin kendi
+ * etiketleri ve şube fiyatları. Bunlar `urun_sube` satırında durduğu için
+ * ürün listesinde görünmüyorlardı; merkez "hangi şube neyi kapatmış"
+ * sorusunu ancak şube şube gezerek cevaplayabiliyordu.
+ *
+ * Query: ?tur=mevcut_degil|etiket|fiyat (boş = hepsi) &sube= &q= &sayfa= &limit=
+ *
+ * ADMIN'E ÖZEL: şubeler arası bir görünüm; şube sahibi başka şubenin
+ * kararlarını görmemeli.
+ */
+router.get(
+    '/sube-sapmalari',
+    verifyToken,
+    requirePermission('products.view'),
+    asyncHandler(async (req, res) => {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Bu görünüm yalnızca merkez içindir' });
+        }
+        const { tur, sube, q } = req.query;
+        const limit = Math.min(Number(req.query.limit) || 50, 200);
+        const sayfa = Math.max(Number(req.query.sayfa) || 1, 1);
+        const bas = (sayfa - 1) * limit;
+
+        let sorgu = supabase.from('urun_sube')
+            .select(
+                'sube_kod, mevcut_degil, etiket, fiyat_override, '
+                + 'urunler!inner(id, ad, fiyat, kategori_id, silinme), subeler(ad)',
+                { count: 'exact' }
+            )
+            .is('urunler.silinme', null);
+
+        // Tür süzgeci; boşsa üçünden HERHANGİ biri.
+        if (tur === 'mevcut_degil') sorgu = sorgu.is('mevcut_degil', true);
+        else if (tur === 'fiyat') sorgu = sorgu.not('fiyat_override', 'is', null);
+        else if (tur === 'etiket') sorgu = sorgu.neq('etiket', '{}');
+        else sorgu = sorgu.or('mevcut_degil.is.true,fiyat_override.not.is.null,etiket.neq.{}');
+
+        if (sube) sorgu = sorgu.eq('sube_kod', sube);
+        if (q && q.trim()) sorgu = sorgu.ilike('urunler.ad', `%${q.trim()}%`);
+
+        const { data, error, count } = await sorgu
+            .order('sube_kod').order('urun_id').range(bas, bas + limit - 1);
+        if (error) throw new Error(error.message);
+
+        res.json({
+            toplam: count ?? 0,
+            sayfa,
+            limit,
+            satirlar: (data || []).map((r) => ({
+                subeKod: r.sube_kod,
+                subeAd: r.subeler?.ad || r.sube_kod,
+                urunId: r.urunler.id,
+                urunAd: r.urunler.ad,
+                kategoriId: r.urunler.kategori_id,
+                merkezFiyat: Number(r.urunler.fiyat),
+                mevcutDegil: !!r.mevcut_degil,
+                etiket: r.etiket || [],
+                subeFiyat: r.fiyat_override == null ? null : Number(r.fiyat_override),
+            })),
+        });
+    })
+);
+
+/**
  * PUT /api/products/:id/etiket
  * Şube, KENDİ menüsündeki ürüne kendi etiketlerini koyar.
  * Body: { etiket: string[] }
