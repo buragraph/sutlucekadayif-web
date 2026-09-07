@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, MapPin, FileText, Store, RotateCcw } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, MapPin, FileText, Store, RotateCcw, Search } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,7 @@ export default function BranchesPage() {
     // Kapalı şubeler varsayılan olarak gizli: liste günlük işte açık şubeler
     // için kullanılıyor. Geçmiş kayıt hâlâ duruyor, sekmeyle görünür.
     const [durum, setDurum] = useState('acik');   // 'acik' | 'kapali' | 'tumu'
+    const [arama, setArama] = useState('');
 
     useEffect(() => { loadSubeler(); }, []);
 
@@ -61,9 +62,19 @@ export default function BranchesPage() {
 
     function closeModal() { setShowModal(false); setEditing(null); }
 
-    const acikSayi = subeler.filter((s) => !s.kapanma_tarihi).length;
-    const kapaliSayi = subeler.length - acikSayi;
-    const gorunenSubeler = subeler.filter((s) =>
+    // Arama ÖNCE uygulanır, durum sekmeleri aramanın sonucunu böler — böylece
+    // sekmedeki sayı "bu aramada kaç açık/kapalı var" sorusunu cevaplar.
+    // Türkçe karşılaştırma: 'İSTANBUL'.toLowerCase() 'i̇stanbul' üretip
+    // eşleşmeyi kaçırır, o yüzden toLocaleLowerCase('tr').
+    const q = arama.trim().toLocaleLowerCase('tr');
+    const aranan = !q ? subeler : subeler.filter((s) =>
+        [s.slug, s.ad, s.il, s.ilce, s.telefon, s.yetkili_adi, s.vkn]
+            .some((alan) => (alan || '').toLocaleLowerCase('tr').includes(q))
+    );
+
+    const acikSayi = aranan.filter((s) => !s.kapanma_tarihi).length;
+    const kapaliSayi = aranan.length - acikSayi;
+    const gorunenSubeler = aranan.filter((s) =>
         durum === 'tumu' ? true : durum === 'kapali' ? !!s.kapanma_tarihi : !s.kapanma_tarihi
     );
 
@@ -130,11 +141,28 @@ export default function BranchesPage() {
                 <Button onClick={openAdd}><Plus className="size-4" /> Şube Ekle</Button>
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-0 flex-1 sm:max-w-xs">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                        value={arama}
+                        onChange={(e) => setArama(e.target.value)}
+                        placeholder="Şube, slug, il, yetkili ara..."
+                        className="h-9 pl-8 pr-8 text-sm"
+                    />
+                    {arama && (
+                        <button type="button" onClick={() => setArama('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                title="Aramayı temizle">
+                            <X className="size-3.5" />
+                        </button>
+                    )}
+                </div>
+
                 {[
                     { key: 'acik', etiket: 'Açık', adet: acikSayi },
                     { key: 'kapali', etiket: 'Kapalı', adet: kapaliSayi },
-                    { key: 'tumu', etiket: 'Tümü', adet: subeler.length },
+                    { key: 'tumu', etiket: 'Tümü', adet: aranan.length },
                 ].map((t) => (
                     <button
                         key={t.key}
@@ -152,7 +180,10 @@ export default function BranchesPage() {
             {loading ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-16"><Spinner className="size-8" /><p className="text-sm text-muted-foreground">Şubeler yükleniyor...</p></div>
             ) : gorunenSubeler.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground"><span className="text-4xl">🏪</span><p>Henüz şube yok</p></div>
+                <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
+                    <span className="text-4xl">🏪</span>
+                    <p>{q ? `"${arama.trim()}" için sonuç bulunamadı` : 'Henüz şube yok'}</p>
+                </div>
             ) : (
                 <div className="rounded-lg border">
                     <Table>
