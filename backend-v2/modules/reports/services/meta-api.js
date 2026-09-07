@@ -460,12 +460,30 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
   if (targetSubeKod) {
     const sube = await getSubeByKod(targetSubeKod);
     if (!sube) throw new Error(`Şube veritabanında bulunamadı: ${targetSubeKod}`);
+    if (sube.kapanma_tarihi && since > sube.kapanma_tarihi) {
+      throw new Error(`${targetSubeKod} şubesi ${sube.kapanma_tarihi} tarihinde kapandı; bu dönem (${since}) kapanıştan sonra başlıyor, veri çekilmedi.`);
+    }
     mevcutSubeler = [sube];
   } else {
     mevcutSubeler = await getAllSubeler();
   }
   const subeGruplari = {};
   const atlanan = [];
+  const kapaliAtlanan = [];
+
+  /**
+   * Kapanan şubeye YENİ dönem yazılmaz — ama kapanmadan önceki dönemler yazılır.
+   *
+   * Ölçüt dönemin BAŞLANGICI: şube ayın 20'sinde kapandıysa o ayın ilk 20
+   * gününün harcaması gerçektir ve rapora girmelidir. Üstelik dönem bittikten
+   * sonra GRACE_DAYS boyunca tekrar çekiliyoruz (Meta harcamayı günler sonra
+   * yukarı revize edebiliyor); kapanır kapanmaz kesseydik son dönem eksik
+   * kalırdı.
+   *
+   * Kural HER ÇEKİMDE güncel `kapanma_tarihi`ye bakar: şube yeniden açılınca
+   * alan null olur ve çekim kendiliğinden kaldığı yerden devam eder.
+   */
+  const kapaliDonem = (sube) => !!sube.kapanma_tarihi && since > sube.kapanma_tarihi;
 
   for (const row of adsetCampaignMap) {
     const campaignId = row.campaign_id;
@@ -477,6 +495,7 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
     if (targetSubeKod && subeKod !== targetSubeKod) continue;
     let sube = mevcutSubeler.find(s => s.kod === subeKod);
     if (!sube) { atlanan.push(row.adset_name); continue; }
+    if (kapaliDonem(sube)) { kapaliAtlanan.push(sube.kod); continue; }
     if (!subeGruplari[sube.kod]) subeGruplari[sube.kod] = { sube, rows: [], campaignIds: new Set() };
     subeGruplari[sube.kod].rows.push(row);
     subeGruplari[sube.kod].campaignIds.add(campaignId);
@@ -538,5 +557,14 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
     throw new Error(`Hedef şube (${targetSubeKod}) için bu aralıkta eşleşen Meta verisi bulunamadı.`);
   }
 
-  return { count: adsetCampaignMap.length, subeSayisi: sonuclar.length, subeler: sonuclar, atlanan: atlanan.length };
+  if (kapaliAtlanan.length) {
+    console.log(`[Meta] kapalı şube atlandı (${since} dönemi): ${[...new Set(kapaliAtlanan)].join(', ')}`);
+  }
+  return {
+    count: adsetCampaignMap.length,
+    subeSayisi: sonuclar.length,
+    subeler: sonuclar,
+    atlanan: atlanan.length,
+    kapaliAtlanan: [...new Set(kapaliAtlanan)],
+  };
 }

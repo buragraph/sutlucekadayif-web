@@ -89,7 +89,10 @@ function subeOzetleri(donemSatirlari) {
  * `vkn: ""` gibi alanları yanıttan düşer ve ekran/parite fark verir.
  * `ad`/`adres`/`telefon` her şubede dolu olduğundan her zaman yazılır.
  */
-const OPSIYONEL_SUBE_ALANLARI = ['link', 'il', 'ilce', 'lat', 'lng', 'yetkili_adi', 'fatura_adresi', 'vkn', 'sirket_tipi'];
+// DİKKAT: bu BEYAZ LİSTE — burada olmayan kolon şube nesnesine hiç geçmez.
+// `kapanma_tarihi` unutulunca kapalı şube kontrolleri (Meta çekimi, yeni
+// kampanyaya şube ekleme) sessizce hep "açık" görüp çalışmaz hâle gelmişti.
+const OPSIYONEL_SUBE_ALANLARI = ['link', 'il', 'ilce', 'lat', 'lng', 'yetkili_adi', 'fatura_adresi', 'vkn', 'sirket_tipi', 'kapanma_tarihi', 'kapanma_notu'];
 
 function subeNesnesi(satir, donemSatirlari) {
     const nesne = {
