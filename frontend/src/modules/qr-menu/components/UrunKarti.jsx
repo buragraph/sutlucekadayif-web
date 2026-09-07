@@ -2,6 +2,7 @@ import { Pencil, Trash2, ListMinus, Tags } from 'lucide-react';
 import { fiyatYaz } from '../utils/fiyat';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 import { ETIKETLER } from '../constants/etiketler';
 
@@ -16,9 +17,15 @@ import { ETIKETLER } from '../constants/etiketler';
  * Mevcut değilken kart soluklaşır AMA anahtar soluklaşmaz — asıl kontrol o,
  * kapalıyken de net okunmalı (liste görünümündeki davranışın aynısı).
  */
+/**
+ * @param {boolean} [secili]    - admin toplu seçim durumu (tanımsızsa kutu çıkmaz)
+ * @param {Function} [onSecim]  - toplu seçim değişimi
+ * @param {string} [altBilgi]   - kartın altına ek satır (admin'de "kaç şubede açık")
+ */
 export default function UrunKarti({
     urun, mevcut, kilitli, bekliyor,
     onMevcutDegistir, onDuzenle, onFiyat, onMenudenCikar, onSil, onEtiket,
+    secili, onSecim, altBilgi,
 }) {
     // Merkezin etiketi + şubenin kendi etiketi birlikte gösterilir; müşteri
     // menüsünde de böyle birleşiyor (bkz. menu-builder.js musteriAlanlari).
@@ -44,6 +51,22 @@ export default function UrunKarti({
                 oluşturuyor ve yemek fotoğrafını kapatıyordu. Rozet kart gövdesine
                 indi; görsel yalnızca soluklaşarak durumu destekliyor. */}
             <div className="relative aspect-[4/3] shrink-0 bg-muted/50">
+                {/* Toplu seçim yalnızca admin'de: şube ortak ürünü toplu işleme
+                    alamıyor, kutu orada hep boş dururdu.
+                    Sarmalayıcı YALNIZCA tıklamayı durdurur (kart tıklaması
+                    düzenleme penceresini açıyor). Seçimi burada da yapsaydı
+                    Checkbox'ın kendi olayıyla birlikte İKİ KEZ tetiklenir,
+                    seçim açılıp hemen kapanırdı — ölçüldü, hiç seçilmiyordu. */}
+                {onSecim && (
+                    <span
+                        className="absolute left-1.5 top-1.5 z-10"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <Checkbox checked={!!secili} onCheckedChange={() => onSecim(urun.id)}
+                                  aria-label={`${urun.ad} seç`}
+                                  className="border-white/70 bg-black/30 backdrop-blur-sm data-[state=checked]:border-primary" />
+                    </span>
+                )}
                 {urun.gorsel
                     ? <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad}
                            className={`absolute inset-0 size-full object-cover ${mevcut ? '' : 'opacity-35'}`} loading="lazy" />
@@ -77,6 +100,7 @@ export default function UrunKarti({
                         {merkezFarkli && (
                             <div className="text-[10px] text-muted-foreground">merkez {fiyatYaz(urun.fiyat)} ₺</div>
                         )}
+                        {altBilgi && <div className="truncate text-[10px] text-muted-foreground">{altBilgi}</div>}
                     </div>
 
                     {/* Silme şube sahibinde zaten hiç çıkmıyor (ortak ürün kilitli);

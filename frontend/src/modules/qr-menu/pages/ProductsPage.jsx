@@ -3,7 +3,7 @@ import { fiyatYaz, fiyatGirdi } from '../utils/fiyat';
 import { useAuth } from '../../../context/AuthContext';
 import UrunTalepModal from '../components/UrunTalepModal';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, ListMinus, Store, Pencil, Send } from 'lucide-react';
+import { Plus, Trash2, X, Search, ArrowUp, ArrowDown, ArrowUpDown, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, ListMinus, Store, Pencil, Send, List, LayoutGrid } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { proxyImageUrl } from '../../../utils/imageProxy';
@@ -200,6 +200,13 @@ export default function ProductsPage() {
     const [etiketUrun, setEtiketUrun] = useState(null);        // şube etiketi düzenlenen ürün
     const [etiketSecim, setEtiketSecim] = useState([]);
     const [etiketKaydediliyor, setEtiketKaydediliyor] = useState(false);
+    // Admin görünümü: tablo mu kart mı. Şube sahibi HER ZAMAN kart — onun işi
+    // "satıyor muyum, fiyatı ne", sütuna ihtiyacı yok. Tercih localStorage'da:
+    // her sayfa açılışında yeniden seçmek zorunda kalınmasın.
+    const [adminGorunum, setAdminGorunum] = useState(
+        () => localStorage.getItem('urunlerAdminGorunum') || 'liste'
+    );
+    const gorunumSec = (g) => { setAdminGorunum(g); localStorage.setItem('urunlerAdminGorunum', g); };
     const [fiyatKaydediliyor, setFiyatKaydediliyor] = useState(false);
     const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kalori: '', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: [] });
     // Katalogdan menüye ürün ekleme penceresi (şube sahibi) — ürün OLUŞTURMAZ,
@@ -1178,6 +1185,20 @@ export default function ProductsPage() {
                                     <option value="tarih:desc">En yeni</option>
                                 </select>
                             )}
+                            {role === 'admin' && (
+                                <div className="flex gap-1">
+                                    <Button variant={adminGorunum === 'liste' ? 'default' : 'outline'}
+                                            size="sm" className="h-8 px-2.5" title="Liste görünümü"
+                                            onClick={() => gorunumSec('liste')}>
+                                        <List className="size-3.5" />
+                                    </Button>
+                                    <Button variant={adminGorunum === 'kart' ? 'default' : 'outline'}
+                                            size="sm" className="h-8 px-2.5" title="Kart görünümü"
+                                            onClick={() => gorunumSec('kart')}>
+                                        <LayoutGrid className="size-3.5" />
+                                    </Button>
+                                </div>
+                            )}
                             {role === 'admin' && subeler.length > 0 && (
                                 <Popover open={subeComboOpen} onOpenChange={setSubeComboOpen}>
                                     <PopoverTrigger asChild>
@@ -1214,7 +1235,7 @@ export default function ProductsPage() {
                         {/* GÖRÜNÜM ROLE GÖRE: admin katalog yönetiyor (sıralama, toplu seçim,
                             "kaç şubede açık", tarih) — sütun gerektiriyor, tablo kalıyor.
                             Şube sahibinin işi "satıyor muyum, fiyatı ne": görsel odaklı grid. */}
-                        {role === 'admin' ? (
+                        {role === 'admin' && adminGorunum === 'liste' ? (
                             <Table className="**:data-[slot=table-cell]:px-4 **:data-[slot=table-head]:px-4">
                                 <TableHeader className="border-t **:data-[slot=table-head]:h-11 **:data-[slot=table-head]:font-normal **:data-[slot=table-head]:text-foreground **:data-[slot=table-head]:text-sm">
                                     <TableRow>
@@ -1409,7 +1430,15 @@ export default function ProductsPage() {
                                     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
                                 {grup.urunler.map((urun) => {
                                     const mevcutDegil = urun.mevcut_degil || [];
-                                    const ortakUrun = !!subeSlug && urun.tur !== 'sube_ozel';
+                                    // ŞUBE EYLEMLERİ ADMİN'DE ÇIKMAZ. Admin'in de bir `subeSlug`ı
+                                    // var (kendi şubesi) ama katalog görünümünde "satışta / fiyat
+                                    // değiştir / menüden çıkar" o şube üzerinde işlem yapardı —
+                                    // anlamsız ve yanıltıcı. Admin kartı katalog kartıdır.
+                                    const ortakUrun = role !== 'admin' && !!subeSlug && urun.tur !== 'sube_ozel';
+                                    // Admin kartında tablodaki bilgi kaybolmasın: toplu seçim
+                                    // kutusu ve "kaç şubede açık" karta taşındı.
+                                    const adminKart = role === 'admin';
+                                    const acikSube = (urun.menude_subeler || []).length;
                                     return (
                                         <UrunKarti
                                             key={urun.id}
@@ -1417,10 +1446,18 @@ export default function ProductsPage() {
                                             mevcut={!mevcutDegil.includes(subeSlug)}
                                             kilitli={kilitliMi(urun)}
                                             bekliyor={mevcutBekleyen.has(urun.id)}
+                                            secili={adminKart ? selectedIds.has(urun.id) : undefined}
+                                            onSecim={adminKart ? toggleSelect : null}
+                                            altBilgi={adminKart
+                                                ? (urun.tur === 'sube_ozel'
+                                                    ? `şubeye özel · ${urun.sube_slug || ''}`
+                                                    : `${acikSube} şubede açık`)
+                                                : null}
                                                     onMevcutDegistir={ortakUrun ? handleMevcutToggle : null}
                                                     onEtiket={ortakUrun ? ((u) => { setEtiketUrun(u); setEtiketSecim(u.subeEtiket || []); }) : null}
                                             onDuzenle={openEditUrun}
-                                            onFiyat={fiyatiDuzenlenebilirMi(urun) ? ((u) => { setFiyatUrun(u); setFiyatDeger(fiyatGirdi(u.etkinFiyat ?? u.fiyat)); }) : null}
+                                            onFiyat={ortakUrun && fiyatiDuzenlenebilirMi(urun)
+                                                ? ((u) => { setFiyatUrun(u); setFiyatDeger(fiyatGirdi(u.etkinFiyat ?? u.fiyat)); }) : null}
                                             onMenudenCikar={ortakUrun && menudenCikarilabilir(urun) ? handleMenudenCikar : null}
                                             onSil={handleUrunDelete}
                                         />
