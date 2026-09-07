@@ -894,8 +894,21 @@ export default function BudgetCampaignsPage() {
                                                         <span className="text-muted-foreground/40">—</span>
                                                     )}
                                                 </TableCell>
+                                                {/* Gönderen kim: bir şubenin birden fazla sahibi
+                                                    olabiliyor, yanıt ise şube bazında tutuluyor.
+                                                    Tarihin altında kimin gönderdiği yazmazsa
+                                                    çift sahipli şubede iz kalmıyordu. */}
                                                 <TableCell className="text-xs text-muted-foreground">
-                                                    {b.gonderim_tarihi ? fmtDate(b.gonderim_tarihi) : <span className="text-muted-foreground/40">—</span>}
+                                                    {b.gonderim_tarihi ? (
+                                                        <>
+                                                            <div>{fmtDate(b.gonderim_tarihi)}</div>
+                                                            {b.gonderen_ad && (
+                                                                <div className="truncate text-[10px] text-muted-foreground/70" title={b.gonderen_ad}>
+                                                                    {b.gonderen_ad}
+                                                                </div>
+                                                            )}
+                                                        </>
+                                                    ) : <span className="text-muted-foreground/40">—</span>}
                                                 </TableCell>
                                                 <TableCell className="text-right pr-5">
                                                     {b.durum !== 'onaylandi' ? (

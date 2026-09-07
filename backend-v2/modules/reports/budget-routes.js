@@ -64,6 +64,11 @@ const bosYanit = () => ({
   notlar: null,
   dekont_url: null,
   gonderim_tarihi: null,
+  // Yanıt ŞUBE bazında tutuluyor ama bir şubenin birden fazla sahibi olabiliyor
+  // (kullanici_sube'de sube_slug tekil değil). Kimin gönderdiği yazılmazsa
+  // ikinci sahip birincisinin cevabını sessizce eziyordu.
+  gonderen_uid: null,
+  gonderen_ad: null,
 });
 
 // ── Satır ↔ eski kampanya nesnesi ──
@@ -162,9 +167,15 @@ router.post(
       const subeler = await getAllSubeler();
       const kampanyaId = `${donem_baslangic}_${donem_bitis}`;
 
-      // Yanitlar haritası — tüm şubeler "bekliyor"
+      // Yanitlar haritası — AÇIK şubeler "bekliyor". Kapanan şube yeni
+      // kampanyaya hiç girmez; girseydi listede sonsuza kadar cevaplanmamış
+      // olarak durur ve katılım oranını yanlış gösterirdi. Geçmiş
+      // kampanyalardaki kaydına dokunulmaz.
       const yanitlar = {};
-      for (const sube of subeler) yanitlar[sube.kod] = bosYanit();
+      for (const sube of subeler) {
+        if (sube.kapanma_tarihi) continue;
+        yanitlar[sube.kod] = bosYanit();
+      }
 
       const olusturma = new Date().toISOString();
       const satir = {
@@ -863,6 +874,27 @@ router.post(
         return res.status(400).json({ error: 'Bu kampanya için bildiriminiz onaylanmış. Değişiklik için yönetime başvurun.' });
       }
 
+      // ŞUBEDE İKİNCİ SAHİP KORUMASI
+      // Yanıt şube bazında tutuluyor; iki sahip aynı kampanyaya cevap verirse
+      // ikincisi birincisininkini (tutar, not, dekont) SESSİZCE eziyordu.
+      // Artık üzerine yazmak açık onay istiyor: 409 + çakışma bilgisi döner,
+      // istemci kullanıcıya sorup `ustune_yaz` ile tekrar gönderir.
+      // Kişinin KENDİ yanıtını güncellemesi serbest — bu bir düzeltme.
+      const baskasiGondermis = mevcutYanit?.durum === 'gonderildi'
+        && mevcutYanit.gonderen_uid
+        && mevcutYanit.gonderen_uid !== req.user.uid;
+      if (baskasiGondermis && String(req.body?.ustune_yaz || '') !== 'evet') {
+        return res.status(409).json({
+          error: 'Bu kampanyaya şubenizden zaten cevap verilmiş.',
+          cakisma: {
+            gonderen_ad: mevcutYanit.gonderen_ad || 'başka bir kullanıcı',
+            gonderim_tarihi: mevcutYanit.gonderim_tarihi || null,
+            secilen_bakiye: mevcutYanit.secilen_bakiye ?? null,
+            kdv_dahil_tutar: mevcutYanit.kdv_dahil_tutar ?? null,
+          },
+        });
+      }
+
       // Seçilen bakiye kampanyanın sunduğu menü seçeneklerinden biri olmalı
       if (!bakiyeMenudeVarMi(secilen_bakiye, kampanya.bakiye_secenekleri)) {
         return res.status(400).json({ error: 'Seçilen bakiye bu kampanyanın sunduğu seçeneklerden biri değil.' });
@@ -898,6 +930,8 @@ router.post(
         // Yeni dekont yüklenmediyse mevcut dekont korunur
         dekont_url: dekontUrl || mevcutYanit?.dekont_url || null,
         gonderim_tarihi: new Date().toISOString(),
+        gonderen_uid: req.user.uid,
+        gonderen_ad: req.user.email || null,
       };
 
       await yanitYaz(kampanyaId, subeKod, yanitData);

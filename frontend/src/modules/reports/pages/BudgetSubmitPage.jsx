@@ -14,6 +14,7 @@ import { tr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import api from '../../../services/api';
+import { useConfirm } from '../../../shared/components/Toast';
 
 const fmtCurrency = (val) => new Intl.NumberFormat('tr-TR').format(val) + ' ₺';
 const fmtDate = (dateStr) => {
@@ -62,6 +63,7 @@ function KatilimKarti({ k }) {
 }
 
 export default function BudgetSubmitPage() {
+    const confirm = useConfirm();
     const [loading, setLoading] = useState(true);
     const [kampanya, setKampanya] = useState(null);
     const [katildiklarim, setKatildiklarim] = useState([]);
@@ -130,17 +132,39 @@ export default function BudgetSubmitPage() {
         );
         if (!option) return toast.error('Geçersiz bakiye seçeneği.');
 
-        setSubmitting(true);
-        try {
+        // `ustuneYaz`: bir şubenin birden fazla sahibi olabiliyor ve yanıt şube
+        // bazında tutuluyor. Sunucu, başkası cevap vermişse 409 + çakışma
+        // bilgisi döner; kullanıcıya kimin ne gönderdiğini gösterip onayını
+        // alıyoruz. Onaysız üzerine yazma yok.
+        const gonder = async (ustuneYaz = false) => {
             const formData = new FormData();
             formData.append('secilen_bakiye', option.bakiye);
             formData.append('kdv_dahil_tutar', option.kdv_dahil);
             formData.append('notlar', notlar);
             if (dekontFile) formData.append('dekont', dekontFile);
+            if (ustuneYaz) formData.append('ustune_yaz', 'evet');
 
-            await api.post(`/reports/butce-gonder/${kampanya.id}`, formData, {
+            return api.post(`/reports/butce-gonder/${kampanya.id}`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
+        };
+
+        setSubmitting(true);
+        try {
+            try {
+                await gonder();
+            } catch (err) {
+                const c = err.response?.status === 409 && err.response.data?.cakisma;
+                if (!c) throw err;
+                const onay = await confirm(
+                    `Bu kampanyaya şubenizden ${c.gonderen_ad} zaten cevap verdi`
+                    + (c.secilen_bakiye ? ` (${fmtCurrency(c.secilen_bakiye)} bakiye)` : '')
+                    + (c.gonderim_tarihi ? `, ${fmtDate(c.gonderim_tarihi)}` : '')
+                    + '. Sizin bildiriminiz onunkinin yerine geçsin mi?'
+                );
+                if (!onay) { setSubmitting(false); return; }
+                await gonder(true);
+            }
 
             toast.success('Bütçe bildirimi gönderildi.');
             // Formu sıfırla ve yeniden çek — kampanya "katıldıklarım" özetine geçer
