@@ -182,7 +182,6 @@ export default function ProductsPage() {
 
     // Tabloda 10 satır ekrana sığıyor; grid 4-5 sütun olduğu için 10 kalem
     // yarım satır bırakıyor — şube görünümünde sayfa boyu büyütülür.
-    const ITEMS_PER_PAGE = role === 'admin' ? 10 : 24;
     const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
@@ -206,7 +205,20 @@ export default function ProductsPage() {
     const [adminGorunum, setAdminGorunum] = useState(
         () => localStorage.getItem('urunlerAdminGorunum') || 'liste'
     );
-    const gorunumSec = (g) => { setAdminGorunum(g); localStorage.setItem('urunlerAdminGorunum', g); };
+    // Görünüm değişince sayfa boyu da değişiyor (10 ↔ 36); eski sayfa numarası
+    // yeni boyutta listenin sonunu aşıp boş ekran gösterebilirdi.
+    const gorunumSec = (g) => {
+        setAdminGorunum(g);
+        localStorage.setItem('urunlerAdminGorunum', g);
+        setCurrentPage(1);
+    };
+
+    // Sayfa boyu GÖRÜNÜME göre: tabloda 10 satır ekranı dolduruyor, kartta
+    // aynı sayı 2 sıra kalıp sayfayı yarı boş bırakıyordu. Grid en geniş
+    // ekranda 6 sütun (2xl) — 36, orada 6 sıra demek; dar ekranda daha çok
+    // sıra ama zaten kaydırılıyor.
+    const ITEMS_PER_PAGE = role !== 'admin' ? 24 : (adminGorunum === 'kart' ? 36 : 10);
+
     const [fiyatKaydediliyor, setFiyatKaydediliyor] = useState(false);
     const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kalori: '', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: [] });
     // Katalogdan menüye ürün ekleme penceresi (şube sahibi) — ürün OLUŞTURMAZ,
