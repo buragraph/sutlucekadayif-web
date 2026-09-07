@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { fiyatYaz } from '../utils/fiyat';
 import { Send, TriangleAlert, Check, Image as ImageIcon, X } from 'lucide-react';
 import api from '../../../services/api';
 import { gorseliWebpYap } from '../utils/gorsel';
@@ -25,6 +26,8 @@ export default function UrunTalepModal({ acik, onKapat, kategoriler, onGonderild
     const [aciklama, setAciklama] = useState('');
     const [gorsel, setGorsel] = useState('');
     const [gorselYukleniyor, setGorselYukleniyor] = useState(false);
+    const [hazirGorseller, setHazirGorseller] = useState([]);
+    const [gorselSekme, setGorselSekme] = useState('sec');   // 'sec' | 'yukle'
     const [tam, setTam] = useState([]);       // birebir aynı ürün — talep gereksiz
     const [yakin, setYakin] = useState([]);   // yazım hatası şüphesi — uyarı
     const [araniyor, setAraniyor] = useState(false);
@@ -110,6 +113,18 @@ export default function UrunTalepModal({ acik, onKapat, kategoriler, onGonderild
         setGorselYukleniyor(false);
     }
 
+    // Merkezin "şubelere açık" işaretlediği medya klasörlerindeki hazır
+    // görseller. Medya kütüphanesinin tamamı şubeye kapalı; bu uç yalnızca
+    // açık klasörleri döndürür (bkz. urun-talepleri.js GET /gorseller).
+    useEffect(() => {
+        if (!acik) return;
+        let iptal = false;
+        api.get('/urun-talepleri/gorseller')
+            .then(({ data }) => { if (!iptal) setHazirGorseller(data.gorseller || []); })
+            .catch(() => { /* klasör açılmamışsa sekme hiç görünmez */ });
+        return () => { iptal = true; };
+    }, [acik]);
+
     const eslesme = [...tam, ...yakin];
 
     return (
@@ -146,7 +161,7 @@ export default function UrunTalepModal({ acik, onKapat, kategoriler, onGonderild
                                 <div key={u.id} className="flex items-center gap-2 rounded-md bg-background/70 p-2">
                                     <span className="min-w-0 flex-1 truncate text-sm">{u.ad}</span>
                                     <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                                        {Math.round(u.fiyat)} ₺
+                                        {fiyatYaz(u.fiyat)} ₺
                                     </span>
                                     <Button size="sm" variant="outline" className="h-7 text-xs"
                                             onClick={() => { onKatalogtanEkle?.(u.id); kapat(); }}>
@@ -168,7 +183,7 @@ export default function UrunTalepModal({ acik, onKapat, kategoriler, onGonderild
                         </div>
                         <div className="space-y-1.5">
                             <Label className="text-xs font-medium">Önerilen fiyat (₺)</Label>
-                            <Input type="number" min="0" step="1" value={fiyat}
+                            <Input type="number" min="0" step="0.01" value={fiyat}
                                    onChange={(e) => setFiyat(e.target.value)} className="h-9 text-sm" />
                         </div>
                     </div>
@@ -191,6 +206,36 @@ export default function UrunTalepModal({ acik, onKapat, kategoriler, onGonderild
                                 </Button>
                             </div>
                         ) : (
+                          <>
+                            {/* Merkez hazır görsel paylaştıysa önce ONU seçtir:
+                                aynı ürünün her şubeden farklı fotoğrafla gelmesi
+                                yerine ortak görsel kullanılsın. Aradığı yoksa
+                                kendi fotoğrafını yükleyebilir. */}
+                            {hazirGorseller.length > 0 && (
+                                <div className="mb-2 flex gap-1">
+                                    {[['sec', 'Hazır görseller'], ['yukle', 'Kendi fotoğrafım']].map(([k, etiket]) => (
+                                        <button key={k} type="button" onClick={() => setGorselSekme(k)}
+                                                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                                                    gorselSekme === k ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                                                }`}>
+                                            {etiket}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {hazirGorseller.length > 0 && gorselSekme === 'sec' ? (
+                                <div className="grid max-h-40 grid-cols-4 gap-1.5 overflow-y-auto rounded-md border p-1.5">
+                                    {hazirGorseller.map((g) => (
+                                        <button key={g.id} type="button" title={g.ad || ''}
+                                                onClick={() => setGorsel(g.url)}
+                                                className="overflow-hidden rounded border transition-colors hover:border-foreground/40">
+                                            <img src={proxyImageUrl(g.url)} alt={g.ad || ''}
+                                                 className="aspect-square w-full object-cover" loading="lazy" />
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
                             <label className={`flex h-20 items-center justify-center gap-2 rounded-md border border-dashed text-xs text-muted-foreground ${gorselYukleniyor ? 'cursor-default' : 'cursor-pointer hover:bg-muted/40'}`}>
                                 {gorselYukleniyor
                                     ? <><Spinner className="size-4" /> Yükleniyor…</>
@@ -198,6 +243,8 @@ export default function UrunTalepModal({ acik, onKapat, kategoriler, onGonderild
                                 <input type="file" accept="image/*" className="hidden"
                                        disabled={gorselYukleniyor} onChange={gorselSec} />
                             </label>
+                            )}
+                          </>
                         )}
                     </div>
 

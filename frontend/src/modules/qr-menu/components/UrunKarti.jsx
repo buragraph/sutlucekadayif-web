@@ -1,4 +1,5 @@
 import { Pencil, Trash2, ListMinus } from 'lucide-react';
+import { fiyatYaz } from '../utils/fiyat';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { proxyImageUrl } from '../../../utils/imageProxy';
@@ -22,7 +23,7 @@ export default function UrunKarti({
     const etiketler = (urun.etiket || []).map((k) => ETIKETLER.find((t) => t.key === k)).filter(Boolean);
     const GORUNEN = 2;
     const kalan = etiketler.length - GORUNEN;
-    const fiyat = Math.round(urun.etkinFiyat ?? urun.fiyat);
+    const fiyat = fiyatYaz(urun.etkinFiyat ?? urun.fiyat);
     const merkezFarkli = urun.etkinFiyat != null && urun.etkinFiyat !== urun.fiyat;
 
     return (
@@ -71,7 +72,7 @@ export default function UrunKarti({
                         <span className="text-[13px] font-medium tabular-nums text-foreground">{fiyat} ₺</span>
                         {urun.miktar ? <span className="ml-0.5 text-[10px] text-muted-foreground">/ {urun.miktar}{urun.birim}</span> : null}
                         {merkezFarkli && (
-                            <div className="text-[10px] text-muted-foreground">merkez {Math.round(urun.fiyat)} ₺</div>
+                            <div className="text-[10px] text-muted-foreground">merkez {fiyatYaz(urun.fiyat)} ₺</div>
                         )}
                     </div>
 

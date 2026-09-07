@@ -162,6 +162,21 @@ async function findProduct(id, subeSlug) {
  * Kategori bazlı gizleme haritası: kategoriId → gizlenen şube kodları.
  * Ürün seviyesindeki `gizli` ile BİRLİKTE çalışır; biri yeterse ürün gizlidir.
  */
+/**
+ * Kategori bazlı "menüden çıkarılamaz" haritası (kategoriId -> bool).
+ * Admin için hiç okunmaz — kural yalnızca şube sahibini bağlar.
+ */
+async function katCikarmaKilidi(req) {
+    if (req.user.role === 'admin') return {};
+    const satirlar = veriYaDaHata(
+        await supabase.from('kategoriler').select('id, menuden_cikarilamaz'),
+        'kategoriler okunamadı'
+    );
+    const m = {};
+    satirlar.forEach((k) => { m[k.id] = !!k.menuden_cikarilamaz; });
+    return m;
+}
+
 async function katGizliHaritasi(req) {
     if (req.user.role === 'admin') return {};
     const satirlar = veriYaDaHata(
@@ -755,15 +770,22 @@ router.post(
         const temizIds = [...new Set(ids.map((x) => String(x).trim()).filter(Boolean))];
 
         const satirlar = veriYaDaHata(
-            await supabase.from('urunler').select('id, tur, silinme').in('id', temizIds).range(0, 999),
+            await supabase.from('urunler').select('id, tur, silinme, kategori_id').in('id', temizIds).range(0, 999),
             'ürünler okunamadı'
         );
         const uyelikler = await uyelikleriGetir(temizIds, slug);
+        // Merkez bazı kategorileri "menüden çıkarılamaz" işaretleyebiliyor:
+        // şube o ürünleri menüden kaldıramaz, yalnızca "mevcut değil" yapabilir
+        // (bkz. 0016_kategori_kilit_ve_medya_paylasim.sql). Kural yalnızca
+        // ÇIKARMA yönünde: ekleme serbest kalmalı.
+        const cikarmaKilidi = menude === false ? await katCikarmaKilidi(req) : {};
+        const kilitliKategori = [];
 
         const yazilacak = [];
         for (const s of satirlar) {
             if (s.silinme) continue;
             if (s.tur === 'sube_ozel') continue;
+            if (menude === false && cikarmaKilidi[s.kategori_id]) { kilitliKategori.push(s.id); continue; }
             // Merkezin yasakladığı ürün şube için yok hükmünde — sessizce atlanır,
             // yoksa şube gizli ürünü menüsüne ekleyebilirdi.
             const uye = (uyelikler.get(s.id) || [])[0];
@@ -780,7 +802,14 @@ router.post(
             await regenerateMenuJson(slug).catch(console.error);
         }
 
-        res.json({ success: true, islenen: yazilacak.length, menude });
+        // Tamamı kilitliyse sessiz başarı yerine açık hata: arayüz butonu
+        // gizliyor ama uç doğrudan da çağrılabilir.
+        if (yazilacak.length === 0 && kilitliKategori.length > 0) {
+            return res.status(403).json({
+                error: 'Bu kategorideki ürünler menüden çıkarılamaz. Satmıyorsanız "Mevcut değil" olarak işaretleyin.',
+            });
+        }
+        res.json({ success: true, islenen: yazilacak.length, menude, kilitliKategori: kilitliKategori.length });
     })
 );
 

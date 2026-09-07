@@ -128,7 +128,7 @@ router.post(
     verifyToken,
     requirePermission('categories.create'),
     asyncHandler(async (req, res) => {
-        const { ad, sira, tur, renk, kilitli, gorsel, gizli_subeler } = req.body;
+        const { ad, sira, tur, renk, kilitli, gorsel, gizli_subeler, menuden_cikarilamaz } = req.body;
 
         if (!ad || !ad.trim()) {
             return res.status(400).json({ error: 'Kategori adı zorunludur' });
@@ -158,6 +158,9 @@ router.post(
         if (Array.isArray(gizli_subeler)) {
             satir.gizli_subeler = [...new Set(gizli_subeler.filter((x) => typeof x === 'string' && x.trim()))];
         }
+        // Şube bu kategorideki ürünü menüden çıkaramaz, yalnızca "mevcut değil"
+        // diyebilir (bkz. products.js `katCikarmaKilidi`).
+        if (menuden_cikarilamaz !== undefined) satir.menuden_cikarilamaz = Boolean(menuden_cikarilamaz);
 
         veriYaDaHata(await supabase.from('kategoriler').insert(satir), 'kategori eklenemedi');
 
@@ -183,7 +186,7 @@ router.put(
     requirePermission('categories.edit'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
-        const { ad, sira, tur, renk, kilitli, gorsel, gizli_subeler } = req.body;
+        const { ad, sira, tur, renk, kilitli, gorsel, gizli_subeler, menuden_cikarilamaz } = req.body;
 
         const { data: mevcut } = await supabase.from('kategoriler').select('id').eq('id', id).maybeSingle();
         if (!mevcut) {
@@ -204,6 +207,7 @@ router.put(
                 ? [...new Set(gizli_subeler.filter((x) => typeof x === 'string' && x.trim()))]
                 : [];
         }
+        if (menuden_cikarilamaz !== undefined) updateData.menuden_cikarilamaz = Boolean(menuden_cikarilamaz);
 
         if (Object.keys(updateData).length > 0) {
             veriYaDaHata(

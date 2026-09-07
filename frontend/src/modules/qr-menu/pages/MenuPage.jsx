@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { fiyatYaz } from '../utils/fiyat';
 import { useParams } from 'react-router-dom';
 import api from '../../../services/api';
 import { Search, ChevronUp, Instagram, MessageCircle, X, FileText } from 'lucide-react';
@@ -73,7 +74,7 @@ function ProductCard({ urun, index, onClick }) {
                 {urun.aciklama && <p className="pm-card__desc">{urun.aciklama}</p>}
                 <div className="pm-card__meta">
                     <span className="pm-card__price">
-                        {Math.round(urun.fiyat)}₺
+                        {fiyatYaz(urun.fiyat)}₺
                         {urun.miktar && <span className="pm-card__miktar"> / {urun.miktar}{urun.birim === 'g' ? 'gr' : urun.birim}</span>}
                         {/* != null: 0 kcal geçerli (su, sade soda) — `&&` ile gizlenirdi */}
                         {urun.kalori != null && <span className="pm-card__kalori"> · {urun.kalori} kcal</span>}
@@ -124,7 +125,7 @@ function ProductModal({ urun, onClose }) {
                     <h3 className="pm-modal__name">{urun.ad}</h3>
                     {urun.aciklama && <p className="pm-modal__desc">{urun.aciklama}</p>}
                     <div className="pm-modal__price">
-                        {Math.round(urun.fiyat)}₺
+                        {fiyatYaz(urun.fiyat)}₺
                         {urun.miktar && <span className="pm-modal__miktar"> / {urun.miktar}{urun.birim === 'g' ? 'gr' : urun.birim}</span>}
                         {urun.kalori != null && <span className="pm-modal__kalori"> · {urun.kalori} kcal</span>}
                     </div>

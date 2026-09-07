@@ -40,6 +40,36 @@ router.post('/gorsel', verifyToken, requirePermission('urunTalep.create'), TALEP
         res.json({ url, key });
     }));
 
+/**
+ * GET /api/urun-talepleri/gorseller
+ * Şube sahibinin talepte SEÇEBİLECEĞİ hazır görseller.
+ *
+ * NEDEN AYRI UÇ: medya kütüphanesi şubeye kapalı (media.view yalnız adminde) ve
+ * öyle kalmalı — dekont/arşiv de aynı tabloda. Genel /api/media ucunu şubeye
+ * açıp filtreyle daraltmak, ileride bir parametre kaçağında her şeyi açardı.
+ * Burada kapsam yapısal: yalnızca `subelere_acik` klasörler okunur, klasör
+ * adı bile istemciden gelmez.
+ */
+router.get('/gorseller', verifyToken, requirePermission('urunTalep.create'),
+    asyncHandler(async (req, res) => {
+        const klasorler = veriYaDaHata(
+            await supabase.from('medya_klasorler').select('ad').eq('subelere_acik', true),
+            'klasörler okunamadı'
+        );
+        const adlar = klasorler.map((k) => k.ad);
+        if (adlar.length === 0) return res.json({ gorseller: [], klasorler: [] });
+
+        const satirlar = veriYaDaHata(
+            await supabase.from('medya').select('id, url, ad, klasor')
+                .in('klasor', adlar).order('ad', { ascending: true }).range(0, 499),
+            'görseller okunamadı'
+        );
+        res.json({
+            gorseller: satirlar.map((m) => ({ id: m.id, url: m.url, ad: m.ad || '', klasor: m.klasor })),
+            klasorler: adlar,
+        });
+    }));
+
 const DURUMLAR = ['bekliyor', 'onaylandi', 'reddedildi'];
 const LIMITLER = { ad: 120, aciklama: 500, adminNotu: 500 };
 const temizle = (v, max) => String(v ?? '').trim().slice(0, max);
@@ -249,9 +279,13 @@ router.post(
 
 /**
  * PATCH /api/urun-talepleri/:id/onayla
- * Gövde: { urunId? , fiyat?, kategoriId? }
+ * Gövde: { urunId? } | { ad?, fiyat?, kategoriId?, aciklama?, gorsel?, etiket?,
+ *          miktar?, birim?, kalori?, not? }
  *   urunId verilirse MEVCUT ürün talep eden şubede açılır (mükerrer açılmaz).
  *   verilmezse yeni `ortak` ürün oluşturulur.
+ *
+ * Merkez talebi OLDUĞU GİBİ kabul etmek zorunda değil: ürünün tüm içeriğini
+ * onaylamadan önce düzeltebilir. Verilmeyen alan talepteki değerinde kalır.
  */
 router.patch(
     '/:id/onayla',
@@ -274,18 +308,34 @@ router.patch(
             const kategoriId = temizle(req.body?.kategoriId, 60) || talep.kategori_id;
             if (!kategoriId) return res.status(400).json({ error: 'Kategori zorunludur' });
 
+            const ad = temizle(req.body?.ad, LIMITLER.ad) || talep.ad;
+            if (!ad) return res.status(400).json({ error: 'Ürün adı zorunludur' });
+
             const fiyatHam = req.body?.fiyat ?? talep.fiyat;
             const fiyat = Number(fiyatHam);
-            if (!Number.isFinite(fiyat)) return res.status(400).json({ error: 'Fiyat zorunludur' });
+            if (!Number.isFinite(fiyat) || fiyat < 0) {
+                return res.status(400).json({ error: 'Geçerli bir fiyat girin' });
+            }
 
-            urunId = yeniId();
-            veriYaDaHata(
-                await supabase.from('urunler').insert({
-                    id: urunId, ad: talep.ad, fiyat, kategori_id: kategoriId,
-                    tur: 'ortak', gorsel: talep.gorsel || '',
-                }),
-                'ürün oluşturulamadı'
-            );
+            // Merkezin düzelttiği alanlar; gönderilmeyen alan talepteki hâlinde kalır.
+            const satir = {
+                id: yeniId(), ad, fiyat, kategori_id: kategoriId, tur: 'ortak',
+                gorsel: req.body?.gorsel !== undefined ? temizle(req.body.gorsel, 500) : (talep.gorsel || ''),
+                aciklama: req.body?.aciklama !== undefined
+                    ? temizle(req.body.aciklama, LIMITLER.aciklama)
+                    : (talep.aciklama || ''),
+            };
+            if (Array.isArray(req.body?.etiket)) {
+                satir.etiket = req.body.etiket.filter((x) => typeof x === 'string' && x.trim()).slice(0, 12);
+            }
+            // Sayısal alanlar: boş/geçersiz gelirse hiç yazılmaz (null kalır).
+            const sayi = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : undefined; };
+            if (sayi(req.body?.miktar) !== undefined) satir.miktar = sayi(req.body.miktar);
+            if (sayi(req.body?.kalori) !== undefined) satir.kalori = sayi(req.body.kalori);
+            if (req.body?.birim !== undefined) satir.birim = temizle(req.body.birim, 10);
+
+            urunId = satir.id;
+            veriYaDaHata(await supabase.from('urunler').insert(satir), 'ürün oluşturulamadı');
         }
 
         // Ürün YALNIZCA talep eden şubede açılır; diğer şubeler isterse kendi

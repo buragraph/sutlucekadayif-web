@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, ImagePlus, Check, Search, FolderPlus, Folder, ChevronRight, ArrowLeft, FolderInput } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, ImagePlus, Check, Search, FolderPlus, Folder, ChevronRight, ArrowLeft, FolderInput, Store } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 import { Button } from '@/components/ui/button';
@@ -164,6 +164,20 @@ export default function PhotoLibraryPage() {
             toast.success('Klasör oluşturuldu');
         } catch (err) {
             toast.error(err.response?.data?.error || 'Klasör oluşturulamadı');
+        }
+    }
+
+    // Klasörü şube sahiplerine aç/kapat. Açık klasördeki görseller ürün talebi
+    // ekranında SEÇİLEBİLİR olur; medya kütüphanesinin geri kalanı şubeye
+    // kapalı kalır (bkz. urun-talepleri.js GET /gorseller).
+    async function handleSubeyeAc(k) {
+        const yeni = !k.subelereAcik;
+        try {
+            await api.patch(`/media/klasorler/${k.id}`, { subelereAcik: yeni });
+            setKlasorler((p) => p.map((x) => (x.id === k.id ? { ...x, subelereAcik: yeni } : x)));
+            toast.success(yeni ? `"${k.ad}" şubelere açıldı` : `"${k.ad}" şubelere kapatıldı`);
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Klasör güncellenemedi');
         }
     }
 
@@ -494,13 +508,28 @@ export default function PhotoLibraryPage() {
                             onDragOver={(e) => onFolderDragOver(e, k.ad)} onDragLeave={onFolderDragLeave} onDrop={(e) => onFolderDrop(e, k.ad)}>
                             <FolderButton name={k.ad} count={folderCounts[k.ad] || 0} active={activeKlasor === k.ad} isDragOver={dragOverFolder === k.ad}
                                 onClick={() => setActiveKlasor(k.ad)} />
-                            <button
-                                className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                                onClick={(e) => { e.stopPropagation(); handleDeleteFolder(k); }}
-                                title="Klasörü sil"
-                            >
-                                <Trash2 className="size-3" />
-                            </button>
+                            <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                                <button
+                                    className={`rounded p-1 transition-opacity hover:bg-muted ${
+                                        k.subelereAcik
+                                            ? 'text-emerald-600 opacity-100'
+                                            : 'text-muted-foreground opacity-0 group-hover:opacity-100'
+                                    }`}
+                                    onClick={(e) => { e.stopPropagation(); handleSubeyeAc(k); }}
+                                    title={k.subelereAcik
+                                        ? 'Şubelere açık — ürün talebinde bu klasörden görsel seçebilirler'
+                                        : 'Şubelere aç'}
+                                >
+                                    <Store className="size-3" />
+                                </button>
+                                <button
+                                    className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                                    onClick={(e) => { e.stopPropagation(); handleDeleteFolder(k); }}
+                                    title="Klasörü sil"
+                                >
+                                    <Trash2 className="size-3" />
+                                </button>
+                            </div>
                         </div>
                     ))}
                 </div>

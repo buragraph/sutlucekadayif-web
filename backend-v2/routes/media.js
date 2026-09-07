@@ -109,6 +109,7 @@ router.get(
         }
 
         const klasorler = klasorSatirlari.map((k) => ({
+            subelereAcik: !!k.subelere_acik,
             id: k.id, ad: k.ad, createdAt: isoZ(k.olusturma), count: sayac[k.ad] || 0,
         }));
         const system = {};
@@ -143,6 +144,37 @@ router.post(
         veriYaDaHata(await supabase.from('medya_klasorler').insert(satir), 'klasör eklenemedi');
 
         res.status(201).json({ id: satir.id, ad: satir.ad, createdAt: isoZ(satir.olusturma) });
+    })
+);
+
+/**
+ * PATCH /api/media/klasorler/:id
+ * Şimdilik tek düzenlenebilir alan: `subelereAcik`.
+ *
+ * Medya kütüphanesi şube sahibine KAPALI (media.view yalnız adminde) ve öyle
+ * kalıyor — dekont/arşiv de aynı yerde. Şube sahibinin ürün talebinde fotoğraf
+ * seçebilmesi için merkez tek tek klasör açar; şube yalnızca açık klasörlerin
+ * içeriğini, salt okunur olarak görür (bkz. urun-talepleri.js GET /gorseller).
+ */
+router.patch(
+    '/klasorler/:id',
+    verifyToken,
+    requirePermission('media.manage'),
+    asyncHandler(async (req, res) => {
+        const { subelereAcik } = req.body;
+        if (subelereAcik === undefined) {
+            return res.status(400).json({ error: 'Güncellenecek alan yok' });
+        }
+        const { data: klasor } = await supabase
+            .from('medya_klasorler').select('id').eq('id', req.params.id).maybeSingle();
+        if (!klasor) return res.status(404).json({ error: 'Klasör bulunamadı' });
+
+        veriYaDaHata(
+            await supabase.from('medya_klasorler')
+                .update({ subelere_acik: Boolean(subelereAcik) }).eq('id', req.params.id),
+            'klasör güncellenemedi'
+        );
+        res.json({ success: true, subelereAcik: Boolean(subelereAcik) });
     })
 );
 

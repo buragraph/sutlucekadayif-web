@@ -111,7 +111,7 @@ export default function CategoriesPage() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState(null);
-    const [form, setForm] = useState({ ad: '', sira: '', tur: 'ortak', renk: '#dbeafe', gorsel: '', gizli_subeler: [] });
+    const [form, setForm] = useState({ ad: '', sira: '', tur: 'ortak', renk: '#dbeafe', gorsel: '', gizli_subeler: [], menuden_cikarilamaz: false });
     const [subeler, setSubeler] = useState([]);
     const [saving, setSaving] = useState(false);
     const [replaceState, setReplaceState] = useState(null);
@@ -211,15 +211,15 @@ export default function CategoriesPage() {
         catch (err) { console.error('Şubeler yüklenemedi:', err); }
     }
 
-    function openAdd() { setEditing(null); setForm({ ad: '', sira: '', tur: 'ortak', renk: '#dbeafe', gorsel: '', gizli_subeler: [] }); setShowModal(true); }
-    function openEdit(kat) { setEditing(kat); setForm({ ad: kat.ad, sira: kat.sira || '', tur: kat.tur || 'ortak', renk: kat.renk || '#dbeafe', gorsel: kat.gorsel || '', gizli_subeler: kat.gizli_subeler || [] }); setShowModal(true); }
+    function openAdd() { setEditing(null); setForm({ ad: '', sira: '', tur: 'ortak', renk: '#dbeafe', gorsel: '', gizli_subeler: [], menuden_cikarilamaz: false }); setShowModal(true); }
+    function openEdit(kat) { setEditing(kat); setForm({ ad: kat.ad, sira: kat.sira || '', tur: kat.tur || 'ortak', renk: kat.renk || '#dbeafe', gorsel: kat.gorsel || '', gizli_subeler: kat.gizli_subeler || [], menuden_cikarilamaz: !!kat.menuden_cikarilamaz }); setShowModal(true); }
     function closeModal() { setShowModal(false); setEditing(null); setShowMediaLibrary(false); }
 
     async function handleSubmit(e) {
         e.preventDefault();
         setSaving(true);
         try {
-            const payload = { ad: form.ad, tur: form.tur, renk: form.renk, gorsel: form.gorsel || '', gizli_subeler: form.tur === 'sube_ozel' ? [] : (form.gizli_subeler || []) };
+            const payload = { ad: form.ad, tur: form.tur, renk: form.renk, gorsel: form.gorsel || '', gizli_subeler: form.tur === 'sube_ozel' ? [] : (form.gizli_subeler || []), menuden_cikarilamaz: !!form.menuden_cikarilamaz };
             if (form.sira !== '' && form.sira !== undefined) payload.sira = Number(form.sira);
             if (editing) { await api.put(`/categories/${editing.id}`, payload); }
             else { await api.post('/categories', payload); }
@@ -606,6 +606,26 @@ export default function CategoriesPage() {
                                     />
                                 </div>
                             )}
+
+                            {/* Şube bu kategoride ürünü menüden çıkarabilsin mi.
+                                Çekirdek kategorilerde (ör. Soğuk Kadayıf) merkez
+                                ürünün tamamen kalkmasını istemiyor; şube yalnızca
+                                "şu an satmıyorum" diyebilmeli. */}
+                            <label className="flex cursor-pointer items-start gap-3 rounded-md border p-3">
+                                <input
+                                    type="checkbox"
+                                    className="mt-0.5 size-4 shrink-0 accent-foreground"
+                                    checked={!!form.menuden_cikarilamaz}
+                                    onChange={(e) => setForm({ ...form, menuden_cikarilamaz: e.target.checked })}
+                                />
+                                <span className="text-xs">
+                                    <span className="font-medium">Şube menüden çıkaramasın</span>
+                                    <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">
+                                        Şube sahibi bu kategorideki ürünleri menüsünden kaldıramaz; yalnızca
+                                        “Mevcut değil” olarak işaretleyebilir.
+                                    </span>
+                                </span>
+                            </label>
 
                             {/* Renk */}
                             <div className="space-y-1.5">

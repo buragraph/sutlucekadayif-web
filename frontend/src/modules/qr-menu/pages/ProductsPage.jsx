@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { fiyatYaz, fiyatGirdi } from '../utils/fiyat';
 import { useAuth } from '../../../context/AuthContext';
 import UrunTalepModal from '../components/UrunTalepModal';
 import api from '../../../services/api';
@@ -429,6 +430,14 @@ export default function ProductsPage() {
     const katMap = {};
     kategoriler.forEach((k) => { katMap[k.id] = k.ad; });
 
+    // Merkez bazı kategorileri "menüden çıkarılamaz" işaretleyebiliyor: şube o
+    // ürünü menüden kaldıramaz, yalnızca "Mevcut değil" diyebilir. Sunucu da
+    // aynı kuralı uyguluyor (products.js `katCikarmaKilidi`) — burası sadece
+    // butonu göstermemek için, yetki kararı istemcide verilmiyor.
+    const katCikarmaKilidi = {};
+    kategoriler.forEach((k) => { katCikarmaKilidi[k.id] = !!k.menuden_cikarilamaz; });
+    const menudenCikarilabilir = (u) => !katCikarmaKilidi[u.kategori];
+
     // Şube sahibinin listesi = KENDİ menüsündeki ürünler. Menüde olmayan ortak
     // ürünler "Ürün Ekle" katalog penceresinde durur. `menude` sunucuda hesaplanır
     // (bkz. backend menudeMi) — burada kural yeniden yazılmaz.
@@ -668,7 +677,7 @@ export default function ProductsPage() {
                                         </button>
                                     </MediaPicker>
                                     <Input value={row.ad} onChange={(e) => updateBulkRow(i, 'ad', e.target.value)} placeholder="Ürün adı" className="h-9 text-sm" />
-                                    <Input type="number" min="0" value={row.fiyat} onChange={(e) => updateBulkRow(i, 'fiyat', e.target.value)} placeholder="0" className="h-9 text-sm" />
+                                    <Input type="number" min="0" step="0.01" value={row.fiyat} onChange={(e) => updateBulkRow(i, 'fiyat', e.target.value)} placeholder="0" className="h-9 text-sm" />
                                     <Select value={row.kategori} onValueChange={(v) => updateBulkRow(i, 'kategori', v)}>
                                         <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Kategori" /></SelectTrigger>
                                         <SelectContent>
@@ -1287,14 +1296,14 @@ export default function ProductsPage() {
                                                     {/* Şube kendi fiyatını görür (etkinFiyat sunucuda çözülür).
                                                         Merkez fiyatından farklıysa küçük bir not düşülür. */}
                                                     <span className="font-medium tabular-nums text-foreground">
-                                                        {Math.round(urun.etkinFiyat ?? urun.fiyat)} ₺
+                                                        {fiyatYaz(urun.etkinFiyat ?? urun.fiyat)} ₺
                                                     </span>
                                                     {urun.miktar ? <span className="text-xs text-muted-foreground ml-1">/ {urun.miktar}{urun.birim}</span> : null}
                                                     {/* != null: 0 kcal geçerli bir değer, gizlenmemeli */}
                                                     {urun.kalori != null ? <span className="text-xs text-muted-foreground ml-1">· {urun.kalori} kcal</span> : null}
                                                     {role !== 'admin' && urun.etkinFiyat != null && urun.etkinFiyat !== urun.fiyat && (
                                                         <span className="ml-1.5 text-[11px] text-muted-foreground">
-                                                            (merkez {Math.round(urun.fiyat)} ₺)
+                                                            (merkez {fiyatYaz(urun.fiyat)} ₺)
                                                         </span>
                                                     )}
                                                     {/* Fiyat düzenleme, İşlemler sütunundaki etiket ikonu yerine fiyatın
@@ -1304,7 +1313,7 @@ export default function ProductsPage() {
                                                             variant="ghost" size="icon"
                                                             className="ml-1.5 size-6 align-middle text-muted-foreground hover:text-foreground"
                                                             title="Şube fiyatını düzenle"
-                                                            onClick={() => { setFiyatUrun(urun); setFiyatDeger(String(Math.round(urun.etkinFiyat ?? urun.fiyat))); }}
+                                                            onClick={() => { setFiyatUrun(urun); setFiyatDeger(fiyatGirdi(urun.etkinFiyat ?? urun.fiyat)); }}
                                                         >
                                                             <Pencil className="size-3" />
                                                         </Button>
@@ -1389,8 +1398,8 @@ export default function ProductsPage() {
                                             bekliyor={mevcutBekleyen.has(urun.id)}
                                                     onMevcutDegistir={ortakUrun ? handleMevcutToggle : null}
                                             onDuzenle={openEditUrun}
-                                            onFiyat={fiyatiDuzenlenebilirMi(urun) ? ((u) => { setFiyatUrun(u); setFiyatDeger(String(Math.round(u.etkinFiyat ?? u.fiyat))); }) : null}
-                                            onMenudenCikar={ortakUrun ? handleMenudenCikar : null}
+                                            onFiyat={fiyatiDuzenlenebilirMi(urun) ? ((u) => { setFiyatUrun(u); setFiyatDeger(fiyatGirdi(u.etkinFiyat ?? u.fiyat)); }) : null}
+                                            onMenudenCikar={ortakUrun && menudenCikarilabilir(urun) ? handleMenudenCikar : null}
                                             onSil={handleUrunDelete}
                                         />
                                     );
@@ -1507,7 +1516,7 @@ export default function ProductsPage() {
                                                         <span className="block truncate text-xs text-muted-foreground">{katMap[u.kategori] || '—'}</span>
                                                     </span>
                                                     <span className="shrink-0 text-sm font-medium tabular-nums text-foreground">
-                                                        {Math.round(u.etkinFiyat ?? u.fiyat)} ₺
+                                                        {fiyatYaz(u.etkinFiyat ?? u.fiyat)} ₺
                                                     </span>
                                                 </button>
                                             );
@@ -1631,7 +1640,7 @@ export default function ProductsPage() {
                             <div className="space-y-3">
                                 <p className="text-sm text-muted-foreground">
                                     <span className="font-medium text-foreground">{fiyatUrun.ad}</span>
-                                    {' — '}merkez fiyatı {Math.round(fiyatUrun.fiyat)} ₺
+                                    {' — '}merkez fiyatı {fiyatYaz(fiyatUrun.fiyat)} ₺
                                 </p>
                                 <div className="space-y-1.5">
                                     <Label>Şubenizdeki fiyat (₺)</Label>

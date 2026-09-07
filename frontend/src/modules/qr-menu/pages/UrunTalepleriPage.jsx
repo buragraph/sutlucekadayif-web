@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { fiyatYaz } from '../utils/fiyat';
 import { Inbox, Check, X, TriangleAlert, Store } from 'lucide-react';
 import api from '../../../services/api';
 import { proxyImageUrl } from '../../../utils/imageProxy';
@@ -87,7 +88,18 @@ export default function UrunTalepleriPage() {
         try {
             await api.patch(`/urun-talepleri/${talep.id}/onayla`, urunId
                 ? { urunId }
-                : { kategoriId: d.kategoriId || talep.kategoriId, fiyat: d.fiyat ?? talep.fiyat });
+                : {
+                    // Merkez talebi olduğu gibi kabul etmek zorunda değil:
+                    // gönderilmeyen alan sunucuda talepteki hâlinde kalır.
+                    kategoriId: d.kategoriId || talep.kategoriId,
+                    fiyat: d.fiyat ?? talep.fiyat,
+                    ad: d.ad ?? talep.ad,
+                    aciklama: d.aciklama ?? talep.aciklama ?? '',
+                    gorsel: d.gorsel ?? talep.gorsel ?? '',
+                    miktar: d.miktar,
+                    birim: d.birim,
+                    kalori: d.kalori,
+                });
             toast.success(urunId
                 ? `Mevcut ürün ${talep.subeSlug} şubesinde açıldı`
                 : `"${talep.ad}" katalogda açıldı ve ${talep.subeSlug} menüsüne eklendi`);
@@ -169,7 +181,7 @@ export default function UrunTalepleriPage() {
                                             <span className="inline-flex items-center gap-1">
                                                 <Store className="size-3" /> {t.subeSlug}
                                             </span>
-                                            {t.fiyat != null && <span>· önerilen {Math.round(t.fiyat)} ₺</span>}
+                                            {t.fiyat != null && <span>· önerilen {fiyatYaz(t.fiyat)} ₺</span>}
                                             <span>· {new Date(t.olusturmaZamani).toLocaleDateString('tr-TR')}</span>
                                         </p>
                                         {t.aciklama && <p className="mt-1.5 text-xs text-foreground/80">{t.aciklama}</p>}
@@ -188,7 +200,7 @@ export default function UrunTalepleriPage() {
                                                     <div key={u.id} className="flex items-center gap-2 rounded bg-background/70 p-1.5">
                                                         <span className="min-w-0 flex-1 truncate text-sm">{u.ad}</span>
                                                         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                                                            {Math.round(u.fiyat)} ₺
+                                                            {fiyatYaz(u.fiyat)} ₺
                                                         </span>
                                                         <Button size="sm" variant="outline" className="h-7 text-xs"
                                                                 disabled={islenen === t.id}
@@ -199,6 +211,58 @@ export default function UrunTalepleriPage() {
                                                 ))}
                                             </div>
                                         )}
+
+                                        {/* Talep merkezin ONAYLADIĞI hâliyle ürüne dönüşür;
+                                            bu yüzden tüm içerik burada düzenlenebilir.
+                                            Dokunulmayan alan talepteki değerinde kalır. */}
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            <div className="space-y-1">
+                                                <Label className="text-[11px]">Ürün adı</Label>
+                                                <Input className="h-8 text-xs"
+                                                       value={d.ad ?? t.ad ?? ''}
+                                                       onChange={(e) => setTaslak((p) => ({ ...p, [t.id]: { ...d, ad: e.target.value } }))} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[11px]">Açıklama</Label>
+                                                <Input className="h-8 text-xs" placeholder="Menüde görünecek açıklama"
+                                                       value={d.aciklama ?? t.aciklama ?? ''}
+                                                       onChange={(e) => setTaslak((p) => ({ ...p, [t.id]: { ...d, aciklama: e.target.value } }))} />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-end gap-2">
+                                            <div className="space-y-1">
+                                                <Label className="text-[11px]">Miktar</Label>
+                                                <Input type="number" min="0" step="0.01" className="h-8 w-20 text-xs" placeholder="—"
+                                                       value={d.miktar ?? ''}
+                                                       onChange={(e) => setTaslak((p) => ({ ...p, [t.id]: { ...d, miktar: e.target.value } }))} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[11px]">Birim</Label>
+                                                <Input className="h-8 w-16 text-xs" placeholder="gr"
+                                                       value={d.birim ?? ''}
+                                                       onChange={(e) => setTaslak((p) => ({ ...p, [t.id]: { ...d, birim: e.target.value } }))} />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <Label className="text-[11px]">Kalori</Label>
+                                                <Input type="number" min="0" className="h-8 w-20 text-xs" placeholder="—"
+                                                       value={d.kalori ?? ''}
+                                                       onChange={(e) => setTaslak((p) => ({ ...p, [t.id]: { ...d, kalori: e.target.value } }))} />
+                                            </div>
+                                            {(d.gorsel ?? t.gorsel) && (
+                                                <div className="space-y-1">
+                                                    <Label className="text-[11px]">Görsel</Label>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <img src={proxyImageUrl(d.gorsel ?? t.gorsel)} alt=""
+                                                             className="size-8 rounded border object-cover" />
+                                                        <Button size="sm" variant="ghost" className="h-8 px-2 text-[11px] text-muted-foreground"
+                                                                onClick={() => setTaslak((p) => ({ ...p, [t.id]: { ...d, gorsel: '' } }))}>
+                                                            Kaldır
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
 
                                         <div className="flex flex-wrap items-end gap-2">
                                             <div className="space-y-1">
@@ -213,7 +277,7 @@ export default function UrunTalepleriPage() {
                                             </div>
                                             <div className="space-y-1">
                                                 <Label className="text-[11px]">Fiyat (₺)</Label>
-                                                <Input type="number" min="0" step="1" className="h-8 w-24 text-xs"
+                                                <Input type="number" min="0" step="0.01" className="h-8 w-24 text-xs"
                                                        value={d.fiyat ?? t.fiyat ?? ''}
                                                        onChange={(e) => setTaslak((p) => ({ ...p, [t.id]: { ...d, fiyat: e.target.value } }))} />
                                             </div>
