@@ -1,4 +1,5 @@
 import { Router } from '../../../shared/router.js';
+import { ETIKET_ANAHTARLARI } from '../constants/etiketler.js';
 import { acikSubeler } from '../../../shared/sube.js';
 import { supabase } from '../../../config/supabase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
@@ -24,6 +25,9 @@ const router = Router();
 function urunNesnesi(satir, uyeler = []) {
     const menude_subeler = [], gizli_subeler = [], mevcut_degil = [], fiyat_serbest = [];
     const fiyat_override = {};
+    // Şubenin KENDİ etiketleri (urun_sube.etiket) — merkezinkinden ayrı tutulur,
+    // menüde birleştirilir (bkz. 0017_sube_etiketleri.sql).
+    const sube_etiket = {};
     for (const u of uyeler) {
         if (u.menude) menude_subeler.push(u.sube_kod);
         if (u.gizli) gizli_subeler.push(u.sube_kod);
@@ -32,6 +36,7 @@ function urunNesnesi(satir, uyeler = []) {
         if (u.fiyat_override !== null && u.fiyat_override !== undefined) {
             fiyat_override[u.sube_kod] = Number(u.fiyat_override);
         }
+        if (Array.isArray(u.etiket) && u.etiket.length) sube_etiket[u.sube_kod] = u.etiket;
     }
 
     const urun = {
@@ -60,6 +65,7 @@ function urunNesnesi(satir, uyeler = []) {
         urun.mevcut_degil = mevcut_degil;
         urun.fiyat_serbest = fiyat_serbest;
         urun.fiyat_override = fiyat_override;
+        urun.sube_etiket = sube_etiket;
     }
     return urun;
 }
@@ -166,6 +172,12 @@ async function findProduct(id, subeSlug) {
  * Kategori bazlı "menüden çıkarılamaz" haritası (kategoriId -> bool).
  * Admin için hiç okunmaz — kural yalnızca şube sahibini bağlar.
  */
+/** Kullanıcının şubesinin bu üründeki kendi etiketleri. Admin için boş. */
+function subeEtiketi(user, urun) {
+    if (user.role === 'admin' || !user.subeSlug) return [];
+    return urun.sube_etiket?.[user.subeSlug] || [];
+}
+
 async function katCikarmaKilidi(req) {
     if (req.user.role === 'admin') return {};
     const satirlar = veriYaDaHata(
@@ -244,8 +256,10 @@ function menudeMi(user, urun) {
  */
 function yanitProjeksiyonu(user, urun) {
     if (user.role === 'admin') return urun;
-    const { fiyat_override, gizli_subeler, fiyat_serbest, menude_subeler, ...guvenli } = urun;
-    return guvenli;
+    // `sube_etiket` TÜM şubelerin etiket haritası — şubeye sızmamalı; yerine
+    // yalnızca kendi etiketleri düz bir alan olarak verilir.
+    const { fiyat_override, gizli_subeler, fiyat_serbest, menude_subeler, sube_etiket, ...guvenli } = urun;
+    return { ...guvenli, subeEtiket: sube_etiket?.[user.subeSlug] || [] };
 }
 
 /** Şube slug dizisini temizler (tekilleştirir, boşları atar). */
@@ -1047,6 +1061,56 @@ router.delete(
             await regenerateMenuJsons(hedefler).catch(console.error);
         }
         res.json({ success: true });
+    })
+);
+
+/**
+ * PUT /api/products/:id/etiket
+ * Şube, KENDİ menüsündeki ürüne kendi etiketlerini koyar.
+ * Body: { etiket: string[] }
+ *
+ * Merkezin `urunler.etiket` alanına DOKUNMAZ: o kayıt tek ve tüm şubeleri
+ * etkilerdi. Şubenin etiketi yalnızca kendi menüsünde görünür, merkezinkiyle
+ * BİRLEŞTİRİLİR (bkz. menu-builder.js). Bu yüzden ürün "kilitli" olsa bile
+ * (ortak ürün) bu uç çalışır — kilit ürünün kendisini korur, şubenin kendi
+ * satırını değil; müsaitlik ucuyla aynı mantık.
+ */
+router.put(
+    '/:id/etiket',
+    verifyToken,
+    requirePermission('products.toggleAvailability'),
+    asyncHandler(async (req, res) => {
+        const { id } = req.params;
+        const subeSlug = req.user.role === 'admin' ? req.body.subeSlug : req.user.subeSlug;
+        if (!subeSlug) return res.status(400).json({ error: 'Şube bilgisi gerekli' });
+        if (req.user.role !== 'admin' && req.user.subeSlug !== subeSlug) {
+            return res.status(403).json({ error: 'Sadece kendi şubenizin etiketlerini değiştirebilirsiniz' });
+        }
+
+        const gecerli = new Set(ETIKET_ANAHTARLARI);
+        const etiket = [...new Set(
+            (Array.isArray(req.body?.etiket) ? req.body.etiket : [])
+                .map((x) => String(x).trim()).filter((x) => gecerli.has(x))
+        )];
+
+        const { data: urun } = await supabase
+            .from('urunler').select('id, kategori_id').eq('id', id).is('silinme', null).maybeSingle();
+        if (!urun) return res.status(404).json({ error: 'Ürün bulunamadı' });
+
+        const { data: uye } = await supabase.from('urun_sube').select('menude, gizli')
+            .eq('urun_id', id).eq('sube_kod', subeSlug).maybeSingle();
+
+        // Merkezin gizlediği ürün şube için yok hükmünde (ürün bayrağı ya da kategori).
+        const { data: kat } = await supabase.from('kategoriler')
+            .select('gizli_subeler').eq('id', urun.kategori_id ?? '').maybeSingle();
+        if (uye?.gizli || (kat?.gizli_subeler || []).includes(subeSlug)) {
+            return res.status(404).json({ error: 'Ürün bulunamadı' });
+        }
+        if (!uye?.menude) return res.status(400).json({ error: 'Ürün menünüzde değil' });
+
+        await uyelikYaz(id, subeSlug, { etiket });
+        await regenerateMenuJson(subeSlug).catch(console.error);
+        res.json({ success: true, etiket });
     })
 );
 

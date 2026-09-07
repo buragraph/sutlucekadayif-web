@@ -31,7 +31,7 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
             .then((r) => veriYaDaHata(r, 'kategoriler okunamadı')),
         // ── Menünün tamamı: tek JOIN ──
         supabase.from('urun_sube')
-            .select('fiyat_override, urunler!inner(id, ad, fiyat, aciklama, etiket, gorsel, miktar, birim, kalori, kategori_id, silinme)')
+            .select('fiyat_override, etiket, urunler!inner(id, ad, fiyat, aciklama, etiket, gorsel, miktar, birim, kalori, kategori_id, silinme)')
             .eq('sube_kod', subeSlug)
             .eq('menude', true)
             .eq('gizli', false)
@@ -81,12 +81,18 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
         return cikti;
     };
 
-    const musteriAlanlari = (urun, fiyat) => ({
+    /**
+     * @param {string[]} subeEtiketi - şubenin KENDİ etiketleri (urun_sube.etiket).
+     *   Merkezinkiyle BİRLEŞTİRİLİR, üzerine yazmaz: merkezin etiketi her şubede
+     *   durur, şubeninki yalnızca kendi menüsünde görünür
+     *   (bkz. 0017_sube_etiketleri.sql). Sıra korunur, tekrar edenler atılır.
+     */
+    const musteriAlanlari = (urun, fiyat, subeEtiketi = []) => ({
         id: urun.id,
         ad: urun.ad,
         fiyat,
         aciklama: urun.aciklama || '',
-        etiket: urun.etiket || [],
+        etiket: [...new Set([...(urun.etiket || []), ...subeEtiketi])],
         gorsel: urun.gorsel || '',
         miktar: urun.miktar ?? null,
         birim: urun.birim || '',
@@ -108,7 +114,7 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
         const u = satir.urunler;
         if (kategoriGizliMi(u)) continue;
         const fiyat = satir.fiyat_override ?? u.fiyat;
-        tumUrunler.push(musteriAlanlari(u, Number(fiyat)));
+        tumUrunler.push(musteriAlanlari(u, Number(fiyat), satir.etiket || []));
     }
 
     for (const u of ozelUrunler) {

@@ -1,4 +1,4 @@
-import { Pencil, Trash2, ListMinus } from 'lucide-react';
+import { Pencil, Trash2, ListMinus, Tags } from 'lucide-react';
 import { fiyatYaz } from '../utils/fiyat';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -18,9 +18,12 @@ import { ETIKETLER } from '../constants/etiketler';
  */
 export default function UrunKarti({
     urun, mevcut, kilitli, bekliyor,
-    onMevcutDegistir, onDuzenle, onFiyat, onMenudenCikar, onSil,
+    onMevcutDegistir, onDuzenle, onFiyat, onMenudenCikar, onSil, onEtiket,
 }) {
-    const etiketler = (urun.etiket || []).map((k) => ETIKETLER.find((t) => t.key === k)).filter(Boolean);
+    // Merkezin etiketi + şubenin kendi etiketi birlikte gösterilir; müşteri
+    // menüsünde de böyle birleşiyor (bkz. menu-builder.js musteriAlanlari).
+    const tumEtiketler = [...new Set([...(urun.etiket || []), ...(urun.subeEtiket || [])])];
+    const etiketler = tumEtiketler.map((k) => ETIKETLER.find((t) => t.key === k)).filter(Boolean);
     const GORUNEN = 2;
     const kalan = etiketler.length - GORUNEN;
     const fiyat = fiyatYaz(urun.etkinFiyat ?? urun.fiyat);
@@ -119,6 +122,23 @@ export default function UrunKarti({
                     className="flex w-full items-center justify-center gap-1 border-t py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                     <Pencil className="size-3" /> Fiyat değiştir
+                </button>
+            )}
+
+            {/* Şube kendi etiketini koyar: merkezin etiketine dokunmaz, yalnızca
+                kendi menüsünde görünür (bkz. PUT /products/:id/etiket). */}
+            {onEtiket && (
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onEtiket(urun); }}
+                    className="flex w-full items-center justify-center gap-1 border-t py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                    <Tags className="size-3" /> Etiket
+                    {(urun.subeEtiket || []).length > 0 && (
+                        <span className="ml-0.5 rounded-full bg-foreground/10 px-1.5 tabular-nums">
+                            {urun.subeEtiket.length}
+                        </span>
+                    )}
                 </button>
             )}
 

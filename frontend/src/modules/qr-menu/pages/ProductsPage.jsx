@@ -197,6 +197,9 @@ export default function ProductsPage() {
     // Şube fiyat düzenleme penceresi (yalnızca merkez izin verdiği ürünlerde)
     const [fiyatUrun, setFiyatUrun] = useState(null);
     const [fiyatDeger, setFiyatDeger] = useState('');
+    const [etiketUrun, setEtiketUrun] = useState(null);        // şube etiketi düzenlenen ürün
+    const [etiketSecim, setEtiketSecim] = useState([]);
+    const [etiketKaydediliyor, setEtiketKaydediliyor] = useState(false);
     const [fiyatKaydediliyor, setFiyatKaydediliyor] = useState(false);
     const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kalori: '', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: [] });
     // Katalogdan menüye ürün ekleme penceresi (şube sahibi) — ürün OLUŞTURMAZ,
@@ -411,6 +414,24 @@ export default function ProductsPage() {
             toast.error(err.response?.data?.error || 'Güncelleme başarısız');
         }
         setMevcutBekleyen((p) => { const n = new Set(p); n.delete(urun.id); return n; });
+    }
+
+    // Şube kendi etiketlerini yazar. Merkezin `urunler.etiket` alanına
+    // DOKUNMAZ — o tek kayıt ve tüm şubeleri etkilerdi; bu uç yalnızca
+    // urun_sube.etiket'e yazıyor (bkz. PUT /products/:id/etiket).
+    async function handleEtiketKaydet() {
+        if (!etiketUrun) return;
+        setEtiketKaydediliyor(true);
+        try {
+            const { data } = await api.put(`/products/${etiketUrun.id}/etiket`, { etiket: etiketSecim });
+            const yeni = data?.etiket ?? etiketSecim;
+            setUrunler((p) => p.map((u) => (u.id === etiketUrun.id ? { ...u, subeEtiket: yeni } : u)));
+            setEtiketUrun(null);
+            toast.success('Etiketler güncellendi');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Etiketler kaydedilemedi');
+        }
+        setEtiketKaydediliyor(false);
     }
 
     async function handleMenudenCikar(urun) {
@@ -1397,6 +1418,7 @@ export default function ProductsPage() {
                                             kilitli={kilitliMi(urun)}
                                             bekliyor={mevcutBekleyen.has(urun.id)}
                                                     onMevcutDegistir={ortakUrun ? handleMevcutToggle : null}
+                                                    onEtiket={ortakUrun ? ((u) => { setEtiketUrun(u); setEtiketSecim(u.subeEtiket || []); }) : null}
                                             onDuzenle={openEditUrun}
                                             onFiyat={fiyatiDuzenlenebilirMi(urun) ? ((u) => { setFiyatUrun(u); setFiyatDeger(fiyatGirdi(u.etkinFiyat ?? u.fiyat)); }) : null}
                                             onMenudenCikar={ortakUrun && menudenCikarilabilir(urun) ? handleMenudenCikar : null}
@@ -1622,6 +1644,65 @@ export default function ProductsPage() {
                             </>
                         )}
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Şube etiketi — merkezin etiketini değiştirmez, kendi menüsüne
+                ekler. Müşteri menüsünde ikisi birleşik görünür. */}
+            <Dialog open={!!etiketUrun} onOpenChange={(o) => !o && setEtiketUrun(null)}>
+                <DialogContent className="sm:max-w-md">
+                    {etiketUrun && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <Tag className="size-4" /> Şube Etiketleri
+                                </DialogTitle>
+                            </DialogHeader>
+                            <div className="space-y-3">
+                                <p className="text-sm text-muted-foreground">
+                                    <span className="font-medium text-foreground">{etiketUrun.ad}</span>
+                                    {' — '}yalnızca kendi menünüzde görünür.
+                                </p>
+                                {(etiketUrun.etiket || []).length > 0 && (
+                                    <p className="text-xs text-muted-foreground">
+                                        Merkezin etiketleri:{' '}
+                                        {(etiketUrun.etiket || [])
+                                            .map((k) => ETIKETLER.find((t) => t.key === k)?.ad || k).join(', ')}
+                                        {' '}— bunlar kaldırılamaz.
+                                    </p>
+                                )}
+                                <div className="flex flex-wrap gap-1.5">
+                                    {ETIKETLER.map((t) => {
+                                        const secili = etiketSecim.includes(t.key);
+                                        const merkezde = (etiketUrun.etiket || []).includes(t.key);
+                                        return (
+                                            <button
+                                                key={t.key}
+                                                type="button"
+                                                disabled={merkezde}
+                                                title={merkezde ? 'Merkez bu etiketi zaten koymuş' : ''}
+                                                onClick={() => setEtiketSecim((p) =>
+                                                    p.includes(t.key) ? p.filter((x) => x !== t.key) : [...p, t.key])}
+                                                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
+                                                    merkezde ? 'cursor-not-allowed opacity-40'
+                                                        : secili ? 'border-transparent text-white' : 'hover:bg-muted'
+                                                }`}
+                                                style={secili && !merkezde ? { background: t.color } : undefined}
+                                            >
+                                                {t.emoji} {t.ad}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-2 pt-1">
+                                <Button variant="outline" onClick={() => setEtiketUrun(null)}>İptal</Button>
+                                <Button disabled={etiketKaydediliyor} onClick={handleEtiketKaydet}>
+                                    {etiketKaydediliyor ? 'Kaydediliyor...' : 'Kaydet'}
+                                </Button>
+                            </div>
+                        </>
+                    )}
                 </DialogContent>
             </Dialog>
 
