@@ -376,7 +376,20 @@ export async function fetchCampaigns(accessToken, since, until) {
   };
 }
 
+/**
+ * @param {string|string[]|null} targetSubeKod - tek şube kodu, şube kodu DİZİSİ
+ *   ya da null (tüm şubeler). Dizi hâli alt-istek bütçesi için var: gece çekimi
+ *   90 şubeyi tek çağrıda işleyemiyor, kuyruktan dilim dilim geçiyor
+ *   (bkz. services/scheduled-fetch.js). Dilimde Meta sorguları da yalnızca o
+ *   şubelerin kampanya/adset ID'leriyle filtreleniyor.
+ */
 export async function campaignBasedImport(accessToken, since, until, targetSubeKod = null) {
+  // Tek kod / dizi / null → tek biçim. `tekHedef` yalnızca dizi OLMAYAN tek
+  // şube çağrısında dolu: "veri bulunamadı" hatası sadece o durumda atılmalı,
+  // dilimde bir şubenin verisiz olması normal.
+  const hedefDizi = Array.isArray(targetSubeKod) ? targetSubeKod.filter(Boolean) : null;
+  const tekHedef = hedefDizi ? null : targetSubeKod;
+  const hedefSet = hedefDizi ? new Set(hedefDizi) : (tekHedef ? new Set([tekHedef]) : null);
   const mappings = await loadCampaignMappings() || {};
   const adsetMappings = await loadAdsetMappings() || {};
   if (Object.keys(mappings).length === 0 && Object.keys(adsetMappings).length === 0) {
@@ -389,11 +402,14 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
   // (filtering parametresi — tüm hesabın insight'larını çekip atmak yerine)
   let targetCampIds = [];
   let targetAdsetIds = [];
-  if (targetSubeKod) {
-    targetCampIds = Object.keys(mappings).filter(id => mapSube(mappings[id]) === targetSubeKod);
-    targetAdsetIds = Object.keys(adsetMappings).filter(id => mapSube(adsetMappings[id]) === targetSubeKod);
+  if (hedefSet) {
+    targetCampIds = Object.keys(mappings).filter(id => hedefSet.has(mapSube(mappings[id])));
+    targetAdsetIds = Object.keys(adsetMappings).filter(id => hedefSet.has(mapSube(adsetMappings[id])));
     if (targetCampIds.length === 0 && targetAdsetIds.length === 0) {
-      throw new Error(`Hedef şube (${targetSubeKod}) için eşleştirme bulunamadı.`);
+      // Dilimde hiç eşleşme yoksa bu hata değil — o dilimdeki şubelerin
+      // Meta reklamı yok demektir; boş sonuçla dön, kuyruk ilerlesin.
+      if (hedefDizi) return { count: 0, subeSayisi: 0, subeler: [], atlanan: 0, kapaliAtlanan: [] };
+      throw new Error(`Hedef şube (${tekHedef}) için eşleştirme bulunamadı.`);
     }
   }
 
@@ -422,7 +438,7 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
   // Meta filtering OR'u tek sorguda desteklemediği için kampanya ve adset
   // filtreleri ayrı sorgular olarak çalışır, satırlar adset_id ile tekilleştirilir
   let adsetCampaignMap = [];
-  if (targetSubeKod) {
+  if (hedefSet) {
     const filters = [];
     if (targetCampIds.length) filters.push([{ field: 'campaign.id', operator: 'IN', value: targetCampIds }]);
     if (targetAdsetIds.length) filters.push([{ field: 'adset.id', operator: 'IN', value: targetAdsetIds }]);
@@ -441,7 +457,7 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
 
   // Kampanya seviyesinde tekil erişim çek (hedef modda yalnızca ilgili kampanyalar)
   let campaignData = [];
-  if (targetSubeKod) {
+  if (hedefSet) {
     const relevantCampIds = new Set(targetCampIds);
     for (const row of adsetCampaignMap) {
       if (row.campaign_id) relevantCampIds.add(row.campaign_id);
@@ -457,15 +473,18 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
 
   // Hedef şube modunda tek şube dokümanı okunur (getAllSubeler = N read yerine 1 read)
   let mevcutSubeler;
-  if (targetSubeKod) {
-    const sube = await getSubeByKod(targetSubeKod);
-    if (!sube) throw new Error(`Şube veritabanında bulunamadı: ${targetSubeKod}`);
+  if (tekHedef) {
+    const sube = await getSubeByKod(tekHedef);
+    if (!sube) throw new Error(`Şube veritabanında bulunamadı: ${tekHedef}`);
     if (sube.kapanma_tarihi && since > sube.kapanma_tarihi) {
-      throw new Error(`${targetSubeKod} şubesi ${sube.kapanma_tarihi} tarihinde kapandı; bu dönem (${since}) kapanıştan sonra başlıyor, veri çekilmedi.`);
+      throw new Error(`${tekHedef} şubesi ${sube.kapanma_tarihi} tarihinde kapandı; bu dönem (${since}) kapanıştan sonra başlıyor, veri çekilmedi.`);
     }
     mevcutSubeler = [sube];
   } else {
+    // Dilim modunda da TEK okuma: şube başına getSubeByKod çağırmak dilimin
+    // alt-istek bütçesini şube sayısı kadar şişirirdi.
     mevcutSubeler = await getAllSubeler();
+    if (hedefSet) mevcutSubeler = mevcutSubeler.filter((s) => hedefSet.has(s.kod));
   }
   const subeGruplari = {};
   const atlanan = [];
@@ -492,7 +511,7 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
     if (subeKod && typeof subeKod === 'object') subeKod = subeKod.sube;
     if (!subeKod) { subeKod = mappings[campaignId]; if (subeKod && typeof subeKod === 'object') subeKod = subeKod.sube; }
     if (!subeKod || subeKod === '__atla__') { atlanan.push(row.adset_name); continue; }
-    if (targetSubeKod && subeKod !== targetSubeKod) continue;
+    if (hedefSet && !hedefSet.has(subeKod)) continue;
     let sube = mevcutSubeler.find(s => s.kod === subeKod);
     if (!sube) { atlanan.push(row.adset_name); continue; }
     if (kapaliDonem(sube)) { kapaliAtlanan.push(sube.kod); continue; }
@@ -506,9 +525,12 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
   try {
     for (const [kod, grup] of Object.entries(subeGruplari)) {
       const toplamlar = aggregateApiRows(grup.rows);
-      await upsertMetaToplanlar(grup.sube.kod, since, until, toplamlar);
-      yazilanlar.push(kod);
 
+      // ALT-İSTEK BÜTÇESİ: tekil erişim ÖNCE hesaplanıp TEK upsert'e katılıyor.
+      // Eskiden önce toplamlar yazılıp sonra erişim ikinci bir yazımla
+      // düzeltiliyordu — şube başına 3. alt-istek. Ücretsiz planda bütçe
+      // 50/çağrı olduğu için bu fark doğrudan "kaç şube işlenebiliyor"a
+      // dönüşüyor (bkz. services/scheduled-fetch.js kuyruk dilimi).
       // Tekil (unique) erişim — şubenin REKLAM SETLERİNE filtreli TEK sorgu; Meta bu
       // sorguda erişimi dedupe eder. Adset reach toplamı (toplamlar.erisim) dedupe'siz
       // ÜST sınırdır; dönen değer bundan büyükse (filtre uygulanmamış/hesap geneli gelmiş)
@@ -539,8 +561,11 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
         }
         tekilErisim = ustSinir > 0 ? Math.min(kampanyaToplam, ustSinir) : kampanyaToplam;
       }
+      // Tek yazım: erişim tekil değer varsa onunla, yoksa adset toplamıyla.
+      await upsertMetaToplanlar(grup.sube.kod, since, until,
+        tekilErisim > 0 ? { ...toplamlar, erisim: tekilErisim } : toplamlar);
+      yazilanlar.push(kod);
       if (tekilErisim > 0) {
-        await upsertToplamErisim(grup.sube.kod, since, until, tekilErisim);
         console.log(`   📊 ${grup.sube.ad}: tekil erişim = ${tekilErisim.toLocaleString('tr-TR')}`);
       }
       sonuclar.push({ kod, ad: grup.sube.ad, kayit: grup.rows.length, tekilErisim });
@@ -553,8 +578,8 @@ export async function campaignBasedImport(accessToken, since, until, targetSubeK
   }
 
   // Hedefli çekimde hiçbir veri yazılamadıysa sessiz 200 dönme (sahte başarı toast'ı)
-  if (targetSubeKod && sonuclar.length === 0) {
-    throw new Error(`Hedef şube (${targetSubeKod}) için bu aralıkta eşleşen Meta verisi bulunamadı.`);
+  if (tekHedef && sonuclar.length === 0) {
+    throw new Error(`Hedef şube (${tekHedef}) için bu aralıkta eşleşen Meta verisi bulunamadı.`);
   }
 
   if (kapaliAtlanan.length) {

@@ -173,10 +173,23 @@ export default {
             }
             return;
         }
+        // Beş dakikalık tur: rapor çekim kuyruğunu eritir. Menü kuyruğundan
+        // AYRI cron olması şart — her cron ifadesi ayrı bir çağrı, dolayısıyla
+        // ayrı bir alt-istek bütçesi demek. Aynı dakikalık turda koşsalardı
+        // 50'lik bütçeyi paylaşıp ikisi de yarım kalırdı.
+        if (event.cron === '*/5 * * * *') {
+            const { cekimKuyrugunuIsle } = await import('./modules/reports/services/scheduled-fetch.js');
+            const sonuc = await cekimKuyrugunuIsle();
+            if (sonuc.islenen > 0 || sonuc.kalan > 0) {
+                console.log('[Scheduled] Çekim kuyruğu:', JSON.stringify(sonuc).slice(0, 500));
+            }
+            return;
+        }
         if (event.cron === '0 4 * * *') {
+            // Veriyi ÇEKMEZ, kuyruğa yazar; eritme işi yukarıdaki 5 dakikalık turda.
             const { runScheduledFetch } = await import('./modules/reports/services/scheduled-fetch.js');
             const sonuc = await runScheduledFetch();
-            console.log('[Scheduled] Otomatik çekim tamamlandı:', JSON.stringify(sonuc).slice(0, 800));
+            console.log('[Scheduled] Çekim kuyruklandı:', JSON.stringify(sonuc).slice(0, 800));
             if (sonuc.kritikHata) throw new Error(`Otomatik çekim: ${sonuc.kritikHata}`);
         }
     },

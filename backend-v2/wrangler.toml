@@ -25,7 +25,7 @@ compatibility_flags = ["nodejs_compat"]
 # "* * * * *" → menü yenileme kuyruğunu eriten dakikalık tur. Kuyruk boşken
 # tek bir Supabase okuması yapıp çıkar (bkz. menu-cache.js#menuKuyrugunuIsle).
 [triggers]
-crons = ["0 4 * * *", "* * * * *"]
+crons = ["0 4 * * *", "* * * * *", "*/5 * * * *"]
 
 [vars]
 FRONTEND_URL = "https://sutlucekadayif-cms.dijitalreklam.workers.dev"
@@ -36,6 +36,11 @@ CRON_AKTIF = "true"           # C3 yapıldı: çekimin sahibi Worker (api2 false
 # Cron turunda mutasyon yükü yok, dilim daha büyük olabiliyor.
 MENU_INLINE_DILIM = "10"
 MENU_CRON_DILIM = "18"
+# Rapor çekimi de aynı bütçeye takılıyordu: 90 şube tek çağrıda işlenemiyor
+# (ölçüldü: 14 şubede "Too many subrequests"). 04:00 turu kuyruğa yazar,
+# "*/5" turu dilim dilim eritir. Şube başına ~4 alt-istek + ~10 sabit →
+# (50 − 10) / 4 = 10, güvenlik payıyla 8. 90 şube ≈ 12 tur ≈ 1 saat.
+CEKIM_CRON_DILIM = "8"
 
 # Gizli anahtarlar `wrangler secret put` ile konur, bu dosyada TUTULMAZ:
 #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, R2_PUBLIC_URL,
