@@ -1,4 +1,5 @@
 import { supabase } from '../../../config/supabase.js';
+import { acikSubeler } from '../../../shared/sube.js';
 import { getSettings, upsertGoogleToplanlar } from '../db.js';
 import { campaignBasedImport } from './meta-api.js';
 import { loadGoogleMappings, fetchLocationMetrics, isGoogleConnected } from './google-business.js';
@@ -32,8 +33,10 @@ async function donemCek(since, until) {
       const mappings = await loadGoogleMappings();
       // Şube varlık kontrolü tek sorguda
       const kodlar = [...new Set(Object.values(mappings || {}).filter((k) => k && k !== '__atla__'))];
+      // Kapanan şube eşlemede kalmış olabilir; ondan veri çekilmez (Google
+      // zaten boş/hata döner) ve geçmiş dönemleri de kirletilmez.
       const { data: subeSatirlari } = kodlar.length
-        ? await supabase.from('subeler').select('kod').in('kod', kodlar)
+        ? await acikSubeler(supabase.from('subeler').select('kod')).in('kod', kodlar)
         : { data: [] };
       const mevcutKodlar = new Set((subeSatirlari || []).map((s) => s.kod));
       for (const [locationName, subeKod] of Object.entries(mappings || {})) {

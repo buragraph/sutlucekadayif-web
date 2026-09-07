@@ -82,9 +82,14 @@ router.post(
         }
 
         // Şube gerçekten var mı — uydurma slug ile kayıt açılmasın
-        const { data: sube } = await supabase.from('subeler').select('ad').eq('kod', subeSlug).maybeSingle();
+        const { data: sube } = await supabase.from('subeler')
+            .select('ad, kapanma_tarihi').eq('kod', subeSlug).maybeSingle();
         if (!sube) {
             return res.status(404).json({ error: 'Şube bulunamadı.' });
+        }
+        // Kapanan şubenin QR'ı hâlâ taranıyor olabilir; kayıt açılmaz.
+        if (sube.kapanma_tarihi) {
+            return res.status(410).json({ error: 'Bu şube kapanmıştır.' });
         }
 
         veriYaDaHata(

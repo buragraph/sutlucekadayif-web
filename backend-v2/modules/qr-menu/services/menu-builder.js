@@ -24,7 +24,7 @@ import { veriYaDaHata } from '../../../utils/veri.js';
 export async function buildMenuData(subeSlug, paylasilan = null) {
     const [subeSatiri, kategoriler, menuUrunleri, ozelUrunler] = await Promise.all([
         paylasilan?.subeler?.get(subeSlug) ?? supabase
-            .from('subeler').select('kod, ad, il, ilce, google_degerlendirme_link').eq('kod', subeSlug).maybeSingle()
+            .from('subeler').select('kod, ad, il, ilce, google_degerlendirme_link, kapanma_tarihi').eq('kod', subeSlug).maybeSingle()
             .then((r) => r.data),
         paylasilan?.kategoriler ?? supabase
             .from('kategoriler').select('*').order('sira', { ascending: true })
@@ -59,6 +59,10 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
         // scripts/gecis/google-degerlendirme-link.mjs). Yoksa null — menüdeki
         // "Bizi Değerlendirin" butonu o şubede hiç gösterilmez.
         degerlendirmeLink: subeSatiri.google_degerlendirme_link || null,
+        // Kapanan şubenin menüsü 404 OLMAZ: basılı QR kodlar dışarıda ve
+        // taranmaya devam ediyor. JSON üretilmeye devam eder, müşteri
+        // tarafında "bu şube kapandı" bilgisi gösterilir (bkz. MenuPage).
+        kapanmaTarihi: subeSatiri.kapanma_tarihi || null,
     };
 
     // PUBLIC projeksiyon — müşteri menüsünde gösterilen alanlar SADECE bunlar.
@@ -135,7 +139,7 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
  */
 export async function paylasilanVeriOku() {
     const [subeSatirlari, kategoriler, ozelUrunler] = await Promise.all([
-        supabase.from('subeler').select('kod, ad, il, ilce, google_degerlendirme_link').range(0, 9999)
+        supabase.from('subeler').select('kod, ad, il, ilce, google_degerlendirme_link, kapanma_tarihi').range(0, 9999)
             .then((r) => veriYaDaHata(r, 'şubeler okunamadı')),
         supabase.from('kategoriler').select('*').order('sira', { ascending: true })
             .then((r) => veriYaDaHata(r, 'kategoriler okunamadı')),
@@ -154,6 +158,10 @@ export async function paylasilanVeriOku() {
         subeler: new Map(subeSatirlari.map((s) => [s.kod, s])),
         kategoriler,
         ozelByShube,
-        tumSluglar: subeSatirlari.map((s) => s.kod),
+        // `tumSluglar` TOPLU YENİLEME hedefidir; kapanan şube buraya girmez.
+        // Şubenin JSON'ı R2'de kapanış bilgisiyle duruyor, tekrar üretilmesine
+        // gerek yok. Tek şube yenilemesi (regenerateMenuJsons([slug])) hâlâ
+        // çalışır — kapatma anında JSON'u tazelemek için gerekli.
+        tumSluglar: subeSatirlari.filter((s) => !s.kapanma_tarihi).map((s) => s.kod),
     };
 }

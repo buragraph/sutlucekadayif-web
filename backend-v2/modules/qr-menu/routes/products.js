@@ -1,4 +1,5 @@
 import { Router } from '../../../shared/router.js';
+import { acikSubeler } from '../../../shared/sube.js';
 import { supabase } from '../../../config/supabase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
@@ -250,8 +251,9 @@ const opsiyonelSayi = (v) => {
 
 /** Tüm şube slug'ları — yeni ortak ürünün varsayılan `menude_subeler` değeri. */
 async function tumSubeSluglari() {
+    // Kapanan şube menü seçicilerine girmez — yeni ürün ona açılamaz.
     const satirlar = veriYaDaHata(
-        await supabase.from('subeler').select('kod').range(0, 9999), 'şubeler okunamadı'
+        await acikSubeler(supabase.from('subeler').select('kod')).range(0, 9999), 'şubeler okunamadı'
     );
     return satirlar.map((s) => s.kod);
 }

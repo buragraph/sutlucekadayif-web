@@ -1,9 +1,10 @@
 import { Router } from '../shared/router.js';
+import { acikSubeler, subeSilinebilirMi } from '../shared/sube.js';
 import { supabase } from '../config/supabase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { temizNull, veriYaDaHata, tumSatirlar } from '../utils/veri.js';
-import { deleteMenuJson } from '../modules/qr-menu/services/menu-cache.js';
+import { deleteMenuJson, regenerateMenuJsons } from '../modules/qr-menu/services/menu-cache.js';
 
 // konum-store.js KULLANILMIYOR: il/ilçe/lat/lng artık şube satırının kolonu,
 // tek-doküman konum listesi ve transaction'ı yapısal olarak gereksiz.
@@ -86,7 +87,8 @@ router.get(
     requirePermission('branches.view'),
     asyncHandler(async (req, res) => {
         const satirlar = veriYaDaHata(
-            await kapsamUygula(supabase.from('subeler').select('kod, ad, il, ilce, lat, lng'), req),
+            // Kapanan şube haritada pin göstermez.
+            await acikSubeler(kapsamUygula(supabase.from('subeler').select('kod, ad, il, ilce, lat, lng'), req)),
             'konumlar okunamadı'
         );
         // Şekil eski `konumlar` dokümanıyla birebir: konum-store girdileri
@@ -164,7 +166,10 @@ router.put(
     requirePermission('branches.edit'),
     asyncHandler(async (req, res) => {
         const { slug } = req.params;
-        const { ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi, il, ilce } = req.body;
+        const {
+            ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi, il, ilce,
+            kapanma_tarihi, kapanma_notu,
+        } = req.body;
 
         const { data: doc } = await supabase.from('subeler').select('*').eq('kod', slug).maybeSingle();
         if (!doc) {
@@ -182,6 +187,16 @@ router.put(
         if (il !== undefined) updateData.il = il.trim();
         if (ilce !== undefined) updateData.ilce = ilce.trim();
 
+        // Kapatma / yeniden açma. Silmenin yerine geçen işlem: şube geçmişiyle
+        // birlikte durur, yalnızca operasyonel yüzeylerden çekilir
+        // (bkz. shared/sube.js, 0015_sube_kapanma.sql).
+        // '' ya da null göndermek şubeyi yeniden AÇAR.
+        if (kapanma_tarihi !== undefined) {
+            updateData.kapanma_tarihi = kapanma_tarihi || null;
+            if (!updateData.kapanma_tarihi) updateData.kapanma_notu = null;
+        }
+        if (kapanma_notu !== undefined) updateData.kapanma_notu = (kapanma_notu || '').trim() || null;
+
         // İl/ilçe değiştiyse harita konumunu yeniden geocode et (best-effort)
         if (il !== undefined || ilce !== undefined) {
             const finalIl = updateData.il ?? doc.il;
@@ -195,6 +210,13 @@ router.put(
                 await supabase.from('subeler').update(updateData).eq('kod', slug),
                 'şube güncellenemedi'
             );
+        }
+        // Kapanma durumu menü JSON'una gömülü (sube.kapanmaTarihi); değiştiyse
+        // o şubenin JSON'ı tazelenmeli, yoksa müşteri eski menüyü görmeye
+        // devam eder. Toplu yenileme kapalı şubeyi hedeflemez, bu yüzden
+        // TEK ŞUBE yenilemesi burada açıkça çağrılıyor.
+        if (updateData.kapanma_tarihi !== undefined) {
+            await regenerateMenuJsons([slug]).catch(console.error);
         }
         res.json({ success: true });
     })
@@ -216,18 +238,17 @@ router.delete(
             return res.status(404).json({ error: 'Şube bulunamadı' });
         }
 
-        // Şubeye atanmış kullanıcı var mı?
+        // Kullanıcı ataması VE rapor geçmişi kontrolü tek yerde
+        // (bkz. shared/sube.js). Geçmişi olan şube silinmez, KAPATILIR.
         // DİKKAT: eski sürüm `where('subeSlug','==',slug)` sorguluyordu ama alanın
-        // gerçek adı `sube_slug` — koruma hiç devreye girmiyordu. Burada doğru
-        // kolonla çalışıyor (bilinçli davranış düzeltmesi).
-        const { count: kullaniciSayisi } = await supabase
-            .from('kullanici_sube').select('*', { count: 'exact', head: true }).eq('sube_slug', slug);
-        if (kullaniciSayisi > 0) {
-            return res.status(400).json({ error: 'Bu şubeye atanmış kullanıcılar var. Önce kullanıcıları başka şubeye taşıyın.' });
+        // gerçek adı `sube_slug` — koruma hiç devreye girmiyordu.
+        const karar = await subeSilinebilirMi(slug);
+        if (!karar.silinebilir) {
+            return res.status(400).json({ error: karar.sebep });
         }
 
-        // Dönemler ve şubeye özel ürünler FK'da `on delete cascade` — Firestore'daki
-        // "alt koleksiyonlar öksüz kalır" sorunu yapısal olarak yok.
+        // Buraya yalnızca hiç geçmişi olmayan şube gelir; kalan FK'lar
+        // (urun_sube, sube_notlari) cascade ile temizlenir.
         veriYaDaHata(await supabase.from('subeler').delete().eq('kod', slug), 'şube silinemedi');
 
         // R2'deki menü JSON'ı da gitmeli; kalırsa /menu/{slug} silinmiş şubenin

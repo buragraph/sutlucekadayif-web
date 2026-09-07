@@ -266,6 +266,27 @@ export default function MenuPage() {
     };
 
     if (loading) return <SkeletonLoading />;
+
+    // Kapanan şube: 404 DEĞİL, açık bir bilgi ekranı. Basılı QR kodlar dışarıda
+    // ve taranmaya devam ediyor; müşteriyi hata sayfasıyla karşılamak yerine
+    // ne olduğunu söyleyip diğer şubelere yönlendiriyoruz.
+    if (sube?.kapanmaTarihi) {
+        return (
+            <div className="pm">
+                <div className="pm-error">
+                    <span style={{ fontSize: 48 }}>🏪</span>
+                    <p><strong>{sube.ad}</strong> şubemiz kapanmıştır.</p>
+                    <p style={{ fontSize: 14, opacity: 0.7 }}>
+                        Size en yakın diğer Sütlüce Kadayıf şubelerini web sitemizden bulabilirsiniz.
+                    </p>
+                    <a href="https://sutlucekadayif.com" className="pm-footer__btn" style={{ marginTop: 12 }}>
+                        Şubelerimiz
+                    </a>
+                </div>
+            </div>
+        );
+    }
+
     if (error) {
         return (
             <div className="pm">

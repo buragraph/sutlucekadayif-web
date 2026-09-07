@@ -1,4 +1,5 @@
 import { Router } from '../../shared/router.js';
+import { acikSubeler } from '../../shared/sube.js';
 import { dosyaAl } from '../../shared/dosya.js';
 import { supabase } from '../../config/supabase.js';
 import { verifyToken, requirePermission } from '../../middleware/auth.js';
@@ -220,7 +221,9 @@ router.get(
     try {
       const [doc, subeSatirlari] = await Promise.all([
         getButceDoc(),
-        supabase.from('subeler').select('kod').range(0, 9999)
+        // Yalnızca AÇIK şubeler: kapanan şubeye yeni kampanya yanıtı yazılmaz.
+        // Geçmiş kampanyalardaki kayıtlarına dokunulmaz.
+        acikSubeler(supabase.from('subeler').select('kod')).range(0, 9999)
           .then((r) => veriYaDaHata(r, 'şubeler okunamadı')),
       ]);
       const gecerli = new Set(subeSatirlari.map((s) => s.kod));

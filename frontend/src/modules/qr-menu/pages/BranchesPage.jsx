@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, MapPin, FileText } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, MapPin, FileText, Store, RotateCcw } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,9 @@ export default function BranchesPage() {
     const [editing, setEditing] = useState(null);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({ slug: '', ad: '', adres: '', telefon: '', yetkili_adi: '', fatura_adresi: '', vkn: '', sirket_tipi: '' });
+    // Kapalı şubeler varsayılan olarak gizli: liste günlük işte açık şubeler
+    // için kullanılıyor. Geçmiş kayıt hâlâ duruyor, sekmeyle görünür.
+    const [durum, setDurum] = useState('acik');   // 'acik' | 'kapali' | 'tumu'
 
     useEffect(() => { loadSubeler(); }, []);
 
@@ -58,6 +61,12 @@ export default function BranchesPage() {
 
     function closeModal() { setShowModal(false); setEditing(null); }
 
+    const acikSayi = subeler.filter((s) => !s.kapanma_tarihi).length;
+    const kapaliSayi = subeler.length - acikSayi;
+    const gorunenSubeler = subeler.filter((s) =>
+        durum === 'tumu' ? true : durum === 'kapali' ? !!s.kapanma_tarihi : !s.kapanma_tarihi
+    );
+
     async function handleSubmit(e) {
         e.preventDefault();
         setSaving(true);
@@ -84,6 +93,29 @@ export default function BranchesPage() {
         setSaving(false);
     }
 
+    // Kapatma silmenin YERİNE geçer: şubenin rapor/bütçe geçmişi durur,
+    // yalnızca menü, seçiciler, cron ve müşteri formlarından çekilir.
+    async function handleKapat(sube) {
+        const bugun = new Date().toISOString().slice(0, 10);
+        const ok = await confirm(
+            `"${sube.ad}" kapatılsın mı? Rapor ve bütçe geçmişi korunur; şube menüden, listelerden ve otomatik veri çekiminden çıkar. İstediğin zaman yeniden açabilirsin.`
+        );
+        if (!ok) return;
+        try {
+            await api.put(`/branches/${sube.slug}`, { kapanma_tarihi: bugun });
+            await loadSubeler();
+            toast.success(`${sube.ad} kapatıldı`);
+        } catch (err) { toast.error(err.response?.data?.error || 'Şube kapatılamadı'); }
+    }
+
+    async function handleYenidenAc(sube) {
+        try {
+            await api.put(`/branches/${sube.slug}`, { kapanma_tarihi: null });
+            await loadSubeler();
+            toast.success(`${sube.ad} yeniden açıldı`);
+        } catch (err) { toast.error(err.response?.data?.error || 'Şube açılamadı'); }
+    }
+
     async function handleDelete(sube) {
         const ok = await confirm(`"${sube.ad}" şubesini silmek istediğinize emin misiniz?`);
         if (!ok) return;
@@ -98,9 +130,28 @@ export default function BranchesPage() {
                 <Button onClick={openAdd}><Plus className="size-4" /> Şube Ekle</Button>
             </div>
 
+            <div className="flex flex-wrap gap-1.5">
+                {[
+                    { key: 'acik', etiket: 'Açık', adet: acikSayi },
+                    { key: 'kapali', etiket: 'Kapalı', adet: kapaliSayi },
+                    { key: 'tumu', etiket: 'Tümü', adet: subeler.length },
+                ].map((t) => (
+                    <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => setDurum(t.key)}
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                            durum === t.key ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                        }`}
+                    >
+                        {t.etiket} <span className="ml-1 tabular-nums opacity-70">{t.adet}</span>
+                    </button>
+                ))}
+            </div>
+
             {loading ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-16"><Spinner className="size-8" /><p className="text-sm text-muted-foreground">Şubeler yükleniyor...</p></div>
-            ) : subeler.length === 0 ? (
+            ) : gorunenSubeler.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground"><span className="text-4xl">🏪</span><p>Henüz şube yok</p></div>
             ) : (
                 <div className="rounded-lg border">
@@ -117,10 +168,20 @@ export default function BranchesPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {subeler.map((sube) => (
-                                <TableRow key={sube.slug}>
+                            {gorunenSubeler.map((sube) => (
+                                <TableRow key={sube.slug} className={sube.kapanma_tarihi ? 'opacity-60' : ''}>
                                     <TableCell><code className="rounded bg-muted px-1.5 py-0.5 text-xs">{sube.slug}</code></TableCell>
-                                    <TableCell className="font-medium">{sube.ad}</TableCell>
+                                    <TableCell className="font-medium">
+                                        <div className="flex items-center gap-2">
+                                            <span>{sube.ad}</span>
+                                            {sube.kapanma_tarihi && (
+                                                <Badge variant="outline" className="shrink-0 border-destructive/30 bg-destructive/5 text-destructive"
+                                                       title={sube.kapanma_notu || ''}>
+                                                    Kapalı · {sube.kapanma_tarihi}
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    </TableCell>
                                     <TableCell className="max-w-[280px] text-sm text-muted-foreground">
                                         <div className="truncate" title={sube.adres || ''}>{sube.adres || '—'}</div>
                                     </TableCell>
@@ -133,8 +194,17 @@ export default function BranchesPage() {
                                         }
                                     </TableCell>
                                     <TableCell>
+                                        {/* Kapanan şube SİLİNMEZ: rapor/bütçe geçmişi ona bağlı
+                                            (bkz. 0015_sube_kapanma.sql). Birincil eylem "Kapat";
+                                            silme yalnızca hiç geçmişi olmayan, yanlışlıkla
+                                            açılmış şube için anlamlı ve sunucu da onu doğruluyor. */}
                                         <div className="flex gap-1">
                                             <Button variant="ghost" size="icon" className="size-8" onClick={() => openEdit(sube)} title="Düzenle"><Pencil className="size-3.5" /></Button>
+                                            {sube.kapanma_tarihi ? (
+                                                <Button variant="ghost" size="icon" className="size-8" onClick={() => handleYenidenAc(sube)} title="Yeniden aç"><RotateCcw className="size-3.5" /></Button>
+                                            ) : (
+                                                <Button variant="ghost" size="icon" className="size-8 text-amber-600 hover:text-amber-700" onClick={() => handleKapat(sube)} title="Şubeyi kapat"><Store className="size-3.5" /></Button>
+                                            )}
                                             <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => handleDelete(sube)} title="Sil"><Trash2 className="size-3.5" /></Button>
                                         </div>
                                     </TableCell>

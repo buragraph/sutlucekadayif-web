@@ -1,4 +1,5 @@
 import { Router } from '../../shared/router.js';
+import { subeSilinebilirMi } from '../../shared/sube.js';
 import { dosyaAl } from '../../shared/dosya.js';
 import { kapsamliCacheMiddleware, invalidateCache } from '../../middleware/cache.js';
 import { verifyToken, requirePermission } from '../../middleware/auth.js';
@@ -295,7 +296,7 @@ router.get('/dashboard-bundle', verifyToken, requirePermission('reports.view'), 
     // Sidebar için yalnızca {kod, ad, il, ilce} gerekiyor — aggregate'ler ve
     // donem_ozetleri şubeye tıklanınca /sube/:kod ile lazy yüklenir.
     const [subeSatirlari, mappingsRaw, campaignMappingsRaw, adsetMappingsRaw, settingsRaw, googleMappingsRaw, onayliKodlar] = await Promise.all([
-      supabase.from('subeler').select('kod, ad, il, ilce').range(0, 9999)
+      supabase.from('subeler').select('kod, ad, il, ilce, kapanma_tarihi').range(0, 9999)
         .then((r) => veriYaDaHata(r, 'şubeler okunamadı')),
       loadMappings().catch(() => ({})),
       getCampaignMappings().catch(() => ({})),
@@ -459,6 +460,10 @@ router.put('/sube/:kod', verifyToken, requirePermission('reports.manage'), async
 
 router.delete('/sube/:kod', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
+    // Rapor geçmişi olan şube silinmez, kapatılır (bkz. shared/sube.js).
+    // Bu uç `branches.js`ten AYRI bir silme yolu; koruma iki yerde de olmalı.
+    const karar = await subeSilinebilirMi(req.params.kod);
+    if (!karar.silinebilir) return res.status(400).json({ error: karar.sebep });
     await deleteSube(req.params.kod);
     invalidateReportCache();
     invalidateCache('/reports');

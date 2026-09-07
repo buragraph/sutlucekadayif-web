@@ -6,6 +6,7 @@ import { cacheMiddleware } from '../../../middleware/cache.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import { veriYaDaHata } from '../../../utils/veri.js';
 import { uploadFile, deleteFile } from '../../../config/r2.js';
+import { acikSubeler } from '../../../shared/sube.js';
 import { dosyaAl } from '../../../shared/dosya.js';
 import { buildMenuData } from '../services/menu-builder.js';
 
@@ -72,7 +73,8 @@ router.get(
         // Yalnızca güvenli alanlar — VKN, fatura adresi, yetkili adı gibi
         // hassas bilgiler bu public-ish listeye dahil edilmez.
         const satirlar = veriYaDaHata(
-            await supabase.from('subeler').select('kod, ad, il, ilce').range(0, 9999),
+            // Kapanan şube "diğer şubeler" listesinde çıkmaz.
+            await acikSubeler(supabase.from('subeler').select('kod, ad, il, ilce')).range(0, 9999),
             'şubeler okunamadı'
         );
         const subeler = satirlar.map((s) => ({
