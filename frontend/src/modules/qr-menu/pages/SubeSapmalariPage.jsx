@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Store, Search, X, EyeOff, Tag, Tags } from 'lucide-react';
+import { Store, Search, X, EyeOff, Tag, Tags, TriangleAlert } from 'lucide-react';
 import api from '../../../services/api';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -36,13 +36,21 @@ export default function SubeSapmalariPage() {
     const [q, setQ] = useState('');
     const [subeler, setSubeler] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [gorunum, setGorunum] = useState('urun');      // 'urun' | 'sube' | 'liste'
+    const [ozet, setOzet] = useState(null);
+    const [ozetYukleniyor, setOzetYukleniyor] = useState(true);
     const LIMIT = 50;
 
     useEffect(() => {
         api.get('/branches').then(({ data }) => setSubeler(data.subeler || [])).catch(() => {});
+        api.get('/products/sube-sapmalari/ozet')
+            .then(({ data }) => setOzet(data))
+            .catch(() => setOzet(null))
+            .finally(() => setOzetYukleniyor(false));
     }, []);
 
     const yukle = useCallback(async () => {
+        if (gorunum !== 'liste') return;          // özet sekmelerinde satır listesi gereksiz
         setLoading(true);
         try {
             const { data } = await api.get('/products/sube-sapmalari', {
@@ -52,7 +60,7 @@ export default function SubeSapmalariPage() {
             setToplam(data.toplam || 0);
         } catch { setSatirlar([]); setToplam(0); }
         setLoading(false);
-    }, [tur, sube, q, sayfa]);
+    }, [tur, sube, q, sayfa, gorunum]);
 
     // Arama yazarken her tuşta istek atmasın
     useEffect(() => { const t = setTimeout(yukle, q ? 400 : 0); return () => clearTimeout(t); }, [yukle, q]);
@@ -73,6 +81,35 @@ export default function SubeSapmalariPage() {
                 </p>
             </div>
 
+            {/* Görünüm seçimi. Düz liste tek başına "ne oldu" sorusunu
+                cevaplamıyordu: 2.400 satır kaydırılıyor ama hangi ürünün
+                fiilen öldüğü, hangi şubenin aykırı olduğu görünmüyordu. */}
+            <div className="flex flex-wrap gap-1.5">
+                {[
+                    { key: 'urun', ad: 'Ürüne göre', ipucu: 'Hangi ürün kaç şubede kapalı' },
+                    { key: 'sube', ad: 'Şubeye göre', ipucu: 'Hangi şube menüsünün ne kadarını kapatmış' },
+                    { key: 'liste', ad: 'Tek tek', ipucu: 'Ham kayıt listesi' },
+                ].map((g) => (
+                    <button key={g.key} type="button" title={g.ipucu} onClick={() => setGorunum(g.key)}
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                            gorunum === g.key ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                        }`}>
+                        {g.ad}
+                    </button>
+                ))}
+            </div>
+
+            {gorunum !== 'liste' && (ozetYukleniyor ? (
+                <div className="flex justify-center py-16"><Spinner className="size-8" /></div>
+            ) : !ozet ? (
+                <p className="py-16 text-center text-sm text-muted-foreground">Özet yüklenemedi</p>
+            ) : gorunum === 'urun' ? (
+                <UrunOzeti ozet={ozet} />
+            ) : (
+                <SubeOzeti ozet={ozet} />
+            ))}
+
+            {gorunum === 'liste' && (
             <div className="flex flex-wrap items-center gap-2">
                 <div className="flex flex-wrap gap-1.5">
                     {TURLER.map((t) => (
@@ -104,8 +141,9 @@ export default function SubeSapmalariPage() {
 
                 <span className="text-xs text-muted-foreground tabular-nums">{toplam} kayıt</span>
             </div>
+            )}
 
-            {loading ? (
+            {gorunum === 'liste' && (loading ? (
                 <div className="flex flex-col items-center gap-3 py-16"><Spinner className="size-8" /></div>
             ) : satirlar.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-16 text-muted-foreground">
@@ -171,7 +209,137 @@ export default function SubeSapmalariPage() {
                         </div>
                     )}
                 </>
+            ))}
+        </div>
+    );
+}
+
+/** A) Ürüne göre — "88 şubede menüde, 88'inde kapalı" gibi ölü ürünleri açığa çıkarır. */
+function UrunOzeti({ ozet }) {
+    const satirlar = ozet.urunler;
+    const olu = satirlar.filter((u) => u.tamamenKapali);
+    return (
+        <div className="space-y-3">
+            {olu.length > 0 && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+                    <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                    <span>
+                        <strong>{olu.length} ürün</strong> menüde olduğu <em>her</em> şubede kapalı
+                        — bunlar şube kararı değil, fiilen satılmayan ürünler. Katalogdan
+                        kaldırmak ya da menülerden çıkarmak gerekebilir.
+                    </span>
+                </div>
             )}
+            <div className="rounded-lg border">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Ürün</TableHead>
+                            <TableHead className="w-[38%]">Kapalı olduğu şubeler</TableHead>
+                            <TableHead className="whitespace-nowrap">Şube fiyatı</TableHead>
+                            <TableHead className="whitespace-nowrap">Şube etiketi</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {satirlar.map((u) => (
+                            <TableRow key={u.urunId} className={u.tamamenKapali ? 'bg-destructive/5' : ''}>
+                                <TableCell className="max-w-[22rem]">
+                                    <div className="truncate text-sm font-medium" title={u.ad}>{u.ad}</div>
+                                </TableCell>
+                                <TableCell>
+                                    {u.kapali > 0 ? (
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
+                                                <div className={u.tamamenKapali ? 'h-full bg-destructive' : 'h-full bg-amber-500'}
+                                                     style={{ width: `${Math.min(100, (u.kapali / Math.max(u.menude, 1)) * 100)}%` }} />
+                                            </div>
+                                            <span className="text-xs tabular-nums text-muted-foreground">
+                                                {u.kapali} / {u.menude}
+                                            </span>
+                                            {u.tamamenKapali && (
+                                                <Badge variant="outline" className="border-destructive/30 bg-destructive/5 text-destructive">
+                                                    hiçbir şubede satılmıyor
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    ) : <span className="text-xs text-muted-foreground">—</span>}
+                                </TableCell>
+                                <TableCell className="text-xs tabular-nums text-muted-foreground">
+                                    {u.fiyatli || '—'}
+                                </TableCell>
+                                <TableCell className="text-xs tabular-nums text-muted-foreground">
+                                    {u.etiketli || '—'}
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+        </div>
+    );
+}
+
+/** B) Şubeye göre — oran ham sayıdan anlamlı; ortalamayla kıyaslanır. */
+function SubeOzeti({ ozet }) {
+    const ort = ozet.ortalamaKapaliOran;
+    const yuzde = (o) => `%${(o * 100).toFixed(0)}`;
+    return (
+        <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+                Şubelerin menülerinin ortalama <strong>{yuzde(ort)}</strong>’i kapalı.
+                Bu oranın belirgin üstündeki şubeler işaretli — menüsü hiç kurulmamış ya da
+                fiilen kapanmış olabilir.
+            </p>
+            <div className="rounded-lg border">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Şube</TableHead>
+                            <TableHead className="w-[38%]">Menüsünde kapalı</TableHead>
+                            <TableHead className="whitespace-nowrap">Şube fiyatı</TableHead>
+                            <TableHead className="whitespace-nowrap">Şube etiketi</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {ozet.subeler.map((s) => {
+                            // Ortalamanın 1,5 katı: rastgele dalgalanma değil, bakılası fark.
+                            const aykiri = s.kapaliOran > ort * 1.5 && s.kapali > 0;
+                            return (
+                                <TableRow key={s.subeKod} className={aykiri ? 'bg-amber-500/5' : ''}>
+                                    <TableCell className="whitespace-nowrap text-sm font-medium">
+                                        <div className="flex items-center gap-2">
+                                            {s.ad}
+                                            {s.kapanmaTarihi && (
+                                                <Badge variant="outline" className="border-destructive/30 bg-destructive/5 text-destructive">
+                                                    Kapalı şube
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-1.5 w-28 overflow-hidden rounded-full bg-muted">
+                                                <div className={aykiri ? 'h-full bg-amber-500' : 'h-full bg-foreground/40'}
+                                                     style={{ width: `${Math.min(100, s.kapaliOran * 100)}%` }} />
+                                            </div>
+                                            <span className="text-xs tabular-nums text-muted-foreground">
+                                                {yuzde(s.kapaliOran)} · {s.kapali}/{s.menude}
+                                            </span>
+                                            {aykiri && (
+                                                <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">
+                                                    ortalamanın üstünde
+                                                </Badge>
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-xs tabular-nums text-muted-foreground">{s.fiyatli || '—'}</TableCell>
+                                    <TableCell className="text-xs tabular-nums text-muted-foreground">{s.etiketli || '—'}</TableCell>
+                                </TableRow>
+                            );
+                        })}
+                    </TableBody>
+                </Table>
+            </div>
         </div>
     );
 }

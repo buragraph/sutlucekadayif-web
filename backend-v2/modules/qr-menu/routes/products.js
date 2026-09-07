@@ -1065,6 +1065,69 @@ router.delete(
 );
 
 /**
+ * GET /api/products/sube-sapmalari/ozet
+ * Sapmaların ÖZETİ — düz listenin cevaplayamadığı iki soru için.
+ *
+ *   ürün: hangi ürün kaç şubede kapatılmış? "88 şubede menüde, 88'inde
+ *         kapalı" olan bir ürün 88 ayrı şube kararı değildir — fiilen var
+ *         olmayan bir üründür ve katalog kararı gerektirir.
+ *   şube: şube menüsünün ne kadarını kapatmış? Oran ham sayıdan anlamlı
+ *         (39/58 ile 39/300 aynı şey değil) ve ortalamayla kıyaslanınca
+ *         aykırı şube görünür.
+ *
+ * Gruplama SQL tarafında (bkz. 0018_sube_sapma_ozetleri.sql): 8.300 satırı
+ * Worker'a çekmek sayfa başına ~9 alt-istek demekti, bütçe 50.
+ *
+ * ADMIN'E ÖZEL — şubeler arası görünüm.
+ */
+router.get(
+    '/sube-sapmalari/ozet',
+    verifyToken,
+    requirePermission('products.view'),
+    asyncHandler(async (req, res) => {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Bu görünüm yalnızca merkez içindir' });
+        }
+
+        const [urunSonuc, subeSonuc] = await Promise.all([
+            supabase.rpc('sube_sapma_urun_ozeti'),
+            supabase.rpc('sube_sapma_sube_ozeti'),
+        ]);
+        if (urunSonuc.error) throw new Error(urunSonuc.error.message);
+        if (subeSonuc.error) throw new Error(subeSonuc.error.message);
+
+        const urunler = (urunSonuc.data || [])
+            .map((r) => ({
+                urunId: r.urun_id, ad: r.ad, kategoriId: r.kategori_id,
+                menude: r.menude, kapali: r.kapali, fiyatli: r.fiyatli, etiketli: r.etiketli,
+                // Menüde olduğu HER şubede kapalı → ürün fiilen yok.
+                tamamenKapali: r.menude > 0 && r.kapali >= r.menude,
+            }))
+            .sort((a, b) => b.kapali - a.kapali || b.fiyatli - a.fiyatli);
+
+        const subeler = (subeSonuc.data || [])
+            .map((r) => ({
+                subeKod: r.sube_kod, ad: r.ad, kapali: r.kapali, menude: r.menude,
+                fiyatli: r.fiyatli, etiketli: r.etiketli,
+                kapaliOran: r.menude > 0 ? r.kapali / r.menude : 0,
+                kapanmaTarihi: r.kapanma_tarihi || null,
+            }))
+            .sort((a, b) => b.kapaliOran - a.kapaliOran);
+
+        // Ortalama TÜM şubeler üzerinden (sapması olmayanlar dahil), yoksa
+        // aykırılık ölçüsü şişer.
+        const toplamMenude = subeler.reduce((t, x) => t + x.menude, 0);
+        const toplamKapali = subeler.reduce((t, x) => t + x.kapali, 0);
+
+        res.json({
+            urunler,
+            subeler,
+            ortalamaKapaliOran: toplamMenude > 0 ? toplamKapali / toplamMenude : 0,
+        });
+    })
+);
+
+/**
  * GET /api/products/sube-sapmalari
  * Şubelerin merkez kaydından SAPTIĞI yerler — admin denetimi için.
  *
