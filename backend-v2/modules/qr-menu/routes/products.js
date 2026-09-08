@@ -304,6 +304,26 @@ function canMutateProduct(req, found) {
     return !urunKilitliMi(req.user, found.urun);
 }
 
+/**
+ * Şube menüsünü değiştiren uçların hedef şubesini çözer.
+ *
+ * Admin gövdedeki şube adına iş yapar (Ürünler sayfasındaki şube seçici).
+ * Şube sahibi HER ZAMAN kendi şubesine yazar — ama gövdede BAŞKA bir şube
+ * göstermişse bu sessizce kendi şubesine çevrilmez, 403 döner: sessiz
+ * yönlendirme istemcideki hatayı gizliyordu ("maltepe'ye yaz" diyen çağrı
+ * 200 dönüp denizli'yi değiştiriyordu). Gövdede şube hiç yoksa sorun yok,
+ * kendi şubesi kullanılır.
+ *
+ * @returns {{ slug: string|null, hata: string|null }}
+ */
+function hedefSube(req, govdeSlug) {
+    if (req.user.role === 'admin') return { slug: govdeSlug || null, hata: null };
+    if (govdeSlug && govdeSlug !== req.user.subeSlug) {
+        return { slug: null, hata: 'Sadece kendi şubenizde işlem yapabilirsiniz' };
+    }
+    return { slug: req.user.subeSlug || null, hata: null };
+}
+
 // ─────────────────────────────── Rotalar ───────────────────────────────
 
 /**
@@ -757,9 +777,8 @@ router.post(
     requirePermission('products.toggleMenu'),
     asyncHandler(async (req, res) => {
         const { ids, menude } = req.body;
-        // Şube sahibi her zaman KENDİ şubesine yazar — gövdeden gelen slug'a güvenilmez.
-        const slug = req.user.role === 'admin' ? req.body.subeSlug : req.user.subeSlug;
-
+        const { slug, hata } = hedefSube(req, req.body.subeSlug);
+        if (hata) return res.status(403).json({ error: hata });
         if (!slug) return res.status(400).json({ error: 'Şube bilgisi gerekli' });
         if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'Ürün seçilmedi' });
         if (ids.length > 400) return res.status(400).json({ error: 'Tek seferde en fazla 400 ürün' });
@@ -1138,11 +1157,9 @@ router.put(
     requirePermission('products.edit'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
-        const subeSlug = req.user.role === 'admin' ? req.body.subeSlug : req.user.subeSlug;
+        const { slug: subeSlug, hata } = hedefSube(req, req.body.subeSlug);
+        if (hata) return res.status(403).json({ error: hata });
         if (!subeSlug) return res.status(400).json({ error: 'Şube bilgisi gerekli' });
-        if (req.user.role !== 'admin' && req.user.subeSlug !== subeSlug) {
-            return res.status(403).json({ error: 'Sadece kendi şubenizin fiyatını değiştirebilirsiniz' });
-        }
 
         const ham = req.body?.fiyat;
         const temizle = ham === null || ham === undefined || ham === '';
@@ -1194,11 +1211,9 @@ router.put(
     requirePermission('products.toggleAvailability'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
-        const subeSlug = req.user.role === 'admin' ? req.body.subeSlug : req.user.subeSlug;
+        const { slug: subeSlug, hata } = hedefSube(req, req.body.subeSlug);
+        if (hata) return res.status(403).json({ error: hata });
         if (!subeSlug) return res.status(400).json({ error: 'Şube bilgisi gerekli' });
-        if (req.user.role !== 'admin' && req.user.subeSlug !== subeSlug) {
-            return res.status(403).json({ error: 'Sadece kendi şubenizin etiketlerini değiştirebilirsiniz' });
-        }
 
         const gecerli = new Set(ETIKET_ANAHTARLARI);
         const etiket = [...new Set(
@@ -1242,11 +1257,10 @@ router.put(
     requirePermission('products.toggleAvailability'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
-        const { subeSlug, mevcut } = req.body;
-
-        if (req.user.role !== 'admin' && req.user.subeSlug !== subeSlug) {
-            return res.status(403).json({ error: 'Sadece kendi şubenizin müsaitliğini değiştirebilirsiniz' });
-        }
+        const { mevcut } = req.body;
+        const { slug: subeSlug, hata } = hedefSube(req, req.body.subeSlug);
+        if (hata) return res.status(403).json({ error: hata });
+        if (!subeSlug) return res.status(400).json({ error: 'Şube bilgisi gerekli' });
 
         // Availability toggle sadece ortak ürünlerde çalışır.
         // kategori_id ŞART: aşağıdaki "kategori bu şubeden gizli mi" kontrolü
