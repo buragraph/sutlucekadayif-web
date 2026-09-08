@@ -3,7 +3,7 @@ import { fiyatYaz, fiyatGirdi } from '../utils/fiyat';
 import { useAuth } from '../../../context/AuthContext';
 import UrunTalepModal from '../components/UrunTalepModal';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, Store, Send } from 'lucide-react';
+import { Plus, Trash2, X, Search, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, Store, Send, Printer } from 'lucide-react';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ import { SubeCokluSecici } from '../components/SubeCokluSecici';
 import { KaydirilirRay } from '../components/KaydirilirRay';
 
 import { ETIKETLER } from '../constants/etiketler';
+import FiyatListesiPenceresi from '../fiyat-listesi/FiyatListesiPenceresi';
 import UrunKarti from '../components/UrunKarti';
 import { gorseliWebpYap } from '../utils/gorsel';
 
@@ -200,6 +201,7 @@ export default function ProductsPage() {
     const [trashUrunler, setTrashUrunler] = useState([]);
 
     const [kategoriler, setKategoriler] = useState([]);
+    const [fiyatListesiAcik, setFiyatListesiAcik] = useState(false);
     const [subeler, setSubeler] = useState([]);
     const [ortakUrunSayisi, setOrtakUrunSayisi] = useState(0);
 
@@ -1047,6 +1049,16 @@ export default function ProductsPage() {
                             artık şubeye özel ürün oluşturamadığı için çöp kutusuna hiçbir
                             zaman kayıt düşüremiyor — buton her şubede boş açılıyordu.
                             (Menüden çıkarma silme değildir; kayıt katalogda kalır.) */}
+                        {/* A4 fiyat listesi — şubenin masaya koyduğu kâğıt.
+                            Admin'de yalnızca bir şube seçiliyken çıkar: liste
+                            "bu şubenin menüsü, bu şubenin fiyatlarıyla" demek,
+                            katalog görünümünde karşılığı yok. */}
+                        {gorunenSube && (
+                            <Button variant="outline" size="sm" className="h-8 text-xs"
+                                onClick={() => setFiyatListesiAcik(true)}>
+                                <Printer className="size-3.5 mr-1.5" /> Fiyat Listesi
+                            </Button>
+                        )}
                         {role === 'admin' ? (
                             <>
                                 <Button variant="outline" size="sm" className="h-8 text-xs" onClick={async () => {
@@ -1386,6 +1398,23 @@ export default function ProductsPage() {
             )}
                 </CardContent>
             </Card>
+
+            {/* A4 fiyat listesi penceresi. Basılacak liste = MÜŞTERİYE GÖRÜNEN
+                menü: menüdeki ürünler, "mevcut değil" olanlar hariç, şubenin
+                geçerli fiyatlarıyla (subeGozuyle `etkinFiyat`i çözüyor). */}
+            {gorunenSube && (
+                <FiyatListesiPenceresi
+                    acik={fiyatListesiAcik}
+                    kapat={() => setFiyatListesiAcik(false)}
+                    urunler={urunler
+                        .filter((u) => (u.menude_subeler || []).includes(gorunenSube)
+                            || (u.tur === 'sube_ozel' && u.sube_slug === gorunenSube))
+                        .filter((u) => !(u.mevcut_degil || []).includes(gorunenSube))
+                        .map(subeGozuyle)}
+                    kategoriler={kategoriler}
+                    subeAd={subeler.find((x) => x.slug === gorunenSube)?.ad || gorunenSube}
+                />
+            )}
 
             {/* Katalogdan Ürün Ekle — şube sahibi.
                 Yeni ürün OLUŞTURMAZ: merkezin ortak kataloğa eklediği, bu şubenin

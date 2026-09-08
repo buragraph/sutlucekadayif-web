@@ -1,0 +1,66 @@
+/*
+ * Fiyat listesi çıktısının yazı tipi.
+ *
+ * ÖN İZLEME için gerekli: `export-utils.ts` çıktı alırken fontu kendi gömüyor
+ * (data URI), ama ekrandaki SVG tarayıcının yüklediği fonta bakıyor. Bu kural
+ * olmadan önizleme Georgia'ya düşer ve satır genişlikleri çıktıyla tutmaz —
+ * yerleşim motoru metin genişliğini ölçerek sütun sayısına karar veriyor.
+ *
+ * `font-display: block`: fontsuz bir kare çizip sonra yeniden ölçmektense
+ * yazının görünmesini beklemek doğru; ölçüm yanlış fontla yapılmasın.
+ */
+@font-face {
+    font-family: 'Mondia Sütlüce';
+    src: url('/fonts/mondia-400.otf') format('opentype');
+    font-weight: 400;
+    font-style: normal;
+    font-display: block;
+}
+@font-face {
+    font-family: 'Mondia Sütlüce';
+    src: url('/fonts/mondia-400-italic.otf') format('opentype');
+    font-weight: 400;
+    font-style: italic;
+    font-display: block;
+}
+@font-face {
+    font-family: 'Mondia Sütlüce';
+    src: url('/fonts/mondia-700.otf') format('opentype');
+    font-weight: 700;
+    font-style: normal;
+    font-display: block;
+}
+@font-face {
+    font-family: 'Mondia Sütlüce';
+    src: url('/fonts/mondia-700-italic.otf') format('opentype');
+    font-weight: 700;
+    font-style: italic;
+    font-display: block;
+}
+
+/* Önizleme kabı: SVG kendi en-boy oranını korur, kaba sığacak kadar küçülür. */
+.fl-onizleme {
+    display: flex;
+    justify-content: center;
+    background: #f4f4f5;
+    border-radius: 0.75rem;
+    padding: 1rem;
+}
+.fl-onizleme .menu-canvas {
+    width: 100%;
+    max-width: 420px;
+    height: auto;
+    background: #fff;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 8px 24px rgb(0 0 0 / 0.08);
+}
+
+/* Çıktı kopyası ölçülebilsin diye DOM'da durur ama görünmez.
+   `display:none` OLMAZ: gizli elemanın metin genişliği ölçülemez ve
+   yerleşim motoru yanlış sütun sayısı seçer. */
+.fl-cikti-kopyasi {
+    position: absolute;
+    left: -10000px;
+    top: 0;
+    width: 1240px;
+    pointer-events: none;
+}
