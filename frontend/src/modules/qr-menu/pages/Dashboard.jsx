@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Building2, UserCircle, QrCode, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight, Map as MapIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { parcaYukle } from '../../../shared/utils/parca-yukle';
+import DuyuruKartlari from '../components/DuyuruKartlari';
 
 // MapLibre ağır bir paket — yalnızca harita gösterilince yüklensin (kod bölme).
 // parcaYukle ŞART: yeni sürüm yayınlanınca eski hash'li parça sunucudan kalkıyor,
@@ -138,6 +139,11 @@ export default function Dashboard() {
                 )
             )}
             </div>{/* harita+grafik grid */}
+
+            {/* Merkez duyuruları — haritanın hemen altında, metriklerin üstünde:
+                şube giriş yapınca ilk okuyacağı şey burası. Duyuru yoksa
+                bileşen hiç çizmiyor, boşluk kalmıyor. */}
+            <DuyuruKartlari />
 
             {/* Metrik Kartlar Grubu */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

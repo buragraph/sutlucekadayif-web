@@ -24,6 +24,7 @@ import profilRouter from './routes/profil.js';
 import basvurularRouter from './routes/basvurular.js';
 import geribildirimRouter from './routes/geribildirim.js';
 import isbasvuruRouter from './routes/isbasvuru.js';
+import duyurularRouter from './routes/duyurular.js';
 import uploadRouter from './routes/upload.js';
 import mediaRouter from './routes/media.js';
 import aiRouter from './routes/ai.js';
@@ -112,6 +113,7 @@ const MOUNTLAR = [
     ['/api/basvurular', basvurularRouter],
     ['/api/geribildirim', geribildirimRouter],
     ['/api/isbasvuru', isbasvuruRouter],
+    ['/api/duyurular', duyurularRouter],
     ['/api/upload', uploadRouter],
     ['/api/media', mediaRouter],
     ['/api/ai', aiRouter],

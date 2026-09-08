@@ -99,6 +99,13 @@ const PERMISSIONS = {
     'isbasvuru.view': ['admin', 'sube_sahibi'],
     'isbasvuru.manage': ['admin', 'sube_sahibi'],
     'isbasvuru.delete': ['admin'],
+
+    // ── Duyurular ──
+    // Merkez yazar, şube okur. Şube sahibinde yazma YOK: duyuru merkezden
+    // şubeye tek yönlü bir kanal, şubenin diğer şubelere duyuru geçmesi
+    // (ya da kendi duyurusunu silmesi) istenmiyor.
+    'duyuru.view': ['admin', 'sube_sahibi'],
+    'duyuru.manage': ['admin'],
 };
 
 /**

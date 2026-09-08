@@ -80,6 +80,12 @@ export function getNavGroups(can, role) {
             userItems.push({ title: 'Şubeler', url: '/admin/subeler', icon: Building2 });
         }
 
+        // Duyurular merkezden şubeye tek yönlü kanal — yalnızca admin yazar.
+        // Şube sahibi duyuruyu genel bakış ekranında görüyor, ayrı sayfası yok.
+        if (can('duyuru.manage')) {
+            userItems.push({ title: 'Duyurular', url: '/admin/duyurular', icon: Megaphone });
+        }
+
         if (can('basvurular.view')) {
             userItems.push({ title: 'Franchise Başvuruları', url: '/admin/basvurular', icon: Inbox });
         }
