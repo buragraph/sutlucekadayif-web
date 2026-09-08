@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw, Copy, KeyRound } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw, Copy, KeyRound, Search } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ export default function UsersPage() {
     const [showModal, setShowModal] = useState(false);
     const [yeniKimlik, setYeniKimlik] = useState(null);   // { email, parola } — yaratımdan sonra gösterilir
     const [editingUser, setEditingUser] = useState(null);
+    const [arama, setArama] = useState('');
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({
         email: '',
@@ -176,6 +177,19 @@ export default function UsersPage() {
 
     const isSubeSahibi = currentUser?.role === 'sube_sahibi';
 
+    // Türkçe karşılaştırma: 'İSTANBUL'.toLowerCase() 'i̇stanbul' üretip eşleşmeyi
+    // kaçırır, o yüzden toLocaleLowerCase('tr').
+    //
+    // Şube ADI da aranıyor: tabloda yalnızca slug görünüyor ama kimse
+    // "bahcekent_cadde_outlet" diye aramıyor — listedeki şubeden adı çözülür.
+    // Rol etiketi de dahil: "yönetici" yazınca adminler gelsin.
+    const q = arama.trim().toLocaleLowerCase('tr');
+    const subeAdi = (slug) => subeler.find((x) => x.slug === slug)?.ad || '';
+    const gorunenUsers = !q ? users : users.filter((u) =>
+        [u.email, u.displayName, u.telefon, u.subeSlug, subeAdi(u.subeSlug), rolLabel(u.role)]
+            .some((alan) => (alan || '').toLocaleLowerCase('tr').includes(q))
+    );
+
     return (
         <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -186,15 +200,41 @@ export default function UsersPage() {
                 </Button>
             </div>
 
+            {/* Arama yalnızca liste doluyken: tek kullanıcılı şube panelinde
+                kutu boşuna yer kaplardı. */}
+            {users.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative min-w-0 flex-1 sm:max-w-xs">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            value={arama}
+                            onChange={(e) => setArama(e.target.value)}
+                            placeholder="E-posta, ad, telefon, şube, rol ara..."
+                            className="h-9 pl-8 pr-8 text-sm"
+                        />
+                        {arama && (
+                            <button type="button" onClick={() => setArama('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                    title="Aramayı temizle">
+                                <X className="size-3.5" />
+                            </button>
+                        )}
+                    </div>
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                        {q ? `${gorunenUsers.length} / ${users.length}` : `${users.length}`} kişi
+                    </span>
+                </div>
+            )}
+
             {loading ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-16">
                     <Spinner className="size-8" />
                     <p className="text-sm text-muted-foreground">Kullanıcılar yükleniyor...</p>
                 </div>
-            ) : users.length === 0 ? (
+            ) : gorunenUsers.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
                     <span className="text-4xl">👥</span>
-                    <p>Henüz kullanıcı yok</p>
+                    <p>{q ? `"${arama.trim()}" için sonuç bulunamadı` : 'Henüz kullanıcı yok'}</p>
                 </div>
             ) : (
                 <div className="rounded-lg border">
@@ -211,7 +251,7 @@ export default function UsersPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {users.map((u) => (
+                            {gorunenUsers.map((u) => (
                                 <TableRow key={u.uid}>
                                     <TableCell className="font-medium">{u.email}</TableCell>
                                     <TableCell>{u.displayName || '—'}</TableCell>
