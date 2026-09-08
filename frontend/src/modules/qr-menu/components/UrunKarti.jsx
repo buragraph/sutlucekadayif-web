@@ -25,7 +25,7 @@ import { ETIKETLER } from '../constants/etiketler';
 export default function UrunKarti({
     urun, mevcut, kilitli, bekliyor,
     onMevcutDegistir, onDuzenle, onFiyat, onMenudenCikar, onSil, onEtiket,
-    secili, onSecim, altBilgi,
+    secili, onSecim, altBilgi, silHepGorunur,
 }) {
     // Merkezin etiketi + şubenin kendi etiketi birlikte gösterilir; müşteri
     // menüsünde de böyle birleşiyor (bkz. menu-builder.js musteriAlanlari).
@@ -103,10 +103,14 @@ export default function UrunKarti({
                         {altBilgi && <div className="truncate text-[10px] text-muted-foreground">{altBilgi}</div>}
                     </div>
 
-                    {/* Silme şube sahibinde zaten hiç çıkmıyor (ortak ürün kilitli);
-                        yer kaplamasın diye üzerine gelince beliriyor. */}
+                    {/* Silme şube sahibinde zaten hiç çıkmıyor (ortak ürün kilitli).
+                        Admin'de HEP görünür: katalog yönetiminde sık kullanılan bir
+                        eylem, üzerine gelmeden bulunması gerekiyor. Şube sahibinin
+                        şubeye özel ürünlerinde yer kaplamasın diye hover'da kalıyor. */}
                     {!kilitli && onSil && (
-                        <div className="flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                        <div className={`flex shrink-0 ${silHepGorunur
+                            ? ''
+                            : 'opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100'}`}>
                             <Button variant="ghost" size="icon" className="size-6 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                     title="Sil" onClick={() => onSil(urun)}>
                                 <Trash2 className="size-3.5" />

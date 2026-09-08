@@ -1483,6 +1483,7 @@ export default function ProductsPage() {
                                                 ? ((u) => { setFiyatUrun(u); setFiyatDeger(fiyatGirdi(u.etkinFiyat ?? u.fiyat)); }) : null}
                                             onMenudenCikar={ortakUrun && menudenCikarilabilir(urun) ? handleMenudenCikar : null}
                                             onSil={handleUrunDelete}
+                                            silHepGorunur={adminKart}
                                         />
                                     );
                                 })}
