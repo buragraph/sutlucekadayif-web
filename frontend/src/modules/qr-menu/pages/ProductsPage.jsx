@@ -1484,6 +1484,7 @@ export default function ProductsPage() {
                                             onMenudenCikar={ortakUrun && menudenCikarilabilir(urun) ? handleMenudenCikar : null}
                                             onSil={handleUrunDelete}
                                             silHepGorunur={adminKart}
+                                            tiklamaSecer={adminKart}
                                         />
                                     );
                                 })}

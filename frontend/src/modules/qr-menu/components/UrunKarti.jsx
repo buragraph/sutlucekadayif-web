@@ -25,7 +25,7 @@ import { ETIKETLER } from '../constants/etiketler';
 export default function UrunKarti({
     urun, mevcut, kilitli, bekliyor,
     onMevcutDegistir, onDuzenle, onFiyat, onMenudenCikar, onSil, onEtiket,
-    secili, onSecim, altBilgi, silHepGorunur,
+    secili, onSecim, altBilgi, silHepGorunur, tiklamaSecer,
 }) {
     // Merkezin etiketi + şubenin kendi etiketi birlikte gösterilir; müşteri
     // menüsünde de böyle birleşiyor (bkz. menu-builder.js musteriAlanlari).
@@ -39,10 +39,13 @@ export default function UrunKarti({
     return (
         <div
             className={`group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-colors ${
-                kilitli ? '' : 'cursor-pointer hover:border-foreground/30'
-            }`}
+                kilitli && !tiklamaSecer ? '' : 'cursor-pointer hover:border-foreground/30'
+            } ${secili ? 'ring-2 ring-primary' : ''}`}
             onClick={(e) => {
                 if (e.target.closest('button') || e.target.closest('[role=switch]')) return;
+                // Admin'de karta tıklamak SEÇER (toplu işlem için), düzenleme
+                // ayrı düğmede. Şube sahibinde seçim yok, tıklama düzenler.
+                if (tiklamaSecer) { onSecim?.(urun.id); return; }
                 if (!kilitli) onDuzenle(urun);
             }}
         >
@@ -150,6 +153,17 @@ export default function UrunKarti({
                     className="flex w-full items-center justify-center gap-1 border-t py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 >
                     <Pencil className="size-3" /> Fiyat değiştir
+                </button>
+            )}
+
+            {/* Admin'de düzenleme ayrı düğmede: kart tıklaması seçime ayrıldı. */}
+            {tiklamaSecer && onDuzenle && (
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onDuzenle(urun); }}
+                    className="flex w-full items-center justify-center gap-1 border-t py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                    <Pencil className="size-3" /> Düzenle
                 </button>
             )}
 
