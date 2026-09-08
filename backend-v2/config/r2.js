@@ -123,7 +123,9 @@ export function isKeyAllowed(key, { forDelete = false } = {}) {
     // 'talep/': şube sahibinin ürün talebine eklediği görsel. Talep onaylanınca
     // aynı anahtar ürüne geçiyor (bkz. urun-talepleri.js onayla), o yüzden nesne
     // yerinde kalıyor ve okunabilir olmalı.
-    const ALLOWED_PREFIXES = ['urunler/', 'menu/', 'academy/', 'talep/'];
+    // 'banner/': müşteri menüsündeki marka duyuru görselleri — QR menüsü
+    // auth'suz okuduğu için proxy'den servis edilebilmeli.
+    const ALLOWED_PREFIXES = ['urunler/', 'menu/', 'academy/', 'talep/', 'banner/'];
     return ALLOWED_PREFIXES.some((p) => key.startsWith(p));
 }
 

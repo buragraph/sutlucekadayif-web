@@ -37,6 +37,66 @@ function SkeletonLoading() {
     );
 }
 
+/* ─── Banner Şeridi ─── */
+/* Logonun hemen altında dönen marka duyuruları. Eski QR menüsündeki
+   (qr.sutlucekadayif.com) karusel deseninin aynısı: iki-üç görsel, otomatik
+   geçiş, altta nokta.
+
+   ŞUBEDEN BAĞIMSIZ: `menu/_ayarlar.json` içinden gelir, şube JSON'una
+   gömülmez — yoksa banner değiştikçe 90 dosyanın yeniden yazılması gerekirdi.
+
+   Banner yoksa hiç çizilmez; menü boş bir kutuyla açılmasın. */
+function BannerSeridi({ bannerlar }) {
+    const [aktif, setAktif] = useState(0);
+    const adet = bannerlar.length;
+
+    useEffect(() => {
+        if (adet < 2) return;
+        const t = setInterval(() => setAktif((i) => (i + 1) % adet), 5000);
+        return () => clearInterval(t);
+    }, [adet]);
+
+    if (adet === 0) return null;
+
+    return (
+        <section className="pm-banner" aria-label="Duyurular">
+            <div className="pm-banner__ray" style={{ transform: `translateX(-${aktif * 100}%)` }}>
+                {bannerlar.map((b, i) => {
+                    const gorsel = (
+                        <img
+                            src={proxyKeyUrl(b.key)}
+                            alt=""
+                            className="pm-banner__img"
+                            /* İlk banner sayfanın ilk ekranında; gerisi tembel. */
+                            loading={i === 0 ? 'eager' : 'lazy'}
+                        />
+                    );
+                    return (
+                        <div className="pm-banner__slayt" key={b.key}>
+                            {b.baglanti
+                                ? <a href={b.baglanti} target="_blank" rel="noopener noreferrer">{gorsel}</a>
+                                : gorsel}
+                        </div>
+                    );
+                })}
+            </div>
+            {adet > 1 && (
+                <div className="pm-banner__noktalar">
+                    {bannerlar.map((b, i) => (
+                        <button
+                            key={b.key}
+                            type="button"
+                            className={`pm-banner__nokta${i === aktif ? ' pm-banner__nokta--aktif' : ''}`}
+                            onClick={() => setAktif(i)}
+                            aria-label={`${i + 1}. duyuru`}
+                        />
+                    ))}
+                </div>
+            )}
+        </section>
+    );
+}
+
 /* ─── Product Card ─── */
 function ProductCard({ urun, index, onClick }) {
     const ref = useRef(null);
@@ -152,6 +212,7 @@ export default function MenuPage() {
     const [showIsBasvuru, setShowIsBasvuru] = useState(false);
     const [alerjenPdf, setAlerjenPdf] = useState(null);   // R2 key — yoksa buton çıkmaz
     const [fiyatTarihi, setFiyatTarihi] = useState(null); // 'YYYY-MM-DD' — yoksa satır çıkmaz
+    const [bannerlar, setBannerlar] = useState([]);       // marka geneli duyuru görselleri
     const [showAlerjen, setShowAlerjen] = useState(false);
 
     const tabRefs = useRef({});      // { katId: <button> }
@@ -192,6 +253,7 @@ export default function MenuPage() {
             .then((j) => {
                 setAlerjenPdf(j?.alerjenPdf || null);
                 setFiyatTarihi(j?.fiyatTarihi || null);
+                setBannerlar(Array.isArray(j?.bannerlar) ? j.bannerlar.filter((b) => b?.key) : []);
             })
             .catch(() => {});
     }, []);
@@ -346,16 +408,10 @@ export default function MenuPage() {
             </header>
 
             <main className="pm-main">
-                {/* ─── Hero Banner ─── */}
-                <section className="pm-hero">
-                    <div className="pm-hero__glow pm-hero__glow--1" />
-                    <div className="pm-hero__glow pm-hero__glow--2" />
-                    <div className="pm-hero__content">
-                        <span className="pm-hero__eyebrow">İmza Lezzetler</span>
-                        <h2 className="pm-hero__heading">Geleneksel kadayıfın<br />premium deneyimi.</h2>
-                        <p className="pm-hero__desc">Özenle seçilmiş malzemeler, ustalıkla hazırlanan lezzetler ve göz alıcı sunumlarla tatlının ötesinde bir deneyim.</p>
-                    </div>
-                </section>
+                {/* Banner şeridi, eskiden burada duran "İmza Lezzetler"
+                    tanıtım bloğunun YERİNE geçti: aynı alanda iki blok
+                    üst üste menüyü ekranın çok aşağısına itiyordu. */}
+                <BannerSeridi bannerlar={bannerlar} />
 
                 {/* ─── Arama ─── */}
                 {/* Etiket filtreleri buradan kategori rayına taşındı: arama altında
@@ -471,20 +527,23 @@ export default function MenuPage() {
                         </a>
                     </div>
                 )}
+                {/* SIRA VE VURGU FRANCHISE'TA: iş başvurusu yeşil kartla önde,
+                    franchise arkada duruyordu. Menüyü okuyan müşteri için
+                    öncelik franchise; ikisi hem yer hem vurgu değiştirdi. */}
                 <div className="pm-footer__card">
-                    <h3 className="pm-footer__card-title">İş başvurusu için:</h3>
-                    <p className="pm-footer__card-subtitle">Sütlüce Kadayıf şubelerinde çalışmak ister misiniz?</p>
-                    <p className="pm-footer__card-desc">Ekibimize katılmak için başvuru formunu doldurabilirsiniz.</p>
-                    <button type="button" className="pm-footer__card-btn" onClick={() => setShowIsBasvuru(true)}>
-                        İş Başvurusu Yap
-                    </button>
-                </div>
-                <div className="pm-footer__franchise">
-                    <h2 className="pm-footer__title">Franchise Fırsatlarıyla Sütlüce Ailesine Katılın</h2>
-                    <p className="pm-footer__desc">Sütlüce Kadayıf, güçlü marka yapısı ve özgün ürün konseptiyle sürdürülebilir bir iş modeli sunar.</p>
-                    <a href="https://www.sutlucekadayif.com/franchise-basvurusu/" target="_blank" rel="noopener noreferrer" className="pm-footer__btn">
+                    <h3 className="pm-footer__card-title">Franchise Fırsatlarıyla Sütlüce Ailesine Katılın</h3>
+                    <p className="pm-footer__card-subtitle">Kendi Sütlüce Kadayıf şubenizi açmak ister misiniz?</p>
+                    <p className="pm-footer__card-desc">Güçlü marka yapısı ve özgün ürün konseptiyle sürdürülebilir bir iş modeli.</p>
+                    <a href="https://www.sutlucekadayif.com/franchise-basvurusu/" target="_blank" rel="noopener noreferrer" className="pm-footer__card-btn">
                         Franchise Başvurusu Yap
                     </a>
+                </div>
+                <div className="pm-footer__franchise">
+                    <h2 className="pm-footer__title">Ekibimize katılın</h2>
+                    <p className="pm-footer__desc">Sütlüce Kadayıf şubelerinde çalışmak isterseniz başvuru formunu doldurabilirsiniz.</p>
+                    <button type="button" className="pm-footer__btn" onClick={() => setShowIsBasvuru(true)}>
+                        İş Başvurusu Yap
+                    </button>
                 </div>
                 <div className="pm-footer__bottom">
                     <a href="tel:08503049722" className="pm-footer__phone">0850 304 9722</a>

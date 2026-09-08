@@ -23,6 +23,7 @@ const ALERJEN_ANAHTARI = 'alerjen_pdf';
 // ─── Fiyat değiştirilme tarihi ───
 // Alerjen PDF'iyle aynı dosyayı paylaşır: tek global değer, elle girilir.
 const FIYAT_TARIHI_ANAHTARI = 'fiyat_tarihi';
+const BANNER_ANAHTARI = 'menu_bannerlari';
 
 const PDF_AL = dosyaAl('pdf', {
     tipler: ['application/pdf'],
@@ -38,6 +39,7 @@ async function ayarOku(anahtar) {
 
 const alerjenAyarOku = () => ayarOku(ALERJEN_ANAHTARI);
 const fiyatTarihiOku = () => ayarOku(FIYAT_TARIHI_ANAHTARI);
+const bannerOku = async () => (await ayarOku(BANNER_ANAHTARI))?.liste || [];
 
 /** Müşteri menüsünün okuduğu global ayar JSON'ını R2'ye yazar.
  *  Alt çizgili ad bilinçli: şube JSON'ları `menu/{kod}.json` yazdığından,
@@ -47,20 +49,72 @@ const fiyatTarihiOku = () => ayarOku(FIYAT_TARIHI_ANAHTARI);
  *  alanı geç, ötekiler veritabanından okunup korunur — yoksa PDF yüklemek
  *  fiyat tarihini (ya da tersi) sessizce siler. Alanı temizlemek için açıkça
  *  `null` geç; `undefined` "dokunma" demektir. */
-async function ayarJsonYaz({ alerjenKey, fiyatTarihi } = {}) {
+async function ayarJsonYaz({ alerjenKey, fiyatTarihi, bannerlar } = {}) {
     const key = alerjenKey !== undefined
         ? alerjenKey
         : (await alerjenAyarOku())?.key || null;
     const tarih = fiyatTarihi !== undefined
         ? fiyatTarihi
         : (await fiyatTarihiOku())?.tarih || null;
+    const banner = bannerlar !== undefined ? bannerlar : await bannerOku();
 
     await uploadFile(
-        Buffer.from(JSON.stringify({ alerjenPdf: key || null, fiyatTarihi: tarih || null })),
+        Buffer.from(JSON.stringify({
+            alerjenPdf: key || null,
+            fiyatTarihi: tarih || null,
+            // Banner ŞUBEDEN BAĞIMSIZ: marka geneli duyuru alanı. Şube başına
+            // olsaydı 90 JSON'ı da yeniden yazmak gerekirdi; burada tek dosya.
+            bannerlar: banner,
+        })),
         'menu/_ayarlar.json',
         'application/json'
     );
 }
+
+/**
+ * GET /api/menu/bannerlar — yönetim listesi
+ * PUT /api/menu/bannerlar — sırayı/listeyi topluca yazar. Body: { liste: [{key, baglanti?}] }
+ *
+ * Banner görselleri R2'de `banner/` altında duruyor; burada yalnızca
+ * hangisinin hangi sırayla gösterileceği tutuluyor.
+ */
+router.get(
+    '/bannerlar',
+    verifyToken,
+    requirePermission('categories.edit'),
+    asyncHandler(async (req, res) => {
+        res.json({ liste: await bannerOku() });
+    })
+);
+
+router.put(
+    '/bannerlar',
+    verifyToken,
+    requirePermission('categories.edit'),
+    asyncHandler(async (req, res) => {
+        const gelen = Array.isArray(req.body?.liste) ? req.body.liste : null;
+        if (!gelen) return res.status(400).json({ error: 'liste alanı dizi olmalı' });
+        if (gelen.length > 10) return res.status(400).json({ error: 'En fazla 10 banner' });
+
+        const liste = gelen
+            .map((b) => ({
+                key: String(b?.key || '').trim(),
+                // Bağlantı yalnızca https ve dış bağlantı; boşsa banner tıklanmaz.
+                baglanti: /^https:\/\//.test(String(b?.baglanti || '')) ? String(b.baglanti).trim() : null,
+            }))
+            .filter((b) => b.key.startsWith('banner/'));
+
+        veriYaDaHata(
+            await supabase.from('ayarlar').upsert(
+                { anahtar: BANNER_ANAHTARI, deger: { liste }, guncelleme: new Date().toISOString() },
+                { onConflict: 'anahtar' }
+            ),
+            'bannerlar yazılamadı'
+        );
+        await ayarJsonYaz({ bannerlar: liste });
+        res.json({ success: true, liste });
+    })
+);
 
 /**
  * GET /api/menu/subeler

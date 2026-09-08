@@ -13,7 +13,14 @@ import crypto from 'crypto';
 // çağıranların gönderdiği ('urunler') değer whitelist'te — bilinmeyen/keyfi
 // değer (ör. "dekontlar/x", "../../y") sanitize edilip varsayılana düşer.
 // 'academy': kurs kapak görselleri (bkz. AcademyAdmin kurs modalı).
-const ALLOWED_UPLOAD_FOLDERS = new Set(['urunler', 'academy']);
+const ALLOWED_UPLOAD_FOLDERS = new Set(['urunler', 'academy', 'banner']);
+
+// Eski QR menüsünden (WordPress) görsel aktarımı YALNIZCA bu alan adlarından.
+// Sunucunun istediğimiz adrese istek atması SSRF'tir; kilit tek savunma.
+// Aktarım geçici değil kalıcı bir ihtiyaç: ürün görselleri de orada 790px,
+// bizde 300px duruyor (bkz. gorsel.js — kaynak dosyalar zaten küçük gelmiş).
+const WP_AKTARIM_HOSTLARI = new Set(['qr.sutlucekadayif.com', 'www.sutlucekadayif.com', 'sutlucekadayif.com']);
+const WP_AKTARIM_EN_BUYUK = 8 * 1024 * 1024;
 
 // GET /api/upload/dekont/* sunumunda depolanan (yükleme anında saldırgan
 // tarafından ayarlanabilen) ContentType'a GÜVENİLMEZ — uzantıdan sabit,
@@ -144,6 +151,57 @@ router.get(
             }
             throw err;
         }
+    })
+);
+
+/**
+ * POST /api/upload/wp-aktar
+ * Eski WordPress kurulumundaki bir görseli R2'ye kopyalar.
+ * Body: { url, klasor? }
+ *
+ * NEDEN SUNUCUDA: WordPress CORS başlığı vermiyor, tarayıcıdan çekilemiyor.
+ * NEDEN GÜVENLİ: alan adı beyaz listede, yalnızca https, yönlendirme sonrası
+ * ADRES TEKRAR denetleniyor, içerik tipi görsel olmak zorunda ve boyut
+ * sınırlı. Dönüşüm yok — dosya olduğu gibi kopyalanıyor ki kaynaktaki
+ * çözünürlük korunsun.
+ */
+router.post(
+    '/wp-aktar',
+    verifyToken,
+    requirePermission('media.manage'),
+    asyncHandler(async (req, res) => {
+        const { url, klasor } = req.body || {};
+        let hedef;
+        try { hedef = new URL(String(url)); } catch { return res.status(400).json({ error: 'Geçersiz adres' }); }
+        if (hedef.protocol !== 'https:' || !WP_AKTARIM_HOSTLARI.has(hedef.hostname)) {
+            return res.status(400).json({ error: 'Bu adresten aktarım yapılamaz' });
+        }
+
+        const yanit = await fetch(hedef.toString());
+        if (!yanit.ok) return res.status(400).json({ error: `Kaynak okunamadı (${yanit.status})` });
+        // Yönlendirme başka bir hosta çıkmış olabilir — son adresi de denetle.
+        try {
+            const son = new URL(yanit.url);
+            if (!WP_AKTARIM_HOSTLARI.has(son.hostname)) {
+                return res.status(400).json({ error: 'Yönlendirme izinli alan adı dışına çıktı' });
+            }
+        } catch { /* yanit.url boşsa özgün adres geçerli */ }
+
+        const tip = (yanit.headers.get('content-type') || '').split(';')[0].trim();
+        const uzanti = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' }[tip];
+        if (!uzanti) return res.status(400).json({ error: `Desteklenmeyen içerik tipi: ${tip || 'bilinmiyor'}` });
+
+        const veri = Buffer.from(await yanit.arrayBuffer());
+        if (veri.length > WP_AKTARIM_EN_BUYUK) {
+            return res.status(400).json({ error: 'Dosya çok büyük' });
+        }
+
+        const folder = ALLOWED_UPLOAD_FOLDERS.has(klasor) ? klasor : 'urunler';
+        const fileName = `${folder}/${crypto.randomUUID()}${uzanti}`;
+        const r2Url = await uploadFile(veri, fileName, tip);
+        console.log(`📥 WP aktarım: ${hedef.pathname} → ${fileName} (${(veri.length / 1024).toFixed(0)}KB)`);
+
+        res.json({ url: r2Url, key: fileName, boyut: veri.length, tip });
     })
 );
 

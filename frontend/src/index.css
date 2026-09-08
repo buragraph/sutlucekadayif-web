@@ -275,7 +275,9 @@
 }
 
 .pm-header__logo {
-  max-width: 180px;
+  /* 180 → 140: başlık şeridinde logo gövdeyi bastırıyordu; menünün kendisi
+     ilk bakışta görünsün. */
+  max-width: 140px;
   height: auto;
   display: inline-block;
 }
@@ -338,6 +340,52 @@
 }
 
 /* ─── Hero Banner ─── */
+/* ─── Banner şeridi (müşteri menüsü) ───
+   Logonun altındaki marka duyuruları. Oran 1080×600 görsele göre sabit:
+   yükseklik içerikten türeseydi görseller yüklenirken sayfa zıplardı. */
+.pm-banner {
+  position: relative;
+  margin: 0 0 18px;
+  border-radius: var(--pm-radius);
+  overflow: hidden;
+  background: var(--pm-dark);
+}
+.pm-banner__ray {
+  display: flex;
+  transition: transform 0.5s ease;
+}
+.pm-banner__slayt {
+  flex: 0 0 100%;
+  aspect-ratio: 1080 / 600;
+}
+.pm-banner__slayt a { display: block; height: 100%; }
+.pm-banner__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pm-banner__noktalar {
+  position: absolute;
+  left: 0; right: 0; bottom: 10px;
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+}
+.pm-banner__nokta {
+  width: 7px; height: 7px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transition: all var(--pm-transition);
+}
+.pm-banner__nokta--aktif {
+  width: 18px;
+  background: #fff;
+}
+
 .pm-hero {
   position: relative;
   margin: 8px 20px 0;
@@ -749,6 +797,10 @@
   text-decoration: none;
   transition: all var(--pm-transition);
   box-shadow: 0 4px 14px rgba(8, 69, 41, 0.2);
+  /* İş başvurusu artık <button> ile açılıyor — tarayıcı varsayılanlarını
+     sıfırla ki <a> ile aynı görünsün. */
+  border: none;
+  cursor: pointer;
 }
 
 .pm-footer__btn:hover {
