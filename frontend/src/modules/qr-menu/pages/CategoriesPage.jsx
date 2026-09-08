@@ -1,29 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, GripVertical, Globe, MapPin, ImagePlus, Images, FolderOpen, Package, FileText, ExternalLink, CalendarDays, EyeOff } from 'lucide-react';
+import { Plus, Pencil, Trash2, GripVertical, FileText, ExternalLink, CalendarDays, EyeOff, Lock } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
-import { proxyImageUrl, proxyKeyUrl } from '../../../utils/imageProxy';
+import { proxyKeyUrl } from '../../../utils/imageProxy';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
-import { gorseliWebpYap } from '../utils/gorsel';
 import { SubeCokluSecici } from '../components/SubeCokluSecici';
 
-const colorPalette = [
-    { bg: '#dbeafe', text: '#1e40af', label: 'Mavi' },
-    { bg: '#fce7f3', text: '#9d174d', label: 'Pembe' },
-    { bg: '#d1fae5', text: '#065f46', label: 'Yeşil' },
-    { bg: '#fef3c7', text: '#92400e', label: 'Sarı' },
-    { bg: '#ede9fe', text: '#5b21b6', label: 'Mor' },
-    { bg: '#fee2e2', text: '#991b1b', label: 'Kırmızı' },
-    { bg: '#e0e7ff', text: '#3730a3', label: 'Lacivert' },
-    { bg: '#ccfbf1', text: '#115e59', label: 'Turkuaz' },
-    { bg: '#fff7ed', text: '#9a3412', label: 'Turuncu' },
-    { bg: '#f0fdf4', text: '#166534', label: 'Koyu Yeşil' },
-];
 
 /**
  * Kategori kartı — MODÜL kapsamında tanımlı OLMALI.
@@ -35,9 +22,23 @@ const colorPalette = [
  * yok oluyor, tarayıcı sürüklemeyi iptal ediyor ve `dragend` hiç gelmiyordu —
  * sıra bu yüzden kaydedilmiyordu. Bileşen dışarı alınınca düğümler korunuyor.
  */
-function KategoriCard({ kat, surukleId, siraKaydediliyor, onSurukleBasla, onSurukleUzerinde, onSurukleBitti, onDuzenle, onSil }) {
-    const colorInfo = colorPalette.find(c => c.bg === kat.renk) || { bg: kat.renk || '#dbeafe', text: '#374151' };
-    const isOrtak = (kat.tur || 'ortak') === 'ortak';
+/**
+ * Kategori satırı — MODÜL kapsamında tanımlı OLMALI.
+ *
+ * Daha önce CategoriesPage'in içinde tanımlıydı; bu, her render'da yeni bir
+ * bileşen TÜRÜ üretiyordu ve React kartları taşımak yerine hepsini DOM'dan
+ * silip yeniden oluşturuyordu (ölçüldü: 14/14 düğüm yenileniyordu).
+ * Sürüklemede ilk `dragover` yeniden render tetiklediği için sürüklenen düğüm
+ * yok oluyor, tarayıcı sürüklemeyi iptal ediyor ve `dragend` hiç gelmiyordu —
+ * sıra bu yüzden kaydedilmiyordu. Bileşen dışarı alınınca düğümler korunuyor.
+ *
+ * SADELEŞTİRİLDİ: tür (ortak/şubeye özel), renk ve görsel kaldırıldı.
+ * Şube ayrımı artık ürün ve kategori bazlı gizlemeyle yapılıyor
+ * (urunler.gizli_subeler / kategoriler.gizli_subeler), kategorinin ayrı bir
+ * "türü" olmasına gerek kalmadı. Renk ve görseli de müşteri menüsü hiç
+ * okumuyordu — panelde yer kaplayan ölü alanlardı.
+ */
+function KategoriCard({ kat, sira, surukleId, siraKaydediliyor, onSurukleBasla, onSurukleUzerinde, onSurukleBitti, onDuzenle, onSil }) {
     const gizliSayisi = (kat.gizli_subeler || []).length;
 
     return (
@@ -46,58 +47,42 @@ function KategoriCard({ kat, surukleId, siraKaydediliyor, onSurukleBasla, onSuru
             onDragStart={(e) => { onSurukleBasla(kat.id); e.dataTransfer.effectAllowed = 'move'; }}
             onDragOver={(e) => onSurukleUzerinde(e, kat)}
             onDragEnd={onSurukleBitti}
-            className={`group relative flex items-center gap-3 rounded-lg border bg-card p-3 transition-shadow hover:shadow-sm ${surukleId === kat.id ? 'opacity-40 ring-2 ring-primary' : ''} ${siraKaydediliyor ? 'pointer-events-none opacity-60' : ''}`}
+            className={`group flex items-center gap-3 border-b px-3 py-2.5 transition-colors last:border-b-0 hover:bg-muted/40 ${
+                surukleId === kat.id ? 'opacity-40 ring-1 ring-inset ring-primary' : ''
+            } ${siraKaydediliyor ? 'pointer-events-none opacity-60' : ''}`}
         >
-            {/* Sürükleme tutamacı — kart komple sürüklenebilir, ikon göstergesi */}
-            <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+            <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground/40 transition-colors group-hover:text-muted-foreground" />
 
-            {/* Color / Image */}
-            {kat.gorsel ? (
-                <img src={proxyImageUrl(kat.gorsel)} alt={kat.ad} className="size-10 shrink-0 rounded-lg object-cover" />
-            ) : (
-                <div className="size-10 shrink-0 rounded-lg flex items-center justify-center text-sm font-bold"
-                     style={{ background: colorInfo.bg, color: colorInfo.text }}>
-                    {kat.ad.charAt(0).toUpperCase()}
-                </div>
-            )}
+            {/* Sıra numarası: bu ekranın asıl işi sıralama, kaçıncı olduğu
+                görünmeden sürüklemenin sonucu takip edilemiyordu. */}
+            <span className="w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground/60">{sira}</span>
 
-            {/* Info */}
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-medium text-foreground truncate">{kat.ad}</h3>
-                    <span className="text-[11px] text-muted-foreground shrink-0">{kat.urunSayisi || 0} ürün</span>
-                </div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                    {isOrtak ? (
-                        <span className="inline-flex items-center text-[10px] text-blue-600">
-                            <Globe className="size-2.5 mr-0.5" /> Ortak
-                        </span>
-                    ) : (
-                        <span className="inline-flex items-center text-[10px] text-amber-600">
-                            <MapPin className="size-2.5 mr-0.5" /> Şubeye Özel
-                        </span>
-                    )}
-                    {/* Kısıt kartta görünmezse admin hangi kategoriyi kime
-                        kapattığını ancak tek tek açarak anlar. */}
-                    {gizliSayisi > 0 && (
-                        <span className="inline-flex items-center text-[10px] text-destructive"
-                              title={(kat.gizli_subeler || []).join(', ')}>
-                            <EyeOff className="size-2.5 mr-0.5" /> {gizliSayisi} şubede gizli
-                        </span>
-                    )}
-                    {kat.renk && (
-                        <span className="inline-block size-2.5 rounded-full border border-black/10" style={{ background: kat.renk }} />
-                    )}
-                </div>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{kat.ad}</span>
+
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{kat.urunSayisi || 0} ürün</span>
+
+            {/* Gerçekten davranışı değiştiren iki ayar; yoksa hiç yer kaplamıyor. */}
+            <div className="flex shrink-0 items-center gap-1.5">
+                {kat.menuden_cikarilamaz && (
+                    <Badge variant="outline" className="gap-1 border-blue-200 bg-blue-50 text-blue-700"
+                           title="Şube bu kategorideki ürünleri menüsünden çıkaramaz">
+                        <Lock className="size-2.5" /> Çıkarılamaz
+                    </Badge>
+                )}
+                {gizliSayisi > 0 && (
+                    <Badge variant="outline" className="gap-1 border-destructive/30 bg-destructive/5 text-destructive"
+                           title={(kat.gizli_subeler || []).join(', ')}>
+                        <EyeOff className="size-2.5" /> {gizliSayisi} şubede gizli
+                    </Badge>
+                )}
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex shrink-0 gap-0.5">
                 <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-foreground" onClick={() => onDuzenle(kat)} title="Düzenle">
-                    <Pencil className="size-3" />
+                    <Pencil className="size-3.5" />
                 </Button>
                 <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => onSil(kat)} title="Sil">
-                    <Trash2 className="size-3" />
+                    <Trash2 className="size-3.5" />
                 </Button>
             </div>
         </div>
@@ -111,14 +96,10 @@ export default function CategoriesPage() {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState(null);
-    const [form, setForm] = useState({ ad: '', sira: '', tur: 'ortak', renk: '#dbeafe', gorsel: '', gizli_subeler: [], menuden_cikarilamaz: false });
+    const [form, setForm] = useState({ ad: '', sira: '', gizli_subeler: [], menuden_cikarilamaz: false });
     const [subeler, setSubeler] = useState([]);
     const [saving, setSaving] = useState(false);
     const [replaceState, setReplaceState] = useState(null);
-    const [uploading, setUploading] = useState(false);
-    const [showMediaLibrary, setShowMediaLibrary] = useState(false);
-    const [loadingMedia, setLoadingMedia] = useState(false);
-    const [mediaImages, setMediaImages] = useState([]);
     const [surukleId, setSurukleId] = useState(null);
     const [siraKaydediliyor, setSiraKaydediliyor] = useState(false);
     const siraRef = useRef([]); // sürükleme sırasında oluşan güncel sıra (id dizisi)
@@ -211,15 +192,15 @@ export default function CategoriesPage() {
         catch (err) { console.error('Şubeler yüklenemedi:', err); }
     }
 
-    function openAdd() { setEditing(null); setForm({ ad: '', sira: '', tur: 'ortak', renk: '#dbeafe', gorsel: '', gizli_subeler: [], menuden_cikarilamaz: false }); setShowModal(true); }
-    function openEdit(kat) { setEditing(kat); setForm({ ad: kat.ad, sira: kat.sira || '', tur: kat.tur || 'ortak', renk: kat.renk || '#dbeafe', gorsel: kat.gorsel || '', gizli_subeler: kat.gizli_subeler || [], menuden_cikarilamaz: !!kat.menuden_cikarilamaz }); setShowModal(true); }
-    function closeModal() { setShowModal(false); setEditing(null); setShowMediaLibrary(false); }
+    function openAdd() { setEditing(null); setForm({ ad: '', sira: '', gizli_subeler: [], menuden_cikarilamaz: false }); setShowModal(true); }
+    function openEdit(kat) { setEditing(kat); setForm({ ad: kat.ad, sira: kat.sira || '', gizli_subeler: kat.gizli_subeler || [], menuden_cikarilamaz: !!kat.menuden_cikarilamaz }); setShowModal(true); }
+    function closeModal() { setShowModal(false); setEditing(null); }
 
     async function handleSubmit(e) {
         e.preventDefault();
         setSaving(true);
         try {
-            const payload = { ad: form.ad, tur: form.tur, renk: form.renk, gorsel: form.gorsel || '', gizli_subeler: form.tur === 'sube_ozel' ? [] : (form.gizli_subeler || []), menuden_cikarilamaz: !!form.menuden_cikarilamaz };
+            const payload = { ad: form.ad, gizli_subeler: form.gizli_subeler || [], menuden_cikarilamaz: !!form.menuden_cikarilamaz };
             if (form.sira !== '' && form.sira !== undefined) payload.sira = Number(form.sira);
             if (editing) { await api.put(`/categories/${editing.id}`, payload); }
             else { await api.post('/categories', payload); }
@@ -265,37 +246,6 @@ export default function CategoriesPage() {
         }
     }
 
-    async function handleImageUpload(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        setUploading(true);
-        try {
-            const formData = new FormData();
-            formData.append('image', await gorseliWebpYap(file));
-            const { data } = await api.post('/upload/image', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
-            setForm((prev) => ({ ...prev, gorsel: data.url }));
-            toast.success('Görsel yüklendi');
-        } catch (err) {
-            toast.error('Görsel yüklenemedi');
-        }
-        setUploading(false);
-    }
-
-    async function loadMediaImages() {
-        setLoadingMedia(true);
-        try {
-            const { data } = await api.get('/media');
-            setMediaImages(data.medyalar || []);
-        } catch { toast.error('Görseller yüklenemedi'); }
-        setLoadingMedia(false);
-    }
-
-    function selectFromLibrary(url) {
-        setForm((prev) => ({ ...prev, gorsel: url }));
-        setShowMediaLibrary(false);
-    }
 
     // ── Sürükle-bırak ile sıralama ──
     // Menü kategorileri `sira` alanına göre listeliyor (menu-builder.js) ama bu
@@ -332,8 +282,6 @@ export default function CategoriesPage() {
         setSiraKaydediliyor(false);
     }
 
-    const ortakKategoriler = kategoriler.filter(k => (k.tur || 'ortak') === 'ortak');
-    const subeKategoriler = kategoriler.filter(k => k.tur === 'sube_ozel');
 
     // Karta geçilen ortak alanlar — iki listede de aynı
     const kartProplari = {
@@ -384,37 +332,15 @@ export default function CategoriesPage() {
                             : 'Kartları sürükleyerek sıralayın — bu sıra QR menüsünde de geçerli olur.'}
                     </p>
 
-                    {/* Ortak Kategoriler */}
-                    {ortakKategoriler.length > 0 && (
-                        <div>
-                            <div className="flex items-center gap-2 mb-2">
-                                <Globe className="size-3.5 text-blue-600" />
-                                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ortak Kategoriler</h2>
-                                <span className="text-[10px] text-muted-foreground">({ortakKategoriler.length})</span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                {ortakKategoriler.map((kat) => (
-                                    <KategoriCard key={kat.id} kat={kat} {...kartProplari} />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Şubeye Özel Kategoriler */}
-                    {subeKategoriler.length > 0 && (
-                        <div>
-                            <div className="flex items-center gap-2 mb-2">
-                                <MapPin className="size-3.5 text-amber-600" />
-                                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Şubeye Özel</h2>
-                                <span className="text-[10px] text-muted-foreground">({subeKategoriler.length})</span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                {subeKategoriler.map((kat) => (
-                                    <KategoriCard key={kat.id} kat={kat} {...kartProplari} />
-                                ))}
-                            </div>
-                        </div>
-                    )}
+                    {/* TEK LİSTE: kategoriler artık tür ayrımına girmiyor.
+                        İki sütunlu ızgara ayrıca sıralamayı belirsiz kılıyordu —
+                        sıra soldan sağa mı yukarıdan aşağı mı, bakan anlamıyordu.
+                        Bu ekranın işi sıralama olduğu için tek sütun. */}
+                    <div className="rounded-lg border">
+                        {kategoriler.map((kat, i) => (
+                            <KategoriCard key={kat.id} kat={kat} sira={i + 1} {...kartProplari} />
+                        ))}
+                    </div>
                 </div>
             )}
 
@@ -506,106 +432,26 @@ export default function CategoriesPage() {
                     </DialogHeader>
                     <form onSubmit={handleSubmit} className="flex flex-col">
                         <div className="px-5 py-4 flex flex-col gap-4">
-                            {/* Görsel */}
-                            <div className="space-y-2">
-                                <Label className="text-xs font-medium">Görsel</Label>
-                                {form.gorsel ? (
-                                    <div className="flex items-center gap-3">
-                                        <div className="relative">
-                                            <img src={proxyImageUrl(form.gorsel)} alt="Önizleme" className="size-20 rounded-lg object-cover border" />
-                                            <button type="button" onClick={() => { setForm({ ...form, gorsel: '' }); }}
-                                                className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-destructive text-white text-xs">
-                                                <X className="size-2.5" />
-                                            </button>
-                                        </div>
-                                        <Button type="button" variant="outline" size="sm" className="text-xs h-7" onClick={() => { setShowMediaLibrary(true); loadMediaImages(); }}>
-                                            <Images className="size-3 mr-1" />Değiştir
-                                        </Button>
-                                    </div>
-                                ) : (
-                                    <div className="flex gap-2">
-                                        <Button type="button" variant="outline" size="sm" className="flex-1 text-xs h-8" onClick={() => document.getElementById('catImageInput').click()}>
-                                            <ImagePlus className="size-3.5 mr-1.5" />Yeni Yükle
-                                        </Button>
-                                        <Button type="button" variant="outline" size="sm" className="flex-1 text-xs h-8" onClick={() => { setShowMediaLibrary(true); loadMediaImages(); }}>
-                                            <Images className="size-3.5 mr-1.5" />Kütüphaneden
-                                        </Button>
-                                    </div>
-                                )}
-                                <input id="catImageInput" type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handleImageUpload} className="hidden" />
-                                {showMediaLibrary && (
-                                    <div className="mt-2 flex max-h-60 flex-col rounded-md border bg-muted/30 p-3">
-                                        <div className="mb-2 flex items-center justify-between">
-                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Görsel Kütüphanesi</span>
-                                            <div className="flex gap-1.5">
-                                                <Button type="button" size="sm" className="h-5 text-[10px] px-2" onClick={() => document.getElementById('catImageInput').click()}>+ Yükle</Button>
-                                                <Button type="button" size="sm" variant="outline" className="h-5 text-[10px] px-2" onClick={() => setShowMediaLibrary(false)}>Kapat</Button>
-                                            </div>
-                                        </div>
-                                        {loadingMedia ? (
-                                            <p className="py-5 text-center text-xs text-muted-foreground">Yükleniyor...</p>
-                                        ) : mediaImages.length === 0 ? (
-                                            <p className="py-5 text-center text-xs text-muted-foreground">Henüz görsel yok.</p>
-                                        ) : (
-                                            <div className="grid flex-1 grid-cols-[repeat(auto-fill,minmax(70px,1fr))] gap-1.5 overflow-y-auto">
-                                                {mediaImages.map((img) => (
-                                                    <img key={img.id} src={proxyImageUrl(img.url)} alt={img.ad} onClick={() => selectFromLibrary(img.url)}
-                                                        className={`aspect-square w-full cursor-pointer rounded-md object-cover ${form.gorsel === img.url ? 'ring-2 ring-primary opacity-100' : 'opacity-70 hover:opacity-100'}`} />
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-
                             {/* Ad */}
                             <div className="space-y-1.5">
                                 <Label className="text-xs font-medium">Kategori Adı</Label>
                                 <Input type="text" value={form.ad} onChange={(e) => setForm({ ...form, ad: e.target.value })} placeholder="örn: Tatlılar" required autoFocus />
                             </div>
 
-                            {/* Tür */}
                             <div className="space-y-1.5">
-                                <Label className="text-xs font-medium">Tür</Label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button type="button" onClick={() => setForm({ ...form, tur: 'ortak' })}
-                                        className={`flex items-center gap-2 px-3 py-2.5 rounded-md border text-xs font-medium transition-colors ${form.tur === 'ortak' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-border bg-card text-muted-foreground hover:bg-muted/50'}`}>
-                                        <Globe className="size-3.5" />
-                                        <div className="text-left">
-                                            <div>Ortak</div>
-                                            <div className="text-[10px] font-normal opacity-70">Tüm şubeler</div>
-                                        </div>
-                                    </button>
-                                    <button type="button" onClick={() => setForm({ ...form, tur: 'sube_ozel' })}
-                                        className={`flex items-center gap-2 px-3 py-2.5 rounded-md border text-xs font-medium transition-colors ${form.tur === 'sube_ozel' ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-border bg-card text-muted-foreground hover:bg-muted/50'}`}>
-                                        <MapPin className="size-3.5" />
-                                        <div className="text-left">
-                                            <div>Şubeye Özel</div>
-                                            <div className="text-[10px] font-normal opacity-70">Tek şube</div>
-                                        </div>
-                                    </button>
-                                </div>
+                                <Label className="text-xs font-medium">
+                                    Bu kategoriyi göremeyecek şubeler
+                                    <span className="ml-1 font-normal text-muted-foreground">
+                                        — kategorideki tüm ürünler o şubelerde gizlenir
+                                    </span>
+                                </Label>
+                                <SubeCokluSecici
+                                    subeler={subeler}
+                                    secili={form.gizli_subeler || []}
+                                    onChange={(v) => setForm({ ...form, gizli_subeler: v })}
+                                    placeholder="Tüm şubeler görebilir"
+                                />
                             </div>
-
-                            {/* Şube kısıtı — yalnızca ortak kategoride anlamlı.
-                                Şubeye özel kategori zaten tek şubenin; ona ayrıca
-                                "göremeyecek şubeler" sormak kafa karıştırır. */}
-                            {form.tur !== 'sube_ozel' && (
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs font-medium">
-                                        Bu kategoriyi göremeyecek şubeler
-                                        <span className="ml-1 font-normal text-muted-foreground">
-                                            — kategorideki tüm ürünler o şubelerde gizlenir
-                                        </span>
-                                    </Label>
-                                    <SubeCokluSecici
-                                        subeler={subeler}
-                                        secili={form.gizli_subeler || []}
-                                        onChange={(v) => setForm({ ...form, gizli_subeler: v })}
-                                        placeholder="Tüm şubeler görebilir"
-                                    />
-                                </div>
-                            )}
 
                             {/* Şube bu kategoride ürünü menüden çıkarabilsin mi.
                                 Çekirdek kategorilerde (ör. Soğuk Kadayıf) merkez
@@ -627,17 +473,6 @@ export default function CategoriesPage() {
                                 </span>
                             </label>
 
-                            {/* Renk */}
-                            <div className="space-y-1.5">
-                                <Label className="text-xs font-medium">Renk</Label>
-                                <div className="flex flex-wrap gap-2">
-                                    {colorPalette.map((c) => (
-                                        <button key={c.bg} type="button" title={c.label} onClick={() => setForm({ ...form, renk: c.bg })}
-                                            className="size-7 rounded-full transition-transform"
-                                            style={{ background: c.bg, border: form.renk === c.bg ? `3px solid ${c.text}` : '2px solid transparent', transform: form.renk === c.bg ? 'scale(1.15)' : 'scale(1)' }} />
-                                    ))}
-                                </div>
-                            </div>
                         </div>
                         <DialogFooter className="px-5 py-3 border-t">
                             <Button type="button" variant="outline" size="sm" onClick={closeModal}>İptal</Button>
