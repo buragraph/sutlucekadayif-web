@@ -5,6 +5,7 @@ import { Toaster } from '@/components/ui/sonner';
 import ProtectedRoute from './shared/components/ProtectedRoute';
 import Layout from './shared/components/Layout';
 import MenuPage from './modules/qr-menu/pages/MenuPage';
+import SikayetTakipPage from './modules/qr-menu/pages/SikayetTakipPage';
 import LoginPage from './modules/qr-menu/pages/LoginPage';
 import ProductsPage from './modules/qr-menu/pages/ProductsPage';
 import Dashboard from './modules/qr-menu/pages/Dashboard';
@@ -68,6 +69,11 @@ export default function App() {
             <Route path="/admin/butce-kampanyalari" element={<BudgetCampaignsPage />} />
             <Route path="/admin/butce-bildirim" element={<BudgetSubmitPage />} />
           </Route>
+
+          {/* Şikayet durumu sorgulama — HERKESE AÇIK, giriş istemez.
+              `/:subeSlug`ten ÖNCE: statik yol dinamik olanı yenmeli, yoksa
+              "sikayet-takip" bir şube slug'ı sanılır. */}
+          <Route path="/sikayet-takip" element={<SikayetTakipPage />} />
 
           {/* Müşteri Menü Sayfası - QR ile açılır */}
           <Route path="/:subeSlug" element={<MenuPage />} />

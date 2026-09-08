@@ -28,7 +28,7 @@ export default function GeriBildirimModal({ subeSlug, subeAd, onClose }) {
     const [form, setForm] = useState(BOS);
     const [gonderiliyor, setGonderiliyor] = useState(false);
     const [hata, setHata] = useState('');
-    const [basarili, setBasarili] = useState(false);
+    const [takipNo, setTakipNo] = useState(null);   // dolu ise gönderim başarılı
 
     // ESC ile kapat + arka planı kilitle
     useEffect(() => {
@@ -58,8 +58,10 @@ export default function GeriBildirimModal({ subeSlug, subeAd, onClose }) {
 
         setGonderiliyor(true);
         try {
-            await api.post('/geribildirim', { ...form, subeSlug });
-            setBasarili(true);
+            const { data } = await api.post('/geribildirim', { ...form, subeSlug });
+            // Kod ekranda kalmalı: e-posta gönderme altyapısı yok, müşterinin
+            // şikayetini sonradan sorgulayabilmesinin TEK yolu bu.
+            setTakipNo(data?.takipNo || '');
         } catch (err) {
             setHata(err.response?.data?.error || 'Gönderilemedi. Lütfen daha sonra tekrar deneyin.');
         }
@@ -72,7 +74,7 @@ export default function GeriBildirimModal({ subeSlug, subeAd, onClose }) {
                 <button className="pm-modal__close" onClick={onClose} aria-label="Kapat"><X size={18} /></button>
 
                 <div className="pm-modal__body">
-                    {basarili ? (
+                    {takipNo !== null ? (
                         <div className="pm-form__success">
                             <span className="pm-form__success-icon">✓</span>
                             <h3 className="pm-modal__name">Geri bildiriminiz alındı</h3>
@@ -80,6 +82,19 @@ export default function GeriBildirimModal({ subeSlug, subeAd, onClose }) {
                                 Bizimle paylaştığınız için teşekkür ederiz. Ekibimiz en kısa sürede
                                 değerlendirip sizinle iletişime geçecek.
                             </p>
+                            {takipNo && (
+                                <div className="pm-form__takip">
+                                    <span className="pm-form__takip-etiket">Takip kodunuz</span>
+                                    <strong className="pm-form__takip-kod">{takipNo}</strong>
+                                    <p className="pm-form__takip-desc">
+                                        Bu kodu not alın. Şikayetinizin durumunu{' '}
+                                        <a href={`/sikayet-takip?kod=${takipNo}`} target="_blank" rel="noopener noreferrer">
+                                            takip sayfasından
+                                        </a>{' '}
+                                        sorgulayabilirsiniz.
+                                    </p>
+                                </div>
+                            )}
                             <button type="button" className="pm-form__submit" onClick={onClose}>Kapat</button>
                         </div>
                     ) : (

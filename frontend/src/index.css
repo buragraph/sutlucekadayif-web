@@ -4057,6 +4057,35 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
 .pm-form__submit:disabled { opacity: 0.6; cursor: default; }
 
 .pm-form__success { text-align: center; padding: 8px 0; }
+
+/* Takip kodu kutusu — gönderim sonrası ekranda kalan TEK iz. Müşteriye
+   e-posta gidemiyor (gönderim altyapısı yok), kod buradan not alınıyor;
+   bu yüzden seçilebilir (user-select) ve iri punto. */
+.pm-form__takip {
+  margin: 16px 0 4px;
+  padding: 14px;
+  border: 1px dashed rgba(8, 69, 41, 0.35);
+  border-radius: 12px;
+  background: rgba(8, 69, 41, 0.04);
+}
+.pm-form__takip-etiket {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+.pm-form__takip-kod {
+  display: block;
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  color: var(--pm-green, #084529);
+  user-select: all;
+}
+.pm-form__takip-desc { margin-top: 8px; font-size: 12px; line-height: 1.5; color: #6b7280; }
+.pm-form__takip-desc a { color: var(--pm-green, #084529); text-decoration: underline; }
 .pm-form__success-icon {
   display: inline-flex;
   align-items: center;
@@ -4340,3 +4369,73 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   .ray-kaydir { scroll-behavior: auto; }
   .ray-sarmal::before, .ray-sarmal::after { transition: none; }
 }
+
+/* ─── Şikayet takip sayfası (herkese açık) ─────────────────────────────
+   Panel dışında duruyor: giriş yok, sidebar yok. Menü sayfasının kağıt
+   tonlarını kullanıyor ki müşteri aynı markada olduğunu anlasın. */
+.pm-takip {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: #f6f1e7;
+}
+.pm-takip__kart {
+  width: 100%;
+  max-width: 460px;
+  padding: 28px 24px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 10px 40px rgba(8, 69, 41, 0.08);
+}
+.pm-takip__baslik { margin: 0; font-size: 24px; color: #084529; font-family: Marcellus, serif; }
+.pm-takip__alt { margin: 6px 0 18px; font-size: 13px; line-height: 1.5; color: #6b7280; }
+.pm-takip__form { display: flex; gap: 8px; }
+.pm-takip__input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid #d9d3c6;
+  border-radius: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 16px;            /* 16px altı iOS'ta odaklanınca sayfayı zoomluyor */
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #fff;
+}
+.pm-takip__input:focus { outline: 2px solid rgba(8, 69, 41, 0.3); outline-offset: 1px; }
+.pm-takip__btn {
+  height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: #084529;
+  color: #f6f1e7;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pm-takip__btn:disabled { opacity: 0.5; cursor: default; }
+.pm-takip__hata { margin-top: 14px; font-size: 13px; color: #b91c1c; }
+.pm-takip__sonuc { margin-top: 20px; padding-top: 18px; border-top: 1px solid #eee7d9; }
+.pm-takip__rozet {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #eef2ff;
+  color: #3730a3;
+}
+.pm-takip__rozet--inceleniyor { background: #fef3c7; color: #92400e; }
+.pm-takip__rozet--cozuldu { background: #d1fae5; color: #065f46; }
+.pm-takip__rozet--kapatildi { background: #f1f5f9; color: #475569; }
+.pm-takip__desc { margin: 10px 0 16px; font-size: 14px; line-height: 1.55; color: #374151; }
+.pm-takip__liste { margin: 0; display: grid; gap: 8px; }
+.pm-takip__liste > div { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.pm-takip__liste dt { color: #6b7280; }
+.pm-takip__liste dd { margin: 0; color: #111827; text-align: right; }
+.pm-takip__mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.04em; }
+.pm-takip__not { margin: 18px 0 0; font-size: 11px; line-height: 1.5; color: #9ca3af; }
