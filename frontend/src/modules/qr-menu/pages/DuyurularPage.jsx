@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -28,7 +29,9 @@ const ONEMLER = [
 
 const BOS = {
     baslik: '', icerik: '', onem: 'bilgi', yayinda: true,
-    baslangic: '', bitis: '', hedefSubeler: [],
+    // `tarihli` yalnızca FORM durumu, sunucuya gitmez (bkz. kaydet). Kapalıyken
+    // duyuru o andan itibaren süresiz yayında; tarih alanları hiç görünmüyor.
+    tarihli: false, baslangic: '', bitis: '', hedefSubeler: [],
 };
 
 const tarihYaz = (d) => {
@@ -73,6 +76,8 @@ export default function DuyurularPage() {
         setForm({
             baslik: d.baslik, icerik: d.icerik || '', onem: d.onem,
             yayinda: d.yayinda,
+            // Kayıtta tarih varsa kutu işaretli açılsın, yoksa kapalı.
+            tarihli: !!(d.baslangic || d.bitis),
             baslangic: tarihGirdi(d.baslangic), bitis: tarihGirdi(d.bitis),
             hedefSubeler: d.hedefSubeler || [],
         });
@@ -82,14 +87,18 @@ export default function DuyurularPage() {
         if (!form.baslik.trim()) { toast.error('Başlık gerekli'); return; }
         setKaydediliyor(true);
         try {
+            const { tarihli, ...alanlar } = form;
             const govde = {
-                ...form,
+                ...alanlar,
                 baslik: form.baslik.trim(),
+                // Tarih kutusu kapalıysa iki alan da TEMİZLENİR: düzenlemede
+                // kutuyu kaldıran kişi "artık süresiz" demek istiyor, eski
+                // tarihlerin sessizce kalması olmaz.
                 // Boş dize null demek: "tarih girilmedi" ile "1970" karışmasın.
-                baslangic: form.baslangic || null,
+                baslangic: tarihli ? (form.baslangic || null) : null,
                 // Bitiş GÜNÜN SONU: 15 Eylül seçen kişi 15 Eylül akşamına kadar
                 // yayında kalmasını bekler, o günün 00:00'ında düşmesini değil.
-                bitis: form.bitis ? `${form.bitis}T23:59:59` : null,
+                bitis: tarihli && form.bitis ? `${form.bitis}T23:59:59` : null,
             };
             if (duzenlenen) await api.put(`/duyurular/${duzenlenen.id}`, govde);
             else await api.post('/duyurular', govde);
@@ -348,22 +357,45 @@ export default function DuyurularPage() {
                                 </p>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="flex flex-col gap-1.5">
-                                    <Label htmlFor="d-bas">Başlangıç</Label>
-                                    <Input id="d-bas" type="date" value={form.baslangic}
-                                        onChange={(e) => setForm((f) => ({ ...f, baslangic: e.target.value }))} />
-                                </div>
-                                <div className="flex flex-col gap-1.5">
-                                    <Label htmlFor="d-bit">Bitiş</Label>
-                                    <Input id="d-bit" type="date" value={form.bitis}
-                                        onChange={(e) => setForm((f) => ({ ...f, bitis: e.target.value }))} />
-                                </div>
+                            {/* Tarih varsayılan olarak KAPALI: normal duyuru "şimdi yayınla,
+                                ben kaldırana kadar dursun" demek. Tarih alanları hep açık
+                                durduğunda doldurulması gerekiyormuş gibi görünüyor ve ileri
+                                tarih seçilince duyuru sessizce görünmez oluyordu. */}
+                            <div className="flex flex-col gap-3 rounded-lg border p-3">
+                                <label className="flex cursor-pointer items-start gap-2.5">
+                                    <Checkbox checked={form.tarihli} className="mt-0.5"
+                                        onCheckedChange={(v) => setForm((f) => ({
+                                            ...f, tarihli: !!v, baslangic: v ? f.baslangic : '', bitis: v ? f.bitis : '',
+                                        }))} />
+                                    <span>
+                                        <span className="text-sm font-medium">Tarih aralığı belirle</span>
+                                        <span className="block text-xs text-muted-foreground">
+                                            İşaretlenmezse duyuru hemen yayınlanır ve siz kaldırana kadar kalır.
+                                        </span>
+                                    </span>
+                                </label>
+
+                                {form.tarihli && (
+                                    <>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="flex flex-col gap-1.5">
+                                                <Label htmlFor="d-bas">Başlangıç</Label>
+                                                <Input id="d-bas" type="date" value={form.baslangic}
+                                                    onChange={(e) => setForm((f) => ({ ...f, baslangic: e.target.value }))} />
+                                            </div>
+                                            <div className="flex flex-col gap-1.5">
+                                                <Label htmlFor="d-bit">Bitiş</Label>
+                                                <Input id="d-bit" type="date" value={form.bitis}
+                                                    onChange={(e) => setForm((f) => ({ ...f, bitis: e.target.value }))} />
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            Başlangıç ileri bir tarihse duyuru <strong>o güne kadar şubelere gitmez</strong>.
+                                            Alanları boş bırakırsanız o uçtan sınırsız olur.
+                                        </p>
+                                    </>
+                                )}
                             </div>
-                            <p className="-mt-2 text-xs text-muted-foreground">
-                                Başlangıç ileri bir tarihse duyuru <strong>o güne kadar şubelere gitmez</strong>.
-                                Hemen yayınlanması için başlangıcı boş bırakın.
-                            </p>
 
                             <div className="flex items-center justify-between rounded-lg border p-3">
                                 <div>
