@@ -131,6 +131,10 @@ export default function DuyurularPage() {
     }
 
     const suresiGecti = (d) => d.bitis && new Date(d.bitis) < new Date();
+    // Başlangıcı ileri tarihli duyuru "yayında" görünüyor ama şubeye HENÜZ
+    // gitmiyor. Rozet olmadan bu fark anlaşılmıyor; duyuru eklenip
+    // dashboard'da görünmeyince hata sanılıyordu.
+    const baslamadi = (d) => d.baslangic && new Date(d.baslangic) > new Date();
 
     return (
         <div className="space-y-4">
@@ -156,10 +160,11 @@ export default function DuyurularPage() {
                     {duyurular.map((d) => {
                         const onem = ONEMLER.find((o) => o.key === d.onem) || ONEMLER[0];
                         const gecti = suresiGecti(d);
+                        const bekliyor = baslamadi(d);
                         const hedef = d.hedefSubeler || [];
                         return (
                             <div key={d.id}
-                                className={`rounded-xl border p-4 transition-colors ${!d.yayinda || gecti ? 'opacity-60' : ''}`}>
+                                className={`rounded-xl border p-4 transition-colors ${!d.yayinda || gecti || bekliyor ? 'opacity-60' : ''}`}>
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div className="min-w-0 flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
@@ -172,6 +177,11 @@ export default function DuyurularPage() {
                                             )}
                                             {gecti && d.yayinda && (
                                                 <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">Süresi geçti</span>
+                                            )}
+                                            {bekliyor && d.yayinda && !gecti && (
+                                                <span className="rounded-md border border-sky-500/40 bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:text-sky-400">
+                                                    {tarihYaz(d.baslangic)} tarihinde yayınlanacak
+                                                </span>
                                             )}
                                         </div>
                                         {d.icerik && (
@@ -351,7 +361,8 @@ export default function DuyurularPage() {
                                 </div>
                             </div>
                             <p className="-mt-2 text-xs text-muted-foreground">
-                                Boş bırakılırsa duyuru hemen yayınlanır ve süresiz kalır.
+                                Başlangıç ileri bir tarihse duyuru <strong>o güne kadar şubelere gitmez</strong>.
+                                Hemen yayınlanması için başlangıcı boş bırakın.
                             </p>
 
                             <div className="flex items-center justify-between rounded-lg border p-3">
