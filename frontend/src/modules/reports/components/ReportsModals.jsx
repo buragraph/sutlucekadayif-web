@@ -312,7 +312,22 @@ export function DataEditModal() {
             reportsApi.fetchDonemVerileri(data.kod, data.baslangic, data.bitis)
                 .then(res => {
                     const c = res.computed; const o = res.overrides || {};
-                    const formatVal = (v) => (v == null || v === '') ? '' : v.toString().replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+                    // Binlik ayracı YALNIZCA tam sayı kısmına uygulanır ve ondalık
+                    // 2 haneye yuvarlanır. Önceki sürüm tüm metne ayraç serpiyordu:
+                    // Meta harcaması kayan nokta gürültüsüyle geldiğinde
+                    // (11470.740000000002 gibi) alan "11.470,740.000.000.002"
+                    // görünüyordu — sayı okunamaz hâle geliyor, kullanıcı da
+                    // kaydın bozuk olduğunu sanıyordu.
+                    const formatVal = (v) => {
+                        if (v == null || v === '') return '';
+                        const n = Number(v);
+                        if (!Number.isFinite(n)) return String(v);
+                        const yuvarlanmis = Math.round(n * 100) / 100;
+                        const [tam, ondalik] = Math.abs(yuvarlanmis).toString().split('.');
+                        const isaret = yuvarlanmis < 0 ? '-' : '';
+                        const binlik = tam.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+                        return isaret + binlik + (ondalik ? ',' + ondalik : '');
+                    };
                     const yeniForm = {
                         deHarcama: formatVal(o.toplamHarcama ?? c.toplamHarcama),
                         deErisim: formatVal(o.toplamErisim ?? c.toplamErisim),
