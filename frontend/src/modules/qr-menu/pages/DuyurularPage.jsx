@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
-import { Megaphone, Plus, Pencil, Trash2, Eye, EyeOff, Store, Check, ChevronsUpDown } from 'lucide-react';
+import { Megaphone, Plus, Pencil, Trash2, Eye, EyeOff, Store, Check, ChevronsUpDown, Users } from 'lucide-react';
 import api from '../../../services/api';
 import { useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,7 @@ export default function DuyurularPage() {
     const [duzenlenen, setDuzenlenen] = useState(null);
     const [kaydediliyor, setKaydediliyor] = useState(false);
     const [subeSecici, setSubeSecici] = useState(false);
+    const [okuyanlar, setOkuyanlar] = useState(null);   // { duyuru, liste } — pencere
 
     const yukle = useCallback(async () => {
         setLoading(true);
@@ -99,6 +100,17 @@ export default function DuyurularPage() {
             toast.error(err.response?.data?.error || 'Kaydedilemedi');
         }
         setKaydediliyor(false);
+    }
+
+    async function okuyanlariAc(d) {
+        setOkuyanlar({ duyuru: d, liste: null });
+        try {
+            const { data } = await api.get(`/duyurular/${d.id}/okuyanlar`);
+            setOkuyanlar({ duyuru: d, liste: data.okuyanlar || [] });
+        } catch {
+            toast.error('Okuyanlar getirilemedi');
+            setOkuyanlar(null);
+        }
     }
 
     async function yayinDegistir(d) {
@@ -180,6 +192,13 @@ export default function DuyurularPage() {
                                                 </span>
                                             )}
                                             {d.olusturan && <span>{d.olusturan}</span>}
+                                            {/* Okunma sayısı: hedefi tüm şubeler olan duyuruda
+                                                payda şube sayısı, hedefli duyuruda hedef sayısı. */}
+                                            <button type="button" onClick={() => okuyanlariAc(d)}
+                                                className="inline-flex items-center gap-1 hover:text-foreground hover:underline">
+                                                <Users className="size-3" />
+                                                {d.okuyanSube || 0}/{hedef.length === 0 ? subeler.length : hedef.length} şube okudu
+                                            </button>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1">
@@ -204,6 +223,33 @@ export default function DuyurularPage() {
                     })}
                 </div>
             )}
+
+            <Dialog open={!!okuyanlar} onOpenChange={(a) => !a && setOkuyanlar(null)}>
+                <DialogContent className="max-w-md [&>*]:min-w-0">
+                    <DialogHeader>
+                        <DialogTitle className="truncate">{okuyanlar?.duyuru?.baslik}</DialogTitle>
+                    </DialogHeader>
+                    {okuyanlar?.liste === null ? (
+                        <div className="flex justify-center py-8"><Spinner className="size-6" /></div>
+                    ) : okuyanlar?.liste?.length === 0 ? (
+                        <p className="py-8 text-center text-sm text-muted-foreground">Henüz kimse okumadı.</p>
+                    ) : (
+                        <div className="flex max-h-[50vh] flex-col gap-1.5 overflow-y-auto">
+                            {(okuyanlar?.liste || []).map((o, i) => (
+                                <div key={`${o.kullanici}-${i}`} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
+                                    <div className="min-w-0">
+                                        <p className="truncate font-medium text-foreground">{subeAdi(o.subeKod) || '—'}</p>
+                                        <p className="truncate text-xs text-muted-foreground">{o.kullanici}</p>
+                                    </div>
+                                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                                        {tarihYaz(o.zaman)}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={!!form} onOpenChange={(a) => !a && setForm(null)}>
                 <DialogContent className="max-w-lg [&>*]:min-w-0">

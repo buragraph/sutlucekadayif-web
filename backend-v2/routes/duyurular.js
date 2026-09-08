@@ -84,7 +84,76 @@ router.get(
             return sube ? hedef.includes(sube) : false;
         });
 
-        res.json({ duyurular: gorunen.map(yanit) });
+        // Okundu bayrağı: kartın "okunmuşlar" bölümüne düşüp düşmeyeceğini
+        // istemci buradan biliyor. Tek sorgu — duyuru başına ayrı okuma
+        // kontrolü 20 duyuruda 20 alt-istek ederdi.
+        const idler = gorunen.map((d) => d.id);
+        let okunanlar = new Set();
+        if (idler.length > 0) {
+            const { data: okuma } = await supabase
+                .from('duyuru_okuma').select('duyuru_id')
+                .eq('kullanici', req.user.uid).in('duyuru_id', idler);
+            okunanlar = new Set((okuma || []).map((o) => o.duyuru_id));
+        }
+
+        res.json({
+            duyurular: gorunen.map((d) => ({ ...yanit(d), okundu: okunanlar.has(d.id) })),
+        });
+    })
+);
+
+/**
+ * POST /api/duyurular/:id/okundu
+ * Duyuruyu okuyan KULLANICI için işaretler (şube için değil — bir şubede
+ * birden çok yetkili olabiliyor, bkz. 0022_duyuru_okuma.sql).
+ *
+ * Tekrar basmak hata değil: upsert, aynı satırı tazeler.
+ */
+router.post(
+    '/:id/okundu',
+    verifyToken,
+    requirePermission('duyuru.view'),
+    asyncHandler(async (req, res) => {
+        const { data: duyuru } = await supabase
+            .from('duyurular').select('id').eq('id', req.params.id).maybeSingle();
+        if (!duyuru) return res.status(404).json({ error: 'Duyuru bulunamadı' });
+
+        veriYaDaHata(
+            await supabase.from('duyuru_okuma').upsert({
+                duyuru_id: req.params.id,
+                kullanici: req.user.uid,
+                kullanici_eposta: req.user.email || null,
+                sube_kod: req.user.subeSlug || null,
+                zaman: new Date().toISOString(),
+            }, { onConflict: 'duyuru_id,kullanici' }),
+            'okundu işareti yazılamadı'
+        );
+        res.json({ success: true });
+    })
+);
+
+/**
+ * GET /api/duyurular/:id/okuyanlar
+ * Bir duyuruyu kimlerin okuduğu — merkezin takibi için.
+ */
+router.get(
+    '/:id/okuyanlar',
+    verifyToken,
+    requirePermission('duyuru.manage'),
+    asyncHandler(async (req, res) => {
+        const { data, error } = await supabase
+            .from('duyuru_okuma').select('*')
+            .eq('duyuru_id', req.params.id)
+            .order('zaman', { ascending: false }).limit(500);
+        if (error) throw new Error(error.message);
+
+        res.json({
+            okuyanlar: (data || []).map((o) => ({
+                kullanici: o.kullanici_eposta || o.kullanici,
+                subeKod: o.sube_kod,
+                zaman: isoZ(o.zaman),
+            })),
+        });
     })
 );
 
@@ -100,7 +169,18 @@ router.get(
         const { data, error } = await supabase
             .from('duyurular').select('*').order('olusturma', { ascending: false }).limit(200);
         if (error) throw new Error(error.message);
-        res.json({ duyurular: (data || []).map(yanit) });
+
+        // Okunma sayıları TEK RPC ile (bkz. 0022_duyuru_okuma.sql): duyuru
+        // başına count sorgusu 20 duyuruda 20 alt-istek ederdi.
+        const { data: sayilar } = await supabase.rpc('duyuru_okuma_sayilari');
+        const harita = new Map((sayilar || []).map((s) => [s.duyuru_id, s]));
+
+        res.json({
+            duyurular: (data || []).map((d) => {
+                const s = harita.get(d.id);
+                return { ...yanit(d), okuyan: s?.adet || 0, okuyanSube: s?.sube_adedi || 0 };
+            }),
+        });
     })
 );
 
