@@ -88,9 +88,18 @@ function kartlariAyikla(html) {
         // uzunlukta kesilse, tarihi olmayan kartın tarihi diye sonrakinin
         // tarihi alınırdı.
         const son = i + 1 < eslesmeler.length ? eslesmeler[i + 1].index : m.index + 3000;
-        const t = html.slice(m.index, son)
+        const pencere = html.slice(m.index, son);
+        const t = pencere
             .match(/aria-label="(\d{1,2} [A-Za-zçğıöşüÇĞİÖŞÜ]+(?: \d{4})? \d{2}:\d{2})"/);
-        return { baslik: cozHtml(m[1]), yol: m[2], tarih: t ? tarihCoz(t[1]) : null };
+        // Şikayetçinin görünen adı — Şikayetvar yalnızca ilk adı yayınlıyor,
+        // e-posta/telefon vermiyor. Yine de "Gönderen" sütunu boş kalmasın:
+        // masada bir isim görmek, "—" görmekten çok farklı.
+        const ad = pencere.match(/class="font-bold" aria-label="([^"]+)"/);
+        return {
+            baslik: cozHtml(m[1]), yol: m[2],
+            tarih: t ? tarihCoz(t[1]) : null,
+            ad: ad ? cozHtml(ad[1]) : '',
+        };
     });
 }
 
@@ -161,7 +170,7 @@ let eklendi = 0; let vardi = 0; let hata = 0;
 for (const k of tekil) {
     // Konu sayfası > başlık tahmini: ilki Şikayetvar'ın kendi etiketi.
     const subeKod = konuSubesi.get(k.yol) || subeTahmini(k.baslik, subeler || []);
-    console.log(`${(k.tarih || '').slice(0, 10).padEnd(11)}${subeKod ? subeKod.padEnd(22) : '(şube tahmin edilemedi)'.padEnd(22)} ${k.baslik.slice(0, 55)}`);
+    console.log(`${(k.tarih || '').slice(0, 10).padEnd(11)}${(k.ad || '—').padEnd(12)}${subeKod ? subeKod.padEnd(20) : '(şube yok)'.padEnd(20)} ${k.baslik.slice(0, 45)}`);
     if (!yaz) continue;
 
     const { data: sube } = subeKod
@@ -174,6 +183,8 @@ for (const k of tekil) {
         sube_ad: sube?.ad || null,
         // Şikayetvar'da konu alanı yok; sınıflandırmayı merkez masada yapıyor.
         kategori: 'diger',
+        // Şikayetvar yalnızca görünen adı yayınlıyor; soyad/e-posta/telefon yok.
+        ad: k.ad || '',
         // Kart yalnızca başlık ve kırpılmış özet veriyor; tam metin detay
         // sayfasında. Başlığı mesaj olarak yazıp bağlantıyı bırakıyoruz.
         mesaj: k.baslik,

@@ -353,8 +353,13 @@ export default function GeriBildirimPage() {
                                 <TableRow key={b.id} className="cursor-pointer" onClick={() => detayAc(b)}>
                                     <TableCell>
                                         <div className="font-medium">{b.ad || '—'} {b.soyad}</div>
+                                        {/* Dış kaynakta iletişim bilgisi YOK: Şikayetvar
+                                            yalnızca görünen adı yayınlıyor. Boş bir "—"
+                                            yerine bunu söylemek, "eksik veri mi çekilmiş"
+                                            sorusunu baştan kapatıyor. */}
                                         <div className="text-xs text-muted-foreground">
-                                            {b.email || b.telefon || '—'}
+                                            {b.email || b.telefon
+                                                || ((b.kaynak || 'qr') === 'qr' ? '—' : 'iletişim bilgisi yok')}
                                         </div>
                                     </TableCell>
                                     <TableCell>
