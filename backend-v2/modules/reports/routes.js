@@ -433,6 +433,53 @@ router.get('/sube/:kod/donemler', verifyToken, requirePermission('reports.view')
   }
 });
 
+/**
+ * GET /api/reports/sube/:kod/ozet-kartlar
+ * Şube dashboard'undaki sayı kartları — SON TAMAMLANMIŞ dönemin metrikleri.
+ *
+ * NEDEN SON TAMAMLANMIŞ DÖNEM: içinde bulunulan dönem yarım; "42.850 kişiye
+ * ulaştınız" derken henüz bitmemiş bir dönemin kısmi sayısını göstermek
+ * şubeye düşüyormuş gibi gelir. Grafik de aynı kuralı kullanıyor.
+ *
+ * QR menü görüntülenmesi ve Google puanı BURADA YOK: ikisi de hiçbir yerde
+ * ölçülmüyor (bkz. yanıttaki null alanlar). Uydurma sayı basmak yerine
+ * alanlar boş dönüyor, ekran o kartları çizmiyor.
+ */
+router.get('/sube/:kod/ozet-kartlar', verifyToken, requirePermission('reports.view'), async (req, res) => {
+  try {
+    const { kod } = req.params;
+    if (!ensureBranchAccess(req, res, kod)) return;
+
+    const bugun = new Date().toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from('donemler')
+      .select('baslangic, bitis, erisim, gosterim, tiklama, google_yol_tarifi, google_harita, google_arama, google_menu_tiklama, harcama')
+      .eq('sube_kod', kod)
+      .lt('bitis', bugun)
+      .order('bitis', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return res.json({ donem: null, kartlar: null });
+
+    const sayi = (v) => (v == null ? null : Number(v));
+    res.json({
+      donem: { baslangic: data.baslangic, bitis: data.bitis },
+      kartlar: {
+        erisim: sayi(data.erisim),
+        gosterim: sayi(data.gosterim),
+        yolTarifi: sayi(data.google_yol_tarifi),
+        haritaGoruntulenme: sayi(data.google_harita),
+        googleMenuTiklama: sayi(data.google_menu_tiklama),
+        harcama: sayi(data.harcama),
+      },
+    });
+  } catch (err) {
+    console.error('[Reports]', err);
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
+  }
+});
+
 router.post('/sube', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     const { kod, ad, link } = req.body;
