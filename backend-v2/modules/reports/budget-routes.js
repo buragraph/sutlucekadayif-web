@@ -336,10 +336,16 @@ router.put(
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { baslik, son_tarih, bakiye_secenekleri, iban, alici_adi, odeme_notu } = req.body;
+      const { baslik, son_tarih, bakiye_secenekleri, iban, alici_adi, odeme_notu, durum } = req.body;
 
       if (son_tarih !== undefined && !isGecerliTarih(son_tarih)) {
         return res.status(400).json({ error: 'Son tarih geçerli bir YYYY-MM-DD tarihi olmalıdır.' });
+      }
+      // Kapanmış kampanyayı geri açabilmek için: eskiden `durum` hiçbir uçtan
+      // yazılamıyordu, kapanan kampanya kalıcı olarak kapalıydı (aynı id ile
+      // yeniden oluşturmak da mümkün değil — id birincil anahtar).
+      if (durum !== undefined && !['aktif', 'tamamlandi'].includes(durum)) {
+        return res.status(400).json({ error: 'Durum yalnızca "aktif" ya da "tamamlandi" olabilir.' });
       }
 
       const kampanya = await getKampanya(id);
@@ -354,6 +360,7 @@ router.put(
       if (iban !== undefined) updates.iban = iban;
       if (alici_adi !== undefined) updates.alici_adi = alici_adi;
       if (odeme_notu !== undefined) updates.odeme_notu = odeme_notu;
+      if (durum !== undefined) updates.durum = durum;
 
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: 'Güncellenecek alan bulunamadı.' });
@@ -408,6 +415,8 @@ router.post(
       const yanitlar = kampanya.yanitlar || {};
       const onaylananSubeler = [];
       const yazimHatalari = [];
+      let kampanyaKapandi = false;
+      let bekleyenSayisi = 0;
 
       // Gönderilmiş yanıtlar arasından tutarı hâlâ menü seçeneklerinden biri ve
       // sonlu/pozitif/tavan altında olanlar onaya alınır (savunma derinliği).
@@ -460,10 +469,25 @@ router.post(
           throw new Error(`Bazı şubeler onaylanamadı — ${yazimHatalari.join(' · ')}`);
         }
 
-        veriYaDaHata(
-          await supabase.from('kampanyalar').update({ durum: 'tamamlandi' }).eq('id', id),
-          'kampanya durumu yazılamadı'
-        );
+        // KAMPANYA YALNIZCA HERKES CEVAP VERDİYSE KAPANIR.
+        // Önceki hâlde toplu onay, cevap vermemiş şube olsa da durumu
+        // 'tamamlandi' yapıyordu; o an itibarıyla kalan şubeler bildirim
+        // yapamaz hâle geliyordu (gönderim ucu "aktif değil" diyor, sayfa
+        // kampanyayı hiç göstermiyor) ve geri açmanın yolu yoktu.
+        // Merkez 40 ödeme geldiğinde onayladığında kalan 47 şube sessizce
+        // dışarıda kalıyordu.
+        const guncelKampanya = await getKampanya(id);
+        const bekleyenKaldi = Object.values(guncelKampanya?.yanitlar || {})
+          .some((y) => y?.durum === 'bekliyor');
+        if (!bekleyenKaldi) {
+          veriYaDaHata(
+            await supabase.from('kampanyalar').update({ durum: 'tamamlandi' }).eq('id', id),
+            'kampanya durumu yazılamadı'
+          );
+        }
+        kampanyaKapandi = !bekleyenKaldi;
+        bekleyenSayisi = Object.values(guncelKampanya?.yanitlar || {})
+          .filter((y) => y?.durum === 'bekliyor').length;
       } finally {
         if (onaylananSubeler.length > 0) {
           invalidateReportCache();
@@ -490,7 +514,14 @@ router.post(
         }
       }).catch(err => console.error('[Budget] Otomatik Meta çekim genel hatası:', err));
 
-      res.json({ success: true, onaylanan: onaylananSubeler.length });
+      // İstemci "kampanya kapandı mı, kaç şube bekliyor" bilgisini kullanıcıya
+      // söylemeli: onay sonrası toplamanın devam edip etmediği belirsiz kalmasın.
+      res.json({
+        success: true,
+        onaylanan: onaylananSubeler.length,
+        kampanyaKapandi,
+        bekleyen: bekleyenSayisi,
+      });
     } catch (err) {
       console.error('[Budget] Toplu onaylama hatası:', err);
       res.status(500).json({ error: err.message });

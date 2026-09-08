@@ -13,7 +13,7 @@ import {
 import {
     ArrowLeft, Plus, Loader2, Trash2, CheckCircle2,
     Clock, Users, Wallet, FileText, ExternalLink, ArrowUpDown, Check, Pencil, FileDown,
-    Banknote, Receipt, CircleDollarSign, Building2,
+    Banknote, Receipt, CircleDollarSign, Building2, RotateCcw,
 } from 'lucide-react';
 import { format, differenceInDays, isPast, parseISO } from 'date-fns';
 import { tr } from 'date-fns/locale';
@@ -125,14 +125,40 @@ export default function BudgetCampaignsPage() {
 
         setApprovingAll(true);
         try {
-            await api.post(`/reports/butce-kampanya/${selectedCampaign}/onayla`);
-            toast.success('Tüm bildirimler onaylandı.');
+            const { data } = await api.post(`/reports/butce-kampanya/${selectedCampaign}/onayla`);
+            // Toplama devam mı ediyor, kampanya kapandı mı — bu ayrım artık
+            // önemli: onay, cevap vermemiş şube kaldığı sürece kampanyayı
+            // kapatmıyor (bkz. budget-routes.js toplu onay).
+            toast.success(data?.kampanyaKapandi
+                ? 'Tüm bildirimler onaylandı, kampanya kapandı.'
+                : `Bildirimler onaylandı. ${data?.bekleyen ?? 0} şube hâlâ cevap vermedi, kampanya açık kalıyor.`);
             fetchDetail(selectedCampaign);
             fetchCampaigns();
         } catch (err) {
             toast.error(err.response?.data?.error || 'Onaylama başarısız.');
         } finally {
             setApprovingAll(false);
+        }
+    };
+
+    /**
+     * Kapanmış kampanyayı yeniden açar.
+     *
+     * Kapanan kampanyaya bildirim gönderilemiyor. Eskiden dönüş yolu yoktu:
+     * durum hiçbir uçtan yazılamıyordu ve aynı id ile yeni kampanya
+     * açılamıyordu (id birincil anahtar). Yanlışlıkla kapanan bir dönem
+     * kalıcı olarak kapalı kalıyordu.
+     */
+    const handleYenidenAc = async () => {
+        const ok = await confirm('Kampanya yeniden açılsın mı? Cevap vermemiş şubeler tekrar bildirim yapabilir.');
+        if (!ok) return;
+        try {
+            await api.put(`/reports/butce-kampanya/${selectedCampaign}`, { durum: 'aktif' });
+            toast.success('Kampanya yeniden açıldı.');
+            fetchDetail(selectedCampaign);
+            fetchCampaigns();
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Kampanya açılamadı.');
         }
     };
 
@@ -611,6 +637,13 @@ export default function BudgetCampaignsPage() {
                         <Button variant="outline" onClick={() => { setEditKampanya(kampanya); setModalOpen(true); }}>
                             <Pencil className="w-4 h-4 mr-2" /> Düzenle
                         </Button>
+                        {/* Kapanmış kampanyada toplama durur; yeniden açmak
+                            merkezin elinde olmalı. */}
+                        {kampanya.durum === 'tamamlandi' && (
+                            <Button variant="outline" onClick={handleYenidenAc}>
+                                <RotateCcw className="w-4 h-4 mr-2" /> Yeniden Aç
+                            </Button>
+                        )}
                         {gonderildiSayisi > 0 && (
                             <Button onClick={handleApproveAll} disabled={approvingAll}>
                                 {approvingAll && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
