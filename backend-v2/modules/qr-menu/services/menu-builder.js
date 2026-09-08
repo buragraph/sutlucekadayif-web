@@ -72,14 +72,12 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
     // kolonu döndürdüğü için boş değerleri kırpıyoruz — public JSON hem eskiyle
     // aynı şekli korur hem gereksiz büyümez. (`urunSayisi` bilinçli olarak yok:
     // denormalize sayaç öldü, menü sayfası zaten yalnızca id + ad okuyor.)
-    const kategoriYanit = (k) => {
-        const cikti = {};
-        for (const [alan, deger] of Object.entries(k)) {
-            if (deger === null || deger === undefined) continue;   // '' ve false KORUNUR
-            cikti[alan] = deger;
-        }
-        return cikti;
-    };
+    // AÇIK BEYAZ LİSTE. Önceden kategorinin BÜTÜN kolonları kopyalanıyordu ve
+    // bu JSON R2'de auth'suz servis edildiği için iç ayarlar dışarı sızıyordu:
+    // `gizli_subeler` (hangi şubelerden saklandığı), `kilitli`,
+    // `menuden_cikarilamaz`. Müşteri menüsü kategoriden yalnızca id + ad
+    // okuyor (bkz. MenuPage), `sira` da sıralama için duruyor.
+    const kategoriYanit = (k) => ({ id: k.id, ad: k.ad, sira: k.sira ?? 0 });
 
     /**
      * @param {string[]} subeEtiketi - şubenin KENDİ etiketleri (urun_sube.etiket).
