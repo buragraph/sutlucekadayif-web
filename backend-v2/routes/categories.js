@@ -39,8 +39,7 @@ router.get(
                 .then((r) => veriYaDaHata(r, 'kategoriler okunamadı')),
             urunSayilari(),
         ]);
-        // Firestore'da alan YOKSA yanıtta da yoktu (gorsel 3/14, kilitli 2/14,
-        // renk 3/14 dokümanda). Null kolonlar kırpılır; '' ve false KORUNUR.
+        // Null kolonlar kırpılır; '' ve false KORUNUR (eski API şekli).
         // Merkez bir kategoriyi bazı şubelere kapatabiliyor (gizli_subeler).
         // Kapalı kategori şube sahibine HİÇ dönmez: dönseydi ürünü olmayan boş
         // bir sekme olarak görünürdü. Admin hepsini görür, düzenleyebilsin diye.
@@ -128,7 +127,7 @@ router.post(
     verifyToken,
     requirePermission('categories.create'),
     asyncHandler(async (req, res) => {
-        const { ad, sira, tur, renk, kilitli, gorsel, gizli_subeler, menuden_cikarilamaz } = req.body;
+        const { ad, sira, gizli_subeler, menuden_cikarilamaz } = req.body;
 
         if (!ad || !ad.trim()) {
             return res.status(400).json({ error: 'Kategori adı zorunludur' });
@@ -148,11 +147,7 @@ router.post(
             id: yeniId(),
             ad: ad.trim(),
             sira: siraDeger,
-            tur: tur === 'sube_ozel' ? 'sube_ozel' : 'ortak',
         };
-        if (renk) satir.renk = renk;
-        if (kilitli !== undefined) satir.kilitli = Boolean(kilitli);
-        if (gorsel !== undefined) satir.gorsel = gorsel;
         // Kategoriyi göremeyecek şubeler — kategorideki TÜM ürünleri kapsar
         // (bkz. 0014_kategori_gizli_subeler.sql).
         if (Array.isArray(gizli_subeler)) {
@@ -186,7 +181,7 @@ router.put(
     requirePermission('categories.edit'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
-        const { ad, sira, tur, renk, kilitli, gorsel, gizli_subeler, menuden_cikarilamaz } = req.body;
+        const { ad, sira, gizli_subeler, menuden_cikarilamaz } = req.body;
 
         const { data: mevcut } = await supabase.from('kategoriler').select('id').eq('id', id).maybeSingle();
         if (!mevcut) {
@@ -196,10 +191,7 @@ router.put(
         const updateData = {};
         if (ad !== undefined) updateData.ad = ad.trim();
         if (sira !== undefined) updateData.sira = sira;
-        if (tur !== undefined) updateData.tur = tur === 'sube_ozel' ? 'sube_ozel' : 'ortak';
-        if (renk !== undefined) updateData.renk = renk;
-        if (kilitli !== undefined) updateData.kilitli = Boolean(kilitli);
-        if (gorsel !== undefined) updateData.gorsel = gorsel;
+
         // Kategoriyi göremeyecek şubeler — kategorideki TÜM ürünleri kapsar
         // (bkz. 0014_kategori_gizli_subeler.sql).
         if (gizli_subeler !== undefined) {

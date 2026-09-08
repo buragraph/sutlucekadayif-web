@@ -325,17 +325,12 @@ export default function ProductsPage() {
             // kaldırılır, kilit yine kategoriden miras alınır.
             if (role === 'admin') {
                 payload.kilitli = urunForm.kilitli === '' ? null : urunForm.kilitli === 'evet';
-                // Şube bazlı merkez ayarları — yalnızca ortak üründe anlamlı
-                const kat = kategoriler.find((k) => k.id === urunForm.kategori);
-                if (!kat || kat.tur !== 'sube_ozel') {
-                    payload.gizli_subeler = urunForm.gizli_subeler || [];
-                    payload.fiyat_serbest = urunForm.fiyat_serbest || [];
-                    payload.menude_subeler = urunForm.menude_subeler || [];
-                }
-            }
-            const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
-            if (selectedKat && (selectedKat.tur === 'sube_ozel') && urunForm.sube_slug) {
-                payload.sube_slug = urunForm.sube_slug;
+                // Şube bazlı merkez ayarları. Kategorinin "türü" kalktı
+                // (şube ayrımı artık ürün/kategori gizlemeyle yapılıyor),
+                // bu yüzden koşulsuz gönderiliyor.
+                payload.gizli_subeler = urunForm.gizli_subeler || [];
+                payload.fiyat_serbest = urunForm.fiyat_serbest || [];
+                payload.menude_subeler = urunForm.menude_subeler || [];
             }
             if (imageFile) {
                 const formData = new FormData();
@@ -679,7 +674,7 @@ export default function ProductsPage() {
     // ---------- BULK ADD VIEW (tam sayfa) ----------
     if (viewMode === 'bulkAdd') {
         const gecerliSayi = bulkAddRows.filter(r => r.ad.trim() && r.fiyat !== '' && r.kategori).length;
-        const katSecenek = role === 'admin' ? kategoriler : kategoriler.filter(k => k.tur === 'sube_ozel');
+        const katSecenek = kategoriler;
         return (
             <div className="flex flex-1 flex-col gap-4 w-full h-full min-h-0">
                 {/* Header */}
@@ -823,40 +818,15 @@ export default function ProductsPage() {
                                                 <Label>Kategori</Label>
                                                 <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" value={urunForm.kategori} onChange={(e) => setUrunForm({ ...urunForm, kategori: e.target.value })} required>
                                                     <option value="">Seçiniz</option>
-                                                    {(role === 'admin' ? kategoriler : kategoriler.filter(k => k.tur === 'sube_ozel')).map((k) => <option key={k.id} value={k.id}>{k.ad}</option>)}
+                                                    {kategoriler.map((k) => <option key={k.id} value={k.id}>{k.ad}</option>)}
                                                 </select>
                                             </div>
                                         </div>
 
-                                        {/* Ürün bazlı kilit — yalnızca admin, yalnızca şubeye özel ürünlerde.
-                                            Ortak ürünlerde göstermiyoruz: onlar tek doküman olduğu için zaten
-                                            her zaman kilitli, bayrakla açılamaz. */}
-                                        {(() => {
-                                            const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
-                                            if (role !== 'admin' || !selectedKat || selectedKat.tur !== 'sube_ozel') return null;
-                                            const katKilitli = !!selectedKat.kilitli;
-                                            return (
-                                                <div className="space-y-1.5">
-                                                    <Label>Şube düzenleyebilsin mi?</Label>
-                                                    <select
-                                                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
-                                                        value={urunForm.kilitli}
-                                                        onChange={(e) => setUrunForm({ ...urunForm, kilitli: e.target.value })}
-                                                    >
-                                                        <option value="">Kategoriden miras ({katKilitli ? 'kilitli' : 'düzenlenebilir'})</option>
-                                                        <option value="hayir">Şube düzenleyebilir</option>
-                                                        <option value="evet">Kilitli — şube yalnızca mevcut/mevcut değil yapar</option>
-                                                    </select>
-                                                </div>
-                                            );
-                                        })()}
-
                                         {/* Merkez ayarları — yalnızca admin, yalnızca ORTAK ürünlerde.
                                             Şubeye özel üründe anlamsız: o ürün zaten tek şubeye ait. */}
                                         {(() => {
-                                            const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
                                             if (role !== 'admin' || subeler.length === 0) return null;
-                                            if (selectedKat && selectedKat.tur === 'sube_ozel') return null;
                                             return (
                                                 <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
                                                     <p className="text-xs font-medium text-muted-foreground">Şube ayarları</p>
@@ -929,21 +899,6 @@ export default function ProductsPage() {
                                                     <span className="flex h-9 w-16 items-center justify-center rounded-md border border-input px-1.5 text-sm text-muted-foreground">kcal</span>
                                                 </div>
                                             </div>
-                                            {(() => {
-                                                const selectedKat = kategoriler.find((k) => k.id === urunForm.kategori);
-                                                if (selectedKat && selectedKat.tur === 'sube_ozel' && role === 'admin') {
-                                                    return (
-                                                        <div className="space-y-1.5 col-span-2">
-                                                            <Label>Şube</Label>
-                                                            <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs" value={urunForm.sube_slug} onChange={(e) => setUrunForm({ ...urunForm, sube_slug: e.target.value })} required>
-                                                                <option value="">Şube seçiniz</option>
-                                                                {subeler.map((s) => <option key={s.slug} value={s.slug}>{s.ad || s.slug}</option>)}
-                                                            </select>
-                                                        </div>
-                                                    );
-                                                }
-                                                return null;
-                                            })()}
                                         </div>
                                     </div>
                                 </div>
