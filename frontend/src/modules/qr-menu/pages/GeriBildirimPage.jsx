@@ -34,11 +34,17 @@ const KATEGORI = {
     diger: 'Diğer',
 };
 
+/**
+ * Şikayetin nereden geldiği. Rozet HER SATIRDA görünür (QR dahil): masada
+ * artık üç kanal var ve "bunu müşteri mi yazdı, Şikayetvar'dan mı geldi"
+ * sorusu ilk bakışta cevaplanmalı — kaynağa göre yapılacak iş farklı.
+ */
 const KAYNAK = {
-    qr: { label: 'QR menü', cls: 'text-muted-foreground' },
-    sikayetvar: { label: 'Şikayetvar', cls: 'text-rose-600 dark:text-rose-400' },
-    elle: { label: 'Elle eklendi', cls: 'text-muted-foreground' },
+    qr: { label: 'QR menü', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300' },
+    sikayetvar: { label: 'Şikayetvar', cls: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300' },
+    elle: { label: 'Telefon / diğer', cls: 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300' },
 };
+const KAYNAK_KEYS = Object.keys(KAYNAK);
 
 // Kaç günden sonra "gecikti" sayılır. Şikayetvar markaları yanıt süresine göre
 // puanlıyor; 3 gün, müşterinin oraya yazmadan önce beklediği tipik süre.
@@ -65,6 +71,7 @@ export default function GeriBildirimPage() {
     const [sayac, setSayac] = useState({});
     const [loading, setLoading] = useState(true);
     const [filtre, setFiltre] = useState('hepsi');   // hepsi | <durum> | geciken
+    const [kaynakFiltre, setKaynakFiltre] = useState('hepsi');
     const [arama, setArama] = useState('');
     const [secili, setSecili] = useState(null);
     const [gecmis, setGecmis] = useState([]);
@@ -180,10 +187,18 @@ export default function GeriBildirimPage() {
 
     // ── Süzme ───────────────────────────────────────────────────────────
     const q = arama.trim().toLocaleLowerCase('tr');
-    const aranan = !q ? bildirimler : bildirimler.filter((b) =>
-        [b.ad, b.soyad, b.email, b.telefon, b.mesaj, b.subeAd, b.takipNo, KATEGORI[b.kategori]]
-            .some((alan) => (alan || '').toLocaleLowerCase('tr').includes(q))
-    );
+    // Arama ve KAYNAK önce uygulanır; durum çipleri bu sonucu böler. Böylece
+    // çipteki sayı "bu kaynakta kaç tanesi yeni" sorusunu cevaplar.
+    const aranan = bildirimler.filter((b) => {
+        if (kaynakFiltre !== 'hepsi' && (b.kaynak || 'qr') !== kaynakFiltre) return false;
+        if (!q) return true;
+        return [b.ad, b.soyad, b.email, b.telefon, b.mesaj, b.subeAd, b.takipNo, KATEGORI[b.kategori]]
+            .some((alan) => (alan || '').toLocaleLowerCase('tr').includes(q));
+    });
+
+    // Kaynak seçicideki sayılar aramadan BAĞIMSIZ: seçenekler daralınca
+    // "hangi kanalda kaç kayıt var" bilgisi kaybolurdu.
+    const kaynakSayim = (k) => bildirimler.filter((b) => (b.kaynak || 'qr') === k).length;
 
     const gecikenler = aranan.filter((b) =>
         ACIK_DURUMLAR.includes(b.durum) && gunFarki(b.olusturmaZamani) >= GECIKME_GUN);
@@ -196,16 +211,19 @@ export default function GeriBildirimPage() {
     // Ortalama İLK DÖNÜŞ süresi: yalnızca dönülmüş kayıtlar üzerinden.
     // Dönülmemişleri "sonsuz" sayıp ortalamaya katmak sayıyı anlamsız yapardı;
     // onlar zaten "geciken" sayacında görünüyor.
+    // Şerit SÜZÜLMÜŞ kümeyi anlatır: "geciken" sayısı zaten süzgece uyuyordu,
+    // açık sayısı ve ortalama uymuyordu — aynı satırda biri süzülü biri değil
+    // olunca sayılar birbirini tutmuyormuş gibi görünüyordu.
     const ozet = useMemo(() => {
-        const donulen = bildirimler.filter((b) => b.ilkYanit);
+        const donulen = aranan.filter((b) => b.ilkYanit);
         const toplamSaat = donulen.reduce((t, b) =>
             t + (new Date(b.ilkYanit) - new Date(b.olusturmaZamani)) / 3600000, 0);
         return {
-            acik: bildirimler.filter((b) => ACIK_DURUMLAR.includes(b.durum)).length,
+            acik: aranan.filter((b) => ACIK_DURUMLAR.includes(b.durum)).length,
             donulen: donulen.length,
             ortalamaSaat: donulen.length > 0 ? toplamSaat / donulen.length : null,
         };
-    }, [bildirimler]);
+    }, [aranan]);
 
     return (
         <div className="space-y-4">
@@ -227,7 +245,7 @@ export default function GeriBildirimPage() {
 
             {/* SLA şeridi — "kaç şikayet açık, ne kadar sürede dönüyoruz".
                 Kapalı kayıtlar buraya girmiyor: masanın yükü açık olanlar. */}
-            {!loading && bildirimler.length > 0 && (
+            {!loading && aranan.length > 0 && (
                 <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-muted/30 px-4 py-2.5 text-sm">
                     <span><strong className="tabular-nums">{ozet.acik}</strong> açık şikayet</span>
                     <span className={gecikenler.length > 0 ? 'text-destructive' : 'text-muted-foreground'}>
@@ -262,6 +280,26 @@ export default function GeriBildirimPage() {
                         </button>
                     )}
                 </div>
+                <Select value={kaynakFiltre} onValueChange={(v) => setKaynakFiltre(v)}>
+                    <SelectTrigger className="h-9 w-auto min-w-[10rem] text-sm">
+                        <span className="flex items-center gap-1.5 truncate">
+                            <span className="shrink-0 text-muted-foreground">Kaynak:</span>
+                            <SelectValue />
+                        </span>
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                        <SelectItem value="hepsi">
+                            Tümü <span className="ml-1 tabular-nums text-muted-foreground">{bildirimler.length}</span>
+                        </SelectItem>
+                        {KAYNAK_KEYS.map((k) => (
+                            <SelectItem key={k} value={k}>
+                                {KAYNAK[k].label}
+                                <span className="ml-1 tabular-nums text-muted-foreground">{kaynakSayim(k)}</span>
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+
                 <FilterChip active={filtre === 'hepsi'} onClick={() => setFiltre('hepsi')}>
                     Tümü <span className="opacity-60">({aranan.length})</span>
                 </FilterChip>
@@ -288,7 +326,9 @@ export default function GeriBildirimPage() {
                     <Inbox className="size-10 opacity-50" />
                     <p>
                         {q ? `"${arama.trim()}" için sonuç bulunamadı`
-                            : filtre === 'hepsi' ? 'Henüz geri bildirim yok' : 'Bu süzgeçle kayıt yok'}
+                            : (filtre === 'hepsi' && kaynakFiltre === 'hepsi')
+                                ? 'Henüz geri bildirim yok'
+                                : 'Bu süzgeçle kayıt yok'}
                     </p>
                 </div>
             ) : (
@@ -297,6 +337,7 @@ export default function GeriBildirimPage() {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Gönderen</TableHead>
+                                <TableHead className="w-32">Kaynak</TableHead>
                                 <TableHead>Konu</TableHead>
                                 {isAdmin && <TableHead>Şube</TableHead>}
                                 <TableHead>Tarih</TableHead>
@@ -312,12 +353,14 @@ export default function GeriBildirimPage() {
                                 <TableRow key={b.id} className="cursor-pointer" onClick={() => detayAc(b)}>
                                     <TableCell>
                                         <div className="font-medium">{b.ad || '—'} {b.soyad}</div>
-                                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                        <div className="text-xs text-muted-foreground">
                                             {b.email || b.telefon || '—'}
-                                            {b.kaynak !== 'qr' && (
-                                                <span className={KAYNAK[b.kaynak]?.cls}>· {KAYNAK[b.kaynak]?.label}</span>
-                                            )}
                                         </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className={KAYNAK[b.kaynak || 'qr']?.cls}>
+                                            {KAYNAK[b.kaynak || 'qr']?.label || b.kaynak}
+                                        </Badge>
                                     </TableCell>
                                     <TableCell>
                                         <Badge variant="outline">{KATEGORI[b.kategori] ?? b.kategori}</Badge>
@@ -388,11 +431,9 @@ export default function GeriBildirimPage() {
                             <div className="space-y-3 text-sm">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <Badge variant="outline">{KATEGORI[secili.kategori] ?? secili.kategori}</Badge>
-                                    {secili.kaynak !== 'qr' && (
-                                        <Badge variant="outline" className={KAYNAK[secili.kaynak]?.cls}>
-                                            {KAYNAK[secili.kaynak]?.label}
-                                        </Badge>
-                                    )}
+                                    <Badge variant="outline" className={KAYNAK[secili.kaynak || 'qr']?.cls}>
+                                        {KAYNAK[secili.kaynak || 'qr']?.label || secili.kaynak}
+                                    </Badge>
                                     {secili.kaynakUrl && (
                                         <a href={secili.kaynakUrl} target="_blank" rel="noopener noreferrer"
                                            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
