@@ -1,9 +1,12 @@
 import { useState, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
-import { Printer, Download, FileImage, FileText } from 'lucide-react';
+import { format as tarihBicim } from 'date-fns';
+import { tr } from 'date-fns/locale';
+import { Printer, Download, FileImage, FileText, CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { MenuPreview } from './menu-svg';
 import { createFormatFile, formats } from './export-utils';
@@ -23,16 +26,13 @@ import './fiyat-listesi.css';
  * menüde olmayan ya da "mevcut değil" işaretli ürün listeye girmez, fiyat
  * şubenin geçerli fiyatıdır (varsa kendi fiyatı, yoksa merkezinki).
  */
-const bugun = () => new Date().toISOString().slice(0, 10);
-
-const tarihYaz = (iso) => {
-    try {
-        return new Date(iso).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
-    } catch { return iso; }
-};
+// Kâğıda basılan biçim: "8 Eylül 2026". Rapor ekranlarındaki tarih
+// seçiciyle aynı bileşen ve aynı biçim kullanılıyor (date-fns + tr).
+const tarihYaz = (d) => tarihBicim(d, 'd MMMM yyyy', { locale: tr });
 
 export default function FiyatListesiPenceresi({ acik, kapat, urunler, kategoriler, subeAd }) {
-    const [tarih, setTarih] = useState(bugun);
+    const [tarih, setTarih] = useState(() => new Date());
+    const [takvimAcik, setTakvimAcik] = useState(false);
     const [format, setFormat] = useState('a4');
     const [indiriliyor, setIndiriliyor] = useState(null);
     // Ref KAPTA, SVG'de değil: MenuPreview dışarıdan gelen bir bileşen ve
@@ -101,9 +101,26 @@ export default function FiyatListesiPenceresi({ acik, kapat, urunler, kategorile
                 <div className="flex flex-col gap-4">
                     <div className="flex flex-wrap items-end justify-between gap-3">
                         <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="fl-tarih">Liste tarihi</Label>
-                            <Input id="fl-tarih" type="date" className="w-44"
-                                value={tarih} onChange={(e) => setTarih(e.target.value)} />
+                            <Label>Liste tarihi</Label>
+                            <Popover open={takvimAcik} onOpenChange={setTakvimAcik}>
+                                <PopoverTrigger asChild>
+                                    <Button variant="outline" className="w-52 justify-start text-left font-normal">
+                                        <CalendarIcon className="mr-2 size-4" />
+                                        {tarihYaz(tarih)}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                    <Calendar
+                                        mode="single"
+                                        selected={tarih}
+                                        // Takvimde seçili güne tekrar tıklamak seçimi kaldırır;
+                                        // liste tarihsiz basılamayacağı için eskisi korunuyor.
+                                        onSelect={(d) => { if (d) setTarih(d); setTakvimAcik(false); }}
+                                        initialFocus
+                                        locale={tr}
+                                    />
+                                </PopoverContent>
+                            </Popover>
                         </div>
                         <p className="text-xs text-muted-foreground">
                             {basilacak.length} ürün · {subeAd}

@@ -1056,7 +1056,7 @@ export default function ProductsPage() {
                         {gorunenSube && (
                             <Button variant="outline" size="sm" className="h-8 text-xs"
                                 onClick={() => setFiyatListesiAcik(true)}>
-                                <Printer className="size-3.5 mr-1.5" /> Fiyat Listesi
+                                <Printer className="size-3.5 mr-1.5" /> Fiyat Listesini Çıktı Al
                             </Button>
                         )}
                         {role === 'admin' ? (
