@@ -49,6 +49,7 @@ function urunNesnesi(satir, uyeler = []) {
         aciklama: satir.aciklama ?? '',
         etiket: satir.etiket ?? [],
         gorsel: satir.gorsel ?? '',
+        gorsel_kucuk: satir.gorsel_kucuk ?? '',
         miktar: satir.miktar === null || satir.miktar === undefined ? null : Number(satir.miktar),
         birim: satir.birim ?? '',
         createdAt: isoZ(satir.olusturma),
