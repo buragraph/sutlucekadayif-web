@@ -567,7 +567,12 @@ export default function ProductsPage() {
     // Şube menüsü en fazla 126 kalem (ortalama 72) — grid'i sayfalamak, kategori
     // gruplarını sayfa ortasında ikiye bölüyordu. Şube sahibinde tamamı basılır
     // (kartlar `loading="lazy"`), sayfalama yalnızca admin tablosunda kalır.
-    const sayfalamaVar = role === 'admin';
+    // "Tümü" sekmesinde kartlar kategori kategori YATAY şeritlerde akıyor.
+    // Şerit ancak kategorinin TAMAMINI taşırsa anlamlı: sayfalanmış 36 ürünü
+    // 14 kategoriye bölmek her şeride 2-3 kart bırakırdı, kaydıracak bir şey
+    // kalmazdı. Bu yüzden o modda sayfalama kapalı.
+    const yataySeritler = etkinKategori === 'all' && (role !== 'admin' || adminGorunum === 'kart');
+    const sayfalamaVar = role === 'admin' && !yataySeritler;
     const paginatedUrunler = sayfalamaVar
         ? sortedUrunler.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE)
         : sortedUrunler;
@@ -1439,7 +1444,13 @@ export default function ProductsPage() {
                                             <span className="text-xs text-muted-foreground">{grup.urunler.length} ürün</span>
                                         </div>
                                     )}
-                                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+                                    {/* Yatay şerit: kategori tek satırda kalır, yana kaydırılır.
+                                        `[&>*]:w-40` — flex çocuğu kart olduğu için sabit genişlik
+                                        şart, yoksa içeriğe göre büzülür. `snap` ile kart kart durur.
+                                        Kategori seçiliyken sarmalı grid: orada dikey akış doğru. */}
+                                    <div className={yataySeritler
+                                        ? 'flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [&>*]:w-40 [&>*]:shrink-0 [&>*]:snap-start sm:[&>*]:w-44'
+                                        : 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'}>
                                 {grup.urunler.map((urun) => {
                                     const mevcutDegil = urun.mevcut_degil || [];
                                     // ŞUBE EYLEMLERİ ADMİN'DE ÇIKMAZ. Admin'in de bir `subeSlug`ı
