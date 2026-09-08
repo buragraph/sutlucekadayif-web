@@ -32,6 +32,13 @@ export function getNavGroups(can, role) {
                 ] : []),
                 ...(role === 'admin' ? [{ title: 'Medya', url: '/admin/medya', icon: ImagePlus }] : []),
                 { title: 'Akademi', url: '/admin/akademi', icon: GraduationCap },
+                // Şikayet masası QR Menü'nün ALTINDA DEĞİL: artık yalnızca QR
+                // formundan beslenmiyor (Şikayetvar + elle eklenenler de aynı
+                // gelen kutusunda) ve günlük iş akışında menü yönetiminden
+                // bağımsız takip ediliyor.
+                ...(can('geribildirim.view')
+                    ? [{ title: 'Şikayet ve Geri Bildirim', url: '/admin/geri-bildirim', icon: MessageSquare }]
+                    : []),
                 {
                     title: 'QR Menü',
                     url: '/admin/qr-menu',
@@ -47,9 +54,6 @@ export function getNavGroups(can, role) {
                         // Şube menülerindeki değişikliklerin günlüğü — yalnızca merkez.
                         ...(role === 'admin'
                             ? [{ title: 'Menü Günlüğü', url: '/admin/qr-menu/menu-gunlugu', icon: History }]
-                            : []),
-                        ...(can('geribildirim.view')
-                            ? [{ title: 'Geri Bildirim', url: '/admin/geri-bildirim', icon: MessageSquare }]
                             : []),
                         ...(can('isbasvuru.view')
                             ? [{ title: 'İş Başvuruları', url: '/admin/is-basvurulari', icon: BriefcaseBusiness }]
