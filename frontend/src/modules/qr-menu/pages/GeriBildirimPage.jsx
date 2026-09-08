@@ -195,9 +195,14 @@ export default function GeriBildirimPage() {
     const q = arama.trim().toLocaleLowerCase('tr');
     // Arama ve KAYNAK önce uygulanır; durum çipleri bu sonucu böler. Böylece
     // çipteki sayı "bu kaynakta kaç tanesi yeni" sorusunu cevaplar.
+    // Takip kodu telefonda okunuyor: müşteri "SK-2YP5HD" de diyebilir
+    // "sk 2yp5hd" de. Karşılaştırma için harf/rakam dışındaki her şey atılır.
+    const kodSadele = (v) => (v || '').toLocaleLowerCase('tr').replace(/[^a-z0-9]/g, '');
+    const qKod = kodSadele(q);
     const aranan = bildirimler.filter((b) => {
         if (kaynakFiltre !== 'hepsi' && (b.kaynak || 'qr') !== kaynakFiltre) return false;
         if (!q) return true;
+        if (qKod && b.takipNo && kodSadele(b.takipNo).includes(qKod)) return true;
         return [b.ad, b.soyad, b.email, b.telefon, b.mesaj, b.subeAd, b.takipNo, KATEGORI[b.kategori]]
             .some((alan) => (alan || '').toLocaleLowerCase('tr').includes(q));
     });
@@ -376,6 +381,20 @@ export default function GeriBildirimPage() {
                                             <Badge variant="outline" className={`px-1.5 py-0 text-[10px] font-normal ${KAYNAK[b.kaynak || 'qr']?.cls}`}>
                                                 {KAYNAK[b.kaynak || 'qr']?.label || b.kaynak}
                                             </Badge>
+                                            {/* Takip kodu yalnızca QR menüden gelen kayıtta var
+                                                (Şikayetvar kendi numarasını vermiyor). Müşteri
+                                                telefonda kodu okuduğunda kayıt tek tıkla
+                                                süzülsün diye tıklanabilir. */}
+                                            {b.takipNo && (
+                                                <button
+                                                    type="button"
+                                                    title="Bu takip koduyla ara"
+                                                    onClick={(e) => { e.stopPropagation(); setArama(b.takipNo); }}
+                                                    className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-foreground hover:bg-muted-foreground/20"
+                                                >
+                                                    {b.takipNo}
+                                                </button>
+                                            )}
                                             <span className="truncate">
                                                 {b.email || b.telefon
                                                     || ((b.kaynak || 'qr') === 'qr' ? '—' : 'iletişim yok')}
