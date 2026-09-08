@@ -16,6 +16,7 @@ import CategoriesPage from './modules/qr-menu/pages/CategoriesPage';
 import UrunTalepleriPage from './modules/qr-menu/pages/UrunTalepleriPage';
 import MenuLogPage from './modules/qr-menu/pages/MenuLogPage';
 import DuyurularPage from './modules/qr-menu/pages/DuyurularPage';
+import FiyatListesiPage from './modules/qr-menu/pages/FiyatListesiPage';
 import PhotoLibraryPage from './modules/qr-menu/pages/PhotoLibraryPage';
 import AcademyDashboard from './modules/academy/pages/AcademyDashboard';
 import AcademyAdmin from './modules/academy/pages/AcademyAdmin';
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/admin/subeler" element={<BranchesPage />} />
             <Route path="/admin/qr-menu/kategoriler" element={<CategoriesPage />} />
             <Route path="/admin/qr-menu/talepler" element={<UrunTalepleriPage />} />
+            <Route path="/admin/qr-menu/fiyat-listesi" element={<FiyatListesiPage />} />
             {/* Günlük şubeler arası bir görünüm: uç zaten 403 veriyor ama
                 korumasız rota, şube sahibine boş bir "kayıt yok" ekranı
                 gösterip hata varmış gibi görünmesine yol açardı. */}

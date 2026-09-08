@@ -64,3 +64,13 @@
     width: 1240px;
     pointer-events: none;
 }
+
+/* Ayrı sayfadaki önizleme: pencereye sığmak zorunda değil, kâğıt daha büyük
+   ve okunur çizilir. Yükseklik sınırı yok — sayfa zaten kaydırılıyor. */
+.fl-onizleme--sayfa {
+    align-items: flex-start;
+    padding: 1.5rem;
+}
+.fl-onizleme--sayfa .menu-canvas {
+    max-width: 640px;
+}
