@@ -40,7 +40,7 @@ export default function UrunKarti({
         <div
             className={`group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-colors ${
                 kilitli && !tiklamaSecer ? '' : 'cursor-pointer hover:border-foreground/30'
-            } ${secili ? 'ring-2 ring-inset ring-primary' : ''}`}
+            }`}
             onClick={(e) => {
                 if (e.target.closest('button') || e.target.closest('[role=switch]')) return;
                 // Admin'de karta tıklamak SEÇER (toplu işlem için), düzenleme
@@ -49,6 +49,16 @@ export default function UrunKarti({
                 if (!kilitli) onDuzenle(urun);
             }}
         >
+            {/* Seçim çerçevesi AYRI KATMAN. Kökteki `ring` gölge olarak çizildiği
+                için çocukların ALTINDA kalıyor: fotoğraf üstten, "Düzenle"
+                şeridinin border-t'si alttan üzerine biniyordu. Dıştaki `ring`
+                (inset olmayan) ise yatay şeridin overflow'una takılıp
+                kırpılıyordu. Bu katman ikisini de çözüyor — en üstte duruyor,
+                kart sınırının içinde kalıyor, tıklamayı geçiriyor. */}
+            {secili && (
+                <span className="pointer-events-none absolute inset-0 z-20 rounded-xl ring-2 ring-inset ring-primary" />
+            )}
+
             {/* Fotoğraf temiz: durum rozeti eskiden görselin üstünde tam
                 genişlikte bir şeritti, 30+ kartta beyaz/kırmızı bant duvarı
                 oluşturuyor ve yemek fotoğrafını kapatıyordu. Rozet kart gövdesine
