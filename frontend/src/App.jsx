@@ -6,6 +6,7 @@ import ProtectedRoute from './shared/components/ProtectedRoute';
 import Layout from './shared/components/Layout';
 import MenuPage from './modules/qr-menu/pages/MenuPage';
 import SikayetTakipPage from './modules/qr-menu/pages/SikayetTakipPage';
+import SifreBelirlePage from './modules/qr-menu/pages/SifreBelirlePage';
 import LoginPage from './modules/qr-menu/pages/LoginPage';
 import ProductsPage from './modules/qr-menu/pages/ProductsPage';
 import Dashboard from './modules/qr-menu/pages/Dashboard';
@@ -71,6 +72,10 @@ export default function App() {
             <Route path="/admin/butce-kampanyalari" element={<BudgetCampaignsPage />} />
             <Route path="/admin/butce-bildirim" element={<BudgetSubmitPage />} />
           </Route>
+
+          {/* Şifre sıfırlama bağlantısının indiği sayfa — giriş istemez,
+              kurtarma oturumunu URL parçasından kütüphane kuruyor. */}
+          <Route path="/sifre-belirle" element={<SifreBelirlePage />} />
 
           {/* Şikayet durumu sorgulama — HERKESE AÇIK, giriş istemez.
               `/:subeSlug`ten ÖNCE: statik yol dinamik olanı yenmeli, yoksa

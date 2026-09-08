@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Mail, Lock, Eye, EyeOff, Sparkles, Layers, Image as ImageIcon, UtensilsCrossed, ArrowRight, TriangleAlert } from 'lucide-react';
+import { supabase } from '../../../supabase';
+import { Mail, Lock, Eye, EyeOff, Sparkles, Layers, Image as ImageIcon, UtensilsCrossed, ArrowRight, TriangleAlert, CheckCircle2, ChevronLeft } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,10 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    // Şifre sıfırlama paneli: aynı ekranda açılıyor, ayrı sayfaya gitmiyor —
+    // kullanıcı zaten e-postasını yazmış oluyor, onu taşıyoruz.
+    const [sifirlaAcik, setSifirlaAcik] = useState(false);
+    const [sifirlaGonderildi, setSifirlaGonderildi] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
 
@@ -51,6 +56,39 @@ export default function LoginPage() {
     async function ilkGirisDene() {
         await api.post('/parola/belirle', { email: email.trim(), password });
         await login(email, password);
+    }
+
+    /**
+     * Şifre sıfırlama bağlantısı ister.
+     *
+     * E-POSTAYI SUPABASE GÖNDERİYOR. Proje SMTP'si Resend'e bağlandığında
+     * mektup Resend üzerinden çıkar; kodda değişecek bir şey yok. Bağlanana
+     * kadar Supabase'in yerleşik gönderimi çok düşük kotayla çalışır, o
+     * yüzden hata mesajını yutmuyoruz.
+     *
+     * DÖNÜŞ ADRESİ Supabase panelinde "Redirect URLs" listesinde tanımlı
+     * olmalı (Authentication → URL Configuration), yoksa bağlantı site
+     * adresine düşer ve sayfa oturumu kuramaz.
+     */
+    async function sifirlamaIste(e) {
+        e.preventDefault();
+        setError('');
+        if (!email.trim()) return setError('Önce e-posta adresinizi yazın.');
+        setLoading(true);
+        try {
+            const { error: hata } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+                redirectTo: `${window.location.origin}/sifre-belirle`,
+            });
+            if (hata) throw hata;
+            // Hesabın var olup olmadığı SIZDIRILMAZ: adres kayıtlı olmasa da
+            // aynı mesaj görünür.
+            setSifirlaGonderildi(true);
+        } catch (hata) {
+            console.error('Şifre sıfırlama isteği:', hata);
+            if (hata.status === 429) setError('Çok sık istek. Birkaç dakika sonra tekrar deneyin.');
+            else setError('Şu anda sıfırlama e-postası gönderilemiyor. Merkezle iletişime geçin.');
+        }
+        setLoading(false);
     }
 
     async function handleSubmit(e) {
@@ -113,12 +151,25 @@ export default function LoginPage() {
                         className="text-3xl leading-tight tracking-tight text-[#084529] dark:text-[#d8c7a3]"
                         style={{ fontFamily: 'Marcellus, serif' }}
                     >
-                        Hoş geldiniz
+                        {sifirlaAcik ? 'Şifremi unuttum' : 'Hoş geldiniz'}
                     </h1>
                     <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-                        Şube yönetim paneline giriş yapın.
+                        {sifirlaAcik
+                            ? 'Kayıtlı e-posta adresinize sıfırlama bağlantısı gönderelim.'
+                            : 'Şube yönetim paneline giriş yapın.'}
                     </p>
 
+                    {sifirlaAcik ? (
+                        <SifirlamaPaneli
+                            email={email}
+                            setEmail={setEmail}
+                            error={error}
+                            loading={loading}
+                            gonderildi={sifirlaGonderildi}
+                            onGonder={sifirlamaIste}
+                            onGeri={() => { setSifirlaAcik(false); setSifirlaGonderildi(false); setError(''); }}
+                        />
+                    ) : (
                     <form onSubmit={handleSubmit} className="mt-8 space-y-4">
                         {error && (
                             <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs font-medium text-destructive">
@@ -149,9 +200,18 @@ export default function LoginPage() {
                         </div>
 
                         <div className="space-y-1.5">
-                            <Label htmlFor="password" className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
-                                Şifre
-                            </Label>
+                            <div className="flex items-baseline justify-between">
+                                <Label htmlFor="password" className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                                    Şifre
+                                </Label>
+                                <button
+                                    type="button"
+                                    onClick={() => { setSifirlaAcik(true); setError(''); }}
+                                    className="text-xs font-medium text-[#084529] underline-offset-2 hover:underline dark:text-[#d8c7a3]"
+                                >
+                                    Şifremi unuttum
+                                </button>
+                            </div>
                             <div className="relative">
                                 <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
                                 <Input
@@ -188,17 +248,10 @@ export default function LoginPage() {
                             )}
                         </Button>
                     </form>
+                    )}
 
-                    {/* İLK GİRİŞ kuralı burada yazılı: hesaplar parolasız
-                        açılıyor ve kişi ilk yazdığı parolayı kalıcı yapıyor.
-                        Kimse bunu bilmiyorsa "parolam yok" diye merkezi arıyor. */}
-                    <p className="mt-6 rounded-xl border border-[#084529]/15 bg-[#084529]/[0.04] px-3 py-2.5 text-[11px] leading-relaxed text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
-                        <strong className="font-semibold text-[#084529] dark:text-[#d8c7a3]">İlk kez giriyorsanız:</strong>{' '}
-                        şifre alanına belirlediğiniz şifreyi yazın — o şifre hesabınıza kaydedilir.
-                    </p>
-
-                    <p className="mt-8 text-center text-[11px] text-neutral-400">
-                        Sütlüce Kadayıf Şube Yönetim Sistemi · v2.0
+                    <p className="mt-10 text-center text-[11px] text-neutral-400">
+                        Sütlüce Kadayıf Şube Yönetim Sistemi
                     </p>
                 </div>
             </div>
@@ -247,11 +300,87 @@ export default function LoginPage() {
                     </ul>
                 </div>
 
-                <div className="relative z-10 flex items-center justify-between text-[11px] text-[#F6F1E7]/50">
+                <div className="relative z-10 text-[11px] text-[#F6F1E7]/50">
                     <p>© {YIL} Sütlüce Kadayıf</p>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1">Sürüm 2.0</span>
                 </div>
             </div>
         </div>
+    );
+}
+
+/**
+ * Şifre sıfırlama paneli — giriş formunun yerine aynı kolonda açılır.
+ *
+ * GÖNDERİLDİ EKRANI adresi tekrar göstermiyor ve "hesabınız var/yok" demiyor:
+ * kayıtlı olmayan adres de aynı mesajı alır, aksi hâlde bu ekran çalışan
+ * e-posta adresi doğrulama aracına dönerdi.
+ */
+function SifirlamaPaneli({ email, setEmail, error, loading, gonderildi, onGonder, onGeri }) {
+    if (gonderildi) {
+        return (
+            <div className="mt-8 space-y-4">
+                <div className="flex items-start gap-2.5 rounded-xl border border-[#084529]/20 bg-[#084529]/[0.04] px-3.5 py-3 text-sm text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#084529] dark:text-[#d8c7a3]" />
+                    <p className="leading-relaxed">
+                        Adres kayıtlıysa şifre sıfırlama bağlantısı gönderildi. Gelen kutunuzu ve
+                        gereksiz posta klasörünü kontrol edin.
+                    </p>
+                </div>
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onGeri}
+                    className="h-11 w-full rounded-xl border-neutral-300 dark:border-neutral-800"
+                >
+                    <ChevronLeft className="size-4" /> Girişe dön
+                </Button>
+            </div>
+        );
+    }
+
+    return (
+        <form onSubmit={onGonder} className="mt-8 space-y-4">
+            {error && (
+                <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs font-medium text-destructive">
+                    <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                    <span>{error}</span>
+                </div>
+            )}
+
+            <div className="space-y-1.5">
+                <Label htmlFor="sifirla-email" className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                    E-posta adresi
+                </Label>
+                <div className="relative">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                    <Input
+                        id="sifirla-email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="sube@sutlucekadayif.com"
+                        required
+                        autoComplete="email"
+                        className="h-11 rounded-xl border-neutral-300 bg-white pl-9 text-sm shadow-sm focus-visible:border-[#084529] focus-visible:ring-2 focus-visible:ring-[#084529]/15 dark:border-neutral-800 dark:bg-neutral-900"
+                    />
+                </div>
+            </div>
+
+            <Button
+                type="submit"
+                disabled={loading}
+                className="h-11 w-full rounded-xl bg-[#084529] text-[#F6F1E7] shadow-lg shadow-[#084529]/20 transition-all hover:bg-[#0c5936] active:scale-[0.99] disabled:opacity-70"
+            >
+                {loading ? <><Spinner className="size-4" /> Gönderiliyor…</> : 'Sıfırlama bağlantısı gönder'}
+            </Button>
+
+            <button
+                type="button"
+                onClick={onGeri}
+                className="flex w-full items-center justify-center gap-1 text-xs font-medium text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+            >
+                <ChevronLeft className="size-3.5" /> Girişe dön
+            </button>
+        </form>
     );
 }

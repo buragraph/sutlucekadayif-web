@@ -10,7 +10,10 @@ export const supabase = createClient(
         auth: {
             persistSession: true,        // oturum localStorage'da
             autoRefreshToken: true,      // access token 1 saatlik; kütüphane yeniler
-            detectSessionInUrl: false,   // magic-link/OAuth dönüşü yok
+            // Şifre sıfırlama bağlantısı oturumu URL parçasında (#access_token…
+            // &type=recovery) taşıyor; kütüphane bunu ancak açıkken çözüp
+            // PASSWORD_RECOVERY oturumu kuruyor. OAuth/magic-link hâlâ yok.
+            detectSessionInUrl: true,
         },
     }
 );
