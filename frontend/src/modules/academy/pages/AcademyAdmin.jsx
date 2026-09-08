@@ -101,6 +101,10 @@ export default function AcademyAdmin() {
     const itemsPerPage = 10;
     const [expandedUser, setExpandedUser] = useState(null);
     const [userDetails, setUserDetails] = useState({});
+    // Sınav denemeleri ayrı: `detay` yalnızca GEÇİLEN dersleri taşıyor,
+    // merkezin görmesi gereken asıl kayıt kalan denemeler.
+    const [userDenemeler, setUserDenemeler] = useState({});
+    const [hakYenileniyor, setHakYenileniyor] = useState(null);
     const [detailLoading, setDetailLoading] = useState(null);
 
     // İstatistikler kurs kartlarındaki tamamlanma özeti için sayfa açılışında da çekilir
@@ -255,9 +259,34 @@ export default function AcademyAdmin() {
             try {
                 const { data } = await api.get(`/academy/progress/admin/stats/${userId}/detail`);
                 setUserDetails(prev => ({ ...prev, [userId]: data.detay }));
+                setUserDenemeler(prev => ({ ...prev, [userId]: data.denemeler || [] }));
             } catch { toast.error('Kullanıcı detayı yüklenemedi'); }
             finally { setDetailLoading(null); }
         }
+    };
+
+    /**
+     * Sınav hakkını yeniler — tek deneme kuralının çıkış kapısı.
+     * Denemeyi de tamamlanma kaydını da siler; aksi hâlde sınav
+     * "çözülmemiş" ama ders "tamamlanmış" görünürdü.
+     */
+    const sinavHakkiYenile = async (userId, deneme) => {
+        const ok = await confirm(
+            `"${deneme.lessonTitle}" sınavı için yeni hak tanımlansın mı? Mevcut sonuç (%${deneme.score}) silinecek.`
+        );
+        if (!ok) return;
+        setHakYenileniyor(`${userId}|${deneme.lessonId}`);
+        try {
+            await api.delete(`/academy/progress/quiz/${deneme.courseId}/${deneme.lessonId}/deneme`, { params: { uid: userId } });
+            setUserDenemeler(prev => ({
+                ...prev,
+                [userId]: (prev[userId] || []).filter(d => d.lessonId !== deneme.lessonId),
+            }));
+            toast.success('Sınav hakkı yenilendi');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Hak yenilenemedi');
+        }
+        setHakYenileniyor(null);
     };
 
     const formatDate = (dateStr) => { if (!dateStr) return '—'; return new Date(dateStr).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
@@ -612,8 +641,6 @@ export default function AcademyAdmin() {
                                                     const kisiToplamDers = courses.filter(c => kursGorunur(c, user)).reduce((s, c) => s + (c.lessonCount || 0), 0);
                                                     const genelPct = kisiToplamDers > 0 ? Math.min(100, Math.round(((user.totalCompleted || 0) / kisiToplamDers) * 100)) : 0;
                                                     const acik = expandedUser === user.userId;
-                                                    const detay = userDetails[user.userId];
-                                                    const sinavlar = (detay || []).filter(d => d.lessonType === 'quiz');
                                                     // Detayda kullanıcıya görünen kurslar + (artık görünmese de) ilerlemesi olanlar
                                                     const detayKurslari = courses.filter(c => kursGorunur(c, user) || (user.byCourse?.[c.id]?.count || 0) > 0);
                                                     return (
@@ -677,20 +704,32 @@ export default function AcademyAdmin() {
                                                                                     </div>
                                                                                 </div>
                                                                                 <div>
-                                                                                    <h5 className="text-xs font-medium text-muted-foreground mb-2.5">Sınav Sonuçları</h5>
-                                                                                    {sinavlar.length === 0 ? (
-                                                                                        <p className="text-xs text-muted-foreground">Tamamlanmış sınav yok.</p>
+                                                                                    <h5 className="text-xs font-medium text-muted-foreground mb-2.5">Sınav Denemeleri</h5>
+                                                                                    {(userDenemeler[user.userId] || []).length === 0 ? (
+                                                                                        <p className="text-xs text-muted-foreground">Çözülmüş sınav yok.</p>
                                                                                     ) : (
                                                                                         <div className="flex flex-col gap-1.5">
-                                                                                            {sinavlar.map(s => (
-                                                                                                <div key={s.lessonId} className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
+                                                                                            {(userDenemeler[user.userId] || []).map(d => (
+                                                                                                <div key={d.lessonId} className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
                                                                                                     <div className="min-w-0">
-                                                                                                        <div className="text-xs font-medium text-foreground truncate">{s.lessonTitle}</div>
-                                                                                                        <div className="text-[10px] text-muted-foreground truncate">{s.courseTitle} · {formatDate(s.completedAt)}</div>
+                                                                                                        <div className="text-xs font-medium text-foreground truncate">{d.lessonTitle}</div>
+                                                                                                        <div className="text-[10px] text-muted-foreground truncate">{d.courseTitle} · {formatDate(d.zaman)}</div>
                                                                                                     </div>
-                                                                                                    <Badge variant="secondary" className={(s.score ?? 0) >= 85 ? ROZET.yesil : ROZET.mavi}>
-                                                                                                        %{s.score ?? '—'}
-                                                                                                    </Badge>
+                                                                                                    <div className="flex shrink-0 items-center gap-1.5">
+                                                                                                        <Badge variant="secondary" className={d.passed ? ROZET.yesil : ROZET.kirmizi}>
+                                                                                                            %{d.score} {d.passed ? '' : `(baraj %${d.passingScore})`}
+                                                                                                        </Badge>
+                                                                                                        {/* Tek deneme kuralının çıkış kapısı: kalan
+                                                                                                            kişi kendi başına tekrar giremiyor. */}
+                                                                                                        <Button
+                                                                                                            variant="ghost" size="sm"
+                                                                                                            className="h-7 px-2 text-[11px]"
+                                                                                                            disabled={hakYenileniyor === `${user.userId}|${d.lessonId}`}
+                                                                                                            onClick={(e) => { e.stopPropagation(); sinavHakkiYenile(user.userId, d); }}
+                                                                                                        >
+                                                                                                            Hakkı yenile
+                                                                                                        </Button>
+                                                                                                    </div>
                                                                                                 </div>
                                                                                             ))}
                                                                                         </div>

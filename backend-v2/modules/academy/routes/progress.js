@@ -180,7 +180,28 @@ router.get('/admin/stats/:userId/detail', verifyToken, asyncHandler(async (req, 
             .eq('uid', userId).range(0, 9999),
         'ilerleme okunamadı'
     );
-    if (satirlar.length === 0) return res.json({ detay: [] });
+    // SINAV DENEMELERİ ayrı okunuyor: `ilerleme` yalnızca GEÇİLEN dersi
+    // tutuyor, oysa merkezin asıl görmesi gereken KALAN denemeler — tek
+    // deneme kuralı yüzünden o kişiler kursta takılı kalıyor ve hakkı ancak
+    // merkez yenileyebiliyor.
+    const denemeler = veriYaDaHata(
+        await supabase.from('sinav_denemeleri')
+            .select('ders_id, kurs_id, score, gecti, baraj, zaman, dersler(title), kurslar(title)')
+            .eq('uid', userId).range(0, 9999),
+        'sınav denemeleri okunamadı'
+    );
+    const denemeListesi = denemeler.map((d) => ({
+        courseId: d.kurs_id || null,
+        courseTitle: d.kurslar?.title || 'Silinmiş kurs',
+        lessonId: d.ders_id,
+        lessonTitle: d.dersler?.title || 'Silinmiş ders',
+        score: Number(d.score),
+        passed: d.gecti,
+        passingScore: Number(d.baraj),
+        zaman: isoZ(d.zaman),
+    })).sort((a, b) => (b.zaman || '').localeCompare(a.zaman || ''));
+
+    if (satirlar.length === 0) return res.json({ detay: [], denemeler: denemeListesi });
 
     const detay = satirlar.map((i) => ({
         courseId: i.kurs_id || null,
@@ -193,7 +214,7 @@ router.get('/admin/stats/:userId/detail', verifyToken, asyncHandler(async (req, 
     }));
     detay.sort((a, b) => (b.completedAt || '').localeCompare(a.completedAt || ''));
 
-    res.json({ detay });
+    res.json({ detay, denemeler: denemeListesi });
 }));
 
 /**
