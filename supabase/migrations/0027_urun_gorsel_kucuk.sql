@@ -1,0 +1,11 @@
+-- Ürün görselinin kart boyu.
+--
+-- NEDEN İKİNCİ KOLON: müşteri menüsünde ızgara hücresi mobilde ~180 CSS px;
+-- oraya 800px'lik görseli koymak hem gereksiz ağır hem de her görsel Worker
+-- üzerinden proxy'lendiği için istek başına maliyet. Kart `gorsel_kucuk`
+-- (~400px, ölçüm: 12 kB), detay penceresi `gorsel` (~800px, 41 kB) kullanır.
+--
+-- NULL BIRAKILABİLİR: küçük boyu olmayan eski/kütüphaneden seçilmiş ürünlerde
+-- kart `gorsel`e düşer (bkz. MenuPage kart görseli). Zorunlu yapmak, tek
+-- görseli olan her akışı bozardı.
+alter table urunler add column if not exists gorsel_kucuk text;

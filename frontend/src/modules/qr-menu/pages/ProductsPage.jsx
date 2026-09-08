@@ -23,14 +23,7 @@ import { KaydirilirRay } from '../components/KaydirilirRay';
 
 import { ETIKETLER } from '../constants/etiketler';
 import UrunKarti from '../components/UrunKarti';
-import { gorseliWebpYap } from '../utils/gorsel';
-
-// Şube kodundan okunur ad: "ankara_etimesgut" → "Ankara Etimesgut".
-// Şube sahibinde şube listesi YÜKLENMİYOR (90 satırı tek ad için çekmek
-// gereksiz), o yüzden fiyat listesi başlığı ve dosya adı için bu yeter.
-const subeSlugAd = (slug) => String(slug || '')
-    .replace(/[-_]+/g, ' ')
-    .replace(/\S+/g, (k) => k.charAt(0).toLocaleUpperCase('tr') + k.slice(1));
+import { urunGorseliBoyla } from '../utils/gorsel';
 
 // Medya kütüphanesinden ("Ürünler" klasörü) görsel seçtiren popover.
 // Yükleme yok — görseller yalnızca Medya bölümünden eklenir.
@@ -334,13 +327,25 @@ export default function ProductsPage() {
                 payload.menude_subeler = urunForm.menude_subeler || [];
             }
             if (imageFile) {
-                const formData = new FormData();
-                formData.append('image', await gorseliWebpYap(imageFile));
-                formData.append('folder', 'urunler');
-                const { data: uploadData } = await api.post('/upload/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-                payload.gorsel = uploadData.url;
+                // İki boy yüklenir: kart küçüğü, detay penceresi büyüğü kullanır
+                // (bkz. utils/gorsel.js ve MenuPage kart görseli).
+                const { buyuk, kucuk } = await urunGorseliBoyla(imageFile);
+                const [buyukYanit, kucukYanit] = await Promise.all(
+                    [buyuk, kucuk].map((dosya) => {
+                        const formData = new FormData();
+                        formData.append('image', dosya);
+                        formData.append('folder', 'urunler');
+                        return api.post('/upload/image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+                    })
+                );
+                payload.gorsel = buyukYanit.data.url;
+                payload.gorsel_kucuk = kucukYanit.data.url;
             } else if (urunForm.gorsel) {
                 payload.gorsel = urunForm.gorsel;
+                // Kütüphaneden BAŞKA bir görsel seçildiyse eldeki küçük boy artık
+                // başka bir ürüne ait — temizlenir, kart büyüğe düşer. Aksi halde
+                // kartta eski, pencerede yeni görsel çıkardı.
+                if (urunForm.gorsel !== editingUrun?.gorsel) payload.gorsel_kucuk = '';
             }
             if (editingUrun) {
                 const { data } = await api.put(`/products/${editingUrun.id}`, payload);

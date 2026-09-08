@@ -155,6 +155,50 @@ router.get(
 );
 
 /**
+ * GET /api/upload/wp-gorsel?url=...
+ * Eski WordPress'teki görseli AKIŞLA geçirir (R2'ye yazmaz).
+ *
+ * NEDEN: WordPress CORS başlığı vermiyor; tarayıcı görseli canvas'a alamıyor,
+ * dolayısıyla küçültme/webp dönüşümü yapılamıyor. Bu uç aynı dosyayı bizim
+ * alan adımızdan servis ederek dönüşümü mümkün kılıyor. Geçici dosya
+ * bırakmadığı için temizlik gerekmiyor.
+ *
+ * Güvenlik `wp-aktar` ile aynı: beyaz listede alan adı, yalnızca https,
+ * yönlendirme sonrası adres tekrar denetleniyor, içerik tipi görsel.
+ */
+router.get(
+    '/wp-gorsel',
+    verifyToken,
+    requirePermission('media.manage'),
+    asyncHandler(async (req, res) => {
+        let hedef;
+        try { hedef = new URL(String(req.query.url)); } catch { return res.status(400).json({ error: 'Geçersiz adres' }); }
+        if (hedef.protocol !== 'https:' || !WP_AKTARIM_HOSTLARI.has(hedef.hostname)) {
+            return res.status(400).json({ error: 'Bu adresten okuma yapılamaz' });
+        }
+
+        const yanit = await fetch(hedef.toString());
+        if (!yanit.ok) return res.status(400).json({ error: `Kaynak okunamadı (${yanit.status})` });
+        try {
+            const son = new URL(yanit.url);
+            if (!WP_AKTARIM_HOSTLARI.has(son.hostname)) {
+                return res.status(400).json({ error: 'Yönlendirme izinli alan adı dışına çıktı' });
+            }
+        } catch { /* yanit.url boşsa özgün adres geçerli */ }
+
+        const tip = (yanit.headers.get('content-type') || '').split(';')[0].trim();
+        if (!/^image\//.test(tip)) return res.status(400).json({ error: `Görsel değil: ${tip || 'bilinmiyor'}` });
+
+        const veri = Buffer.from(await yanit.arrayBuffer());
+        if (veri.length > WP_AKTARIM_EN_BUYUK) return res.status(400).json({ error: 'Dosya çok büyük' });
+        // Köprüde `setHeader` yok, `set` var (bkz. shared/router.js).
+        res.set('Content-Type', tip);
+        res.set('Cache-Control', 'private, max-age=300');
+        res.send(veri);
+    })
+);
+
+/**
  * POST /api/upload/wp-aktar
  * Eski WordPress kurulumundaki bir görseli R2'ye kopyalar.
  * Body: { url, klasor? }

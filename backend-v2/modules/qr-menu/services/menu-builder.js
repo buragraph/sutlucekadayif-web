@@ -31,7 +31,7 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
             .then((r) => veriYaDaHata(r, 'kategoriler okunamadı')),
         // ── Menünün tamamı: tek JOIN ──
         supabase.from('urun_sube')
-            .select('fiyat_override, etiket, urunler!inner(id, ad, fiyat, aciklama, etiket, gorsel, miktar, birim, kalori, kategori_id, silinme)')
+            .select('fiyat_override, etiket, urunler!inner(id, ad, fiyat, aciklama, etiket, gorsel, gorsel_kucuk, miktar, birim, kalori, kategori_id, silinme)')
             .eq('sube_kod', subeSlug)
             .eq('menude', true)
             .eq('gizli', false)
@@ -92,6 +92,9 @@ export async function buildMenuData(subeSlug, paylasilan = null) {
         aciklama: urun.aciklama || '',
         etiket: [...new Set([...(urun.etiket || []), ...subeEtiketi])],
         gorsel: urun.gorsel || '',
+        // Kart ızgarası için küçük boy; yoksa istemci `gorsel`e düşüyor.
+        // Kartlar ~150px çiziliyor, 800px'i orada indirmek boşa veri.
+        gorselKucuk: urun.gorsel_kucuk || '',
         miktar: urun.miktar ?? null,
         birim: urun.birim || '',
         kalori: urun.kalori ?? null,

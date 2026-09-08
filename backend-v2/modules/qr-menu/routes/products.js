@@ -500,7 +500,7 @@ router.post(
     verifyToken,
     requirePermission('products.create'),
     asyncHandler(async (req, res) => {
-        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kalori, kilitli,
+        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, gorsel_kucuk, miktar, birim, kalori, kilitli,
             gizli_subeler, fiyat_serbest, menude_subeler } = req.body;
 
         if (!ad || !ad.trim()) {
@@ -535,6 +535,7 @@ router.post(
             aciklama: aciklama?.trim() || '',
             etiket: etiket || [],
             gorsel: gorsel || '',
+            gorsel_kucuk: gorsel_kucuk || null,
             miktar: miktar ? Number(miktar) : null,
             birim: birim || '',
             kalori: opsiyonelSayi(kalori),
@@ -848,7 +849,7 @@ router.put(
     requirePermission('products.edit'),
     asyncHandler(async (req, res) => {
         const { id } = req.params;
-        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, miktar, birim, kalori, kilitli,
+        const { ad, fiyat, kategori, aciklama, etiket, sube_slug, gorsel, gorsel_kucuk, miktar, birim, kalori, kilitli,
             gizli_subeler, fiyat_serbest, menude_subeler } = req.body;
 
         // Şube sahibi yalnızca kendi şubesinde arar (başka şubeyi hedefleyemez)
@@ -896,6 +897,8 @@ router.put(
 
         const updateData = {};
         if (ad !== undefined) updateData.ad = ad.trim();
+        // Küçük boy: yalnızca aktarım/yükleme yollarından gelir, elle girilmez.
+        if (gorsel_kucuk !== undefined) updateData.gorsel_kucuk = gorsel_kucuk || null;
         if (fiyat !== undefined) updateData.fiyat = Number(fiyat);
         if (kategori !== undefined) updateData.kategori_id = kategori;
         if (aciklama !== undefined) updateData.aciklama = aciklama.trim();

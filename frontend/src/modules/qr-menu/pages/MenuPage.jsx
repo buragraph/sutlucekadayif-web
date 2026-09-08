@@ -124,8 +124,10 @@ function ProductCard({ urun, index, onClick }) {
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } }}
         >
             <div className="pm-card__img-wrap">
+                {/* Kart KÜÇÜK boyu kullanır (≈400px), detay penceresi büyüğü.
+                    Eski ürünlerde küçük boy yoksa `gorsel`e düşer. */}
                 {urun.gorsel ? (
-                    <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad} className="pm-card__img" loading="lazy" />
+                    <img src={proxyImageUrl(urun.gorselKucuk || urun.gorsel)} alt={urun.ad} className="pm-card__img" loading="lazy" />
                 ) : (
                     <div className="pm-card__img-placeholder">🍮</div>
                 )}
