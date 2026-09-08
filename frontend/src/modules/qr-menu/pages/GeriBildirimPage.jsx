@@ -57,6 +57,12 @@ function tarihTR(iso) {
     });
 }
 
+/** Liste için kısa tarih — saat/dakika yalnızca detayda gösteriliyor. */
+function tarihKisaTR(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: '2-digit' });
+}
+
 /** Kaydın açılışından bu yana geçen tam gün. */
 function gunFarki(iso, bitis = Date.now()) {
     if (!iso) return 0;
@@ -332,17 +338,24 @@ export default function GeriBildirimPage() {
                     </p>
                 </div>
             ) : (
-                <div className="rounded-lg border">
-                    <Table>
-                        <TableHeader>
+                // overflow-x-auto: durum seçici ve sil sütunu dar ekranda
+                // Tarih'i kırpıyordu; artık kaydırılıyor, kesilmiyor.
+                <div className="overflow-x-auto rounded-lg border">
+                    {/* table-fixed + yüzdeli genişlik: otomatik yerleşimde uzun
+                        şikayet metni Konu sütununu şişirip Durum'u ekran dışına
+                        itiyordu. Sabit oranla metin kırpılıyor, sütunlar duruyor. */}
+                    <Table className="table-fixed">
+                        <TableHeader className="sticky top-0 z-10 bg-background">
                             <TableRow>
-                                <TableHead>Gönderen</TableHead>
-                                <TableHead className="w-32">Kaynak</TableHead>
+                                {/* Kaynak ayrı sütun değil: her satırda tek bir rozet
+                                    tekrar ediyordu ve tabloyu genişletiyordu. Rozet
+                                    gönderenin yanına taşındı — bilgi duruyor, sütun gitti. */}
+                                <TableHead className="w-[22%]">Gönderen</TableHead>
                                 <TableHead>Konu</TableHead>
-                                {isAdmin && <TableHead>Şube</TableHead>}
-                                <TableHead>Tarih</TableHead>
-                                <TableHead className="w-40">Durum</TableHead>
-                                {silebilir && <TableHead className="w-14"></TableHead>}
+                                {isAdmin && <TableHead className="w-[13%]">Şube</TableHead>}
+                                <TableHead className="w-[9%]">Tarih</TableHead>
+                                <TableHead className="w-[13%]">Durum</TableHead>
+                                {silebilir && <TableHead className="w-12"></TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -350,45 +363,56 @@ export default function GeriBildirimPage() {
                                 const acik = ACIK_DURUMLAR.includes(b.durum);
                                 const gun = gunFarki(b.olusturmaZamani);
                                 return (
-                                <TableRow key={b.id} className="cursor-pointer" onClick={() => detayAc(b)}>
-                                    <TableCell>
-                                        <div className="font-medium">{b.ad || '—'} {b.soyad}</div>
-                                        {/* Dış kaynakta iletişim bilgisi YOK: Şikayetvar
-                                            yalnızca görünen adı yayınlıyor. Boş bir "—"
-                                            yerine bunu söylemek, "eksik veri mi çekilmiş"
+                                <TableRow key={b.id} className="cursor-pointer transition-colors hover:bg-muted/40" onClick={() => detayAc(b)}>
+                                    <TableCell className="align-top">
+                                        <div className="truncate font-medium">{b.ad || '—'} {b.soyad}</div>
+                                        {/* Rozet ve iletişim bilgisi AYNI SATIRDA: ayrı
+                                            satırlarda her kayıt üç satır yer kaplıyordu.
+                                            Dış kaynakta iletişim bilgisi YOK — Şikayetvar
+                                            yalnızca görünen adı yayınlıyor; boş bir "—"
+                                            yerine bunu söylemek "eksik veri mi çekilmiş"
                                             sorusunu baştan kapatıyor. */}
-                                        <div className="text-xs text-muted-foreground">
-                                            {b.email || b.telefon
-                                                || ((b.kaynak || 'qr') === 'qr' ? '—' : 'iletişim bilgisi yok')}
+                                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                                            <Badge variant="outline" className={`px-1.5 py-0 text-[10px] font-normal ${KAYNAK[b.kaynak || 'qr']?.cls}`}>
+                                                {KAYNAK[b.kaynak || 'qr']?.label || b.kaynak}
+                                            </Badge>
+                                            <span className="truncate">
+                                                {b.email || b.telefon
+                                                    || ((b.kaynak || 'qr') === 'qr' ? '—' : 'iletişim yok')}
+                                            </span>
                                         </div>
                                     </TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline" className={KAYNAK[b.kaynak || 'qr']?.cls}>
-                                            {KAYNAK[b.kaynak || 'qr']?.label || b.kaynak}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline">{KATEGORI[b.kategori] ?? b.kategori}</Badge>
-                                        <p className="mt-1 max-w-xs truncate text-xs text-muted-foreground">{b.mesaj}</p>
+                                    {/* whitespace-normal: TableCell varsayılanı `nowrap`,
+                                        metin ikinci satıra hiç geçmiyor ve tek satırda
+                                        kırpılıyordu. */}
+                                    <TableCell className="align-top whitespace-normal">
+                                        {/* Mesaj artık asıl metin: masada "hangi şikayet"
+                                            sorusunu kategori rozeti değil ilk cümle
+                                            cevaplıyor. İki satır gösterilip kırpılıyor. */}
+                                        <p className="line-clamp-2 break-words text-sm text-foreground">{b.mesaj}</p>
+                                        <span className="mt-1 inline-block text-xs text-muted-foreground">
+                                            {KATEGORI[b.kategori] ?? b.kategori}
+                                        </span>
                                     </TableCell>
                                     {isAdmin && (
-                                        <TableCell className="text-sm text-muted-foreground">
-                                            {b.subeAd || b.subeSlug || '—'}
+                                        <TableCell className="align-top text-sm text-muted-foreground">
+                                            <span className="block truncate">{b.subeAd || b.subeSlug || '—'}</span>
                                         </TableCell>
                                     )}
-                                    <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                                        {tarihTR(b.olusturmaZamani)}
+                                    <TableCell className="align-top whitespace-nowrap text-xs text-muted-foreground">
+                                        {tarihKisaTR(b.olusturmaZamani)}
                                         {/* Yaşlanma yalnızca AÇIK kayıtta: kapanmış şikayetin
                                             "12 gündür bekliyor" demesi yanlış olurdu. */}
                                         {acik && gun >= GECIKME_GUN && (
-                                            <div className="mt-0.5 flex items-center gap-1 text-xs font-medium text-destructive">
-                                                <Clock className="size-3" /> {gun} gündür bekliyor
+                                            <div className="mt-1 flex items-center gap-1 font-medium text-destructive"
+                                                 title={`${gun} gündür bekliyor`}>
+                                                <Clock className="size-3" /> {gun} gün
                                             </div>
                                         )}
                                     </TableCell>
-                                    <TableCell onClick={(e) => e.stopPropagation()}>
+                                    <TableCell className="align-top" onClick={(e) => e.stopPropagation()}>
                                         <Select value={b.durum} onValueChange={(v) => durumGuncelle(b.id, v)}>
-                                            <SelectTrigger className="h-8 w-full"><SelectValue /></SelectTrigger>
+                                            <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
                                             <SelectContent>
                                                 {DURUM_KEYS.map((k) => (
                                                     <SelectItem key={k} value={k}>{DURUM[k].label}</SelectItem>
@@ -397,7 +421,7 @@ export default function GeriBildirimPage() {
                                         </Select>
                                     </TableCell>
                                     {silebilir && (
-                                        <TableCell onClick={(e) => e.stopPropagation()}>
+                                        <TableCell className="align-top" onClick={(e) => e.stopPropagation()}>
                                             <Button
                                                 variant="ghost" size="icon"
                                                 className="size-8 text-muted-foreground hover:text-rose-600"
