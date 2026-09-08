@@ -9,6 +9,7 @@ import { parcaYukle } from '../../../shared/utils/parca-yukle';
 import DuyuruKartlari from '../components/DuyuruKartlari';
 import SikayetUyarisi from '../components/SikayetUyarisi';
 import SubeMetrikleri from '../components/SubeMetrikleri';
+import BolgeKarti from '../components/BolgeKarti';
 
 // MapLibre ağır bir paket — yalnızca harita gösterilince yüklensin (kod bölme).
 // parcaYukle ŞART: yeni sürüm yayınlanınca eski hash'li parça sunucudan kalkıyor,
@@ -156,6 +157,9 @@ export default function Dashboard() {
                 şube ağı geneline bakıyor, tek şubenin dönem sayısı orada
                 anlamsız olurdu. */}
             {role === 'sube_sahibi' && <SubeMetrikleri subeSlug={subeSlug} />}
+
+            {/* Şubenin bulunduğu ilçenin profili — SEGE-2022. */}
+            {role === 'sube_sahibi' && <BolgeKarti subeSlug={subeSlug} />}
 
             {/* Metrik Kartlar Grubu */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

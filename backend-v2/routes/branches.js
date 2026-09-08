@@ -41,6 +41,51 @@ function kapsamUygula(sorgu, req) {
 }
 
 /**
+ * GET /api/branches/:slug/demografi
+ * Şubenin bulunduğu İLÇENİN demografisi.
+ *
+ * Kaynak `ilce_demografi` (bkz. 0025_ilce_demografi.sql): SEGE-2022 tüm 973
+ * ilçe için yüklü; yaş/eğitim kolonları TÜİK verisi geldiğinde dolacak.
+ * Yılda bir güncellenen statik veri — çekim/cron yok.
+ *
+ * Şube sahibi yalnızca KENDİ şubesini sorgulayabilir.
+ */
+router.get(
+    '/:slug/demografi',
+    verifyToken,
+    requirePermission('branches.view'),
+    asyncHandler(async (req, res) => {
+        const { slug } = req.params;
+        if (req.user.role !== 'admin' && req.user.subeSlug !== slug) {
+            return res.status(403).json({ error: 'Bu şubeye erişim yetkiniz yok' });
+        }
+
+        const { data: sube } = await supabase
+            .from('subeler').select('kod, ad, il, ilce').eq('kod', slug).maybeSingle();
+        if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
+        if (!sube.il || !sube.ilce) {
+            // İlçe atanmamış şube: veri YOK demek yerine NEDENİNİ söylüyoruz,
+            // yoksa "demografi çalışmıyor" diye aranıyor.
+            return res.json({ il: null, ilce: null, demografi: null, sebep: 'ilce_yok' });
+        }
+
+        const { data, error } = await supabase
+            .from('ilce_demografi').select('*')
+            .eq('il', sube.il).eq('ilce', sube.ilce).maybeSingle();
+        if (error) throw new Error(error.message);
+
+        res.json({
+            il: sube.il,
+            ilce: sube.ilce,
+            // Türkiye genelinde kaç ilçe var — "30. sıra" tek başına anlamsız.
+            toplamIlce: 973,
+            demografi: data || null,
+            sebep: data ? null : 'ilce_verisi_yok',
+        });
+    })
+);
+
+/**
  * POST /api/branches/konum-doldur
  * Şubelerin il/ilçesini Google Business Profile kaydından doldurur.
  *
