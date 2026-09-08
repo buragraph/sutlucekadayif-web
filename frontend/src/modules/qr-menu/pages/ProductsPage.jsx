@@ -25,6 +25,13 @@ import FiyatListesiPenceresi from '../fiyat-listesi/FiyatListesiPenceresi';
 import UrunKarti from '../components/UrunKarti';
 import { gorseliWebpYap } from '../utils/gorsel';
 
+// Şube kodundan okunur ad: "ankara_etimesgut" → "Ankara Etimesgut".
+// Şube sahibinde şube listesi YÜKLENMİYOR (90 satırı tek ad için çekmek
+// gereksiz), o yüzden fiyat listesi başlığı ve dosya adı için bu yeter.
+const subeSlugAd = (slug) => String(slug || '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\S+/g, (k) => k.charAt(0).toLocaleUpperCase('tr') + k.slice(1));
+
 // Medya kütüphanesinden ("Ürünler" klasörü) görsel seçtiren popover.
 // Yükleme yok — görseller yalnızca Medya bölümünden eklenir.
 const MEDIA_PAGE = 24;
@@ -1412,7 +1419,7 @@ export default function ProductsPage() {
                         .filter((u) => !(u.mevcut_degil || []).includes(gorunenSube))
                         .map(subeGozuyle)}
                     kategoriler={kategoriler}
-                    subeAd={subeler.find((x) => x.slug === gorunenSube)?.ad || gorunenSube}
+                    subeAd={subeler.find((x) => x.slug === gorunenSube)?.ad || subeSlugAd(gorunenSube)}
                 />
             )}
 
