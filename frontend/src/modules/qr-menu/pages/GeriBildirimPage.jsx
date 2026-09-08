@@ -4,6 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import {
     Mail, Phone, Store, Trash2, Inbox, CalendarDays, Clock, ExternalLink,
     Plus, MessageSquare, PhoneCall, ArrowRight, Hash, Search, X,
+    ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
@@ -79,6 +80,7 @@ export default function GeriBildirimPage() {
     const [filtre, setFiltre] = useState('hepsi');   // hepsi | <durum> | geciken
     const [kaynakFiltre, setKaynakFiltre] = useState('hepsi');
     const [arama, setArama] = useState('');
+    const [sayfa, setSayfa] = useState(1);
     const [secili, setSecili] = useState(null);
     const [gecmis, setGecmis] = useState([]);
     const [gecmisYukleniyor, setGecmisYukleniyor] = useState(false);
@@ -93,6 +95,8 @@ export default function GeriBildirimPage() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => { load(); }, []);
+    // Süzgeç ya da arama değişince 7. sayfada boş liste görünmesin.
+    useEffect(() => { setSayfa(1); }, [arama, filtre, kaynakFiltre]);
 
     async function load() {
         setLoading(true);
@@ -217,6 +221,15 @@ export default function GeriBildirimPage() {
     const gosterilen = filtre === 'hepsi' ? aranan
         : filtre === 'geciken' ? gecikenler
         : aranan.filter((b) => b.durum === filtre);
+
+    // Sayfalama İSTEMCİDE: kayıtlar zaten tek çağrıda geliyor (sunucu artık
+    // sayfa sayfa çekip birleştiriyor). Amaç ağ değil, DOM: bin satırlık tabloyu
+    // tek seferde çizmek tarayıcıyı kilitliyordu.
+    const SAYFA_BOYU = 50;
+    const sonSayfa = Math.max(1, Math.ceil(gosterilen.length / SAYFA_BOYU));
+    // Süzgeç/arama sonucu küçülünce elde olmayan bir sayfada kalınmasın.
+    const aktifSayfa = Math.min(sayfa, sonSayfa);
+    const sayfadakiler = gosterilen.slice((aktifSayfa - 1) * SAYFA_BOYU, aktifSayfa * SAYFA_BOYU);
 
     // ── SLA özeti ───────────────────────────────────────────────────────
     // Ortalama İLK DÖNÜŞ süresi: yalnızca dönülmüş kayıtlar üzerinden.
@@ -364,7 +377,7 @@ export default function GeriBildirimPage() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {gosterilen.map((b) => {
+                            {sayfadakiler.map((b) => {
                                 const acik = ACIK_DURUMLAR.includes(b.durum);
                                 const gun = gunFarki(b.olusturmaZamani);
                                 return (
@@ -455,6 +468,29 @@ export default function GeriBildirimPage() {
                             })}
                         </TableBody>
                     </Table>
+                </div>
+            )}
+
+            {!loading && sonSayfa > 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-muted-foreground">
+                        {gosterilen.length} kayıttan{' '}
+                        {(aktifSayfa - 1) * SAYFA_BOYU + 1}–{Math.min(aktifSayfa * SAYFA_BOYU, gosterilen.length)}{' '}
+                        arası gösteriliyor
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                        <Button variant="ghost" size="sm" className="gap-1"
+                                disabled={aktifSayfa <= 1} onClick={() => setSayfa(aktifSayfa - 1)}>
+                            <ChevronLeft className="size-4" /> Önceki
+                        </Button>
+                        <span className="px-2 text-sm tabular-nums text-muted-foreground">
+                            {aktifSayfa} / {sonSayfa}
+                        </span>
+                        <Button variant="ghost" size="sm" className="gap-1"
+                                disabled={aktifSayfa >= sonSayfa} onClick={() => setSayfa(aktifSayfa + 1)}>
+                            Sonraki <ChevronRight className="size-4" />
+                        </Button>
+                    </div>
                 </div>
             )}
 

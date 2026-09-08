@@ -3,7 +3,7 @@ import { oranSiniri } from '../shared/limit.js';
 import { supabase } from '../config/supabase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { yeniId, temizNull, veriYaDaHata, isoZ } from '../utils/veri.js';
+import { yeniId, temizNull, veriYaDaHata, isoZ, tumSatirlar } from '../utils/veri.js';
 
 const router = Router();
 
@@ -164,22 +164,26 @@ router.get(
     verifyToken,
     requirePermission('geribildirim.view'),
     asyncHandler(async (req, res) => {
-        let sorgu = supabase.from('geri_bildirimler').select('*');
-
         // Şube sahibi yalnızca kendi şubesi — kapsam sorgu parametresinden değil
         // token'daki subeSlug'dan gelir. (Firestore'daki bileşik indeks zorunluluğu
         // Postgres'te yok.)
-        if (req.user.role !== 'admin') {
-            if (!req.user.subeSlug) {
-                return res.status(403).json({ error: 'Şubenize ait bir kayıt bulunamadı.' });
-            }
-            sorgu = sorgu.eq('sube_slug', req.user.subeSlug);
+        if (req.user.role !== 'admin' && !req.user.subeSlug) {
+            return res.status(403).json({ error: 'Şubenize ait bir kayıt bulunamadı.' });
         }
 
-        const satirlar = veriYaDaHata(
-            await sorgu.order('olusturma', { ascending: false }).limit(5000),
-            'geri bildirimler okunamadı'
+        // `.limit(5000)` YETMİYORDU: PostgREST'in satır tavanı 1000 ve fazlasını
+        // SESSİZCE kırpıyor — kayıt sayısı bini geçtiği gün hata da uyarı da
+        // olmadan şikayetler listeden düşerdi. tumSatirlar sayfa sayfa çekiyor.
+        const satirlar = await tumSatirlar(
+            () => {
+                const s = supabase.from('geri_bildirimler').select('*');
+                return req.user.role === 'admin' ? s : s.eq('sube_slug', req.user.subeSlug);
+            },
+            { sirala: 'id', baglam: 'geri bildirimler' }
         );
+        // Sayfalama deterministik olsun diye id'ye göre çekiliyor; ekranın
+        // beklediği sıra (yeniden eskiye) burada veriliyor.
+        satirlar.sort((a, b) => String(b.olusturma || '').localeCompare(String(a.olusturma || '')));
         const bildirimler = satirlar.map(yanit);
 
         const sayac = DURUMLAR.reduce((acc, d) => ({ ...acc, [d]: 0 }), {});
