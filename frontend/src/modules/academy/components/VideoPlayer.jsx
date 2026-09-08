@@ -18,6 +18,24 @@ export default function VideoPlayer({
     const [isReady, setIsReady] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
 
+    // İZLENEN SANİYELER — ilerleme "şu an neredeyim" ile ölçülmez.
+    // Kaydırma çubuğunu sona sürüklemek videoyu izlemek değildir; bu yüzden
+    // GÖRÜLEN benzersiz saniyeler toplanıyor ve oran süreye bölünüyor.
+    const izlenenRef = useRef(new Set());
+    const sonBildirilenRef = useRef(0);
+    const yoklamaRef = useRef(null);
+
+    const ilerlemeIsle = (an, sure) => {
+        if (!sure || !Number.isFinite(sure)) return;
+        izlenenRef.current.add(Math.floor(an));
+        const oran = Math.min(1, izlenenRef.current.size / Math.floor(sure));
+        // Her karede state güncellemek gereksiz; %1'lik adımlarla bildiriyoruz.
+        if (oran - sonBildirilenRef.current >= 0.01 || oran >= 1) {
+            sonBildirilenRef.current = oran;
+            onProgress?.(oran);
+        }
+    };
+
     const { type: videoType, id: parsedId } = useMemo(() =>
         parseYouTubeInput(videoId), [videoId]
     );
@@ -46,6 +64,7 @@ export default function VideoPlayer({
         }
 
         return () => {
+            clearInterval(yoklamaRef.current);
             if (playerRef.current) {
                 if (isPlaylistMode) {
                     playerRef.current.destroy?.();
@@ -79,10 +98,20 @@ export default function VideoPlayer({
                     }
                 },
                 onStateChange: (event) => {
-                    if (event.data === 1) setIsPlaying(true);
-                    else if (event.data === 2) setIsPlaying(false);
-                    else if (event.data === 0) {
+                    if (event.data === 1) {
+                        setIsPlaying(true);
+                        // YouTube API'sinde timeupdate yok; oynarken yokluyoruz.
+                        clearInterval(yoklamaRef.current);
+                        yoklamaRef.current = setInterval(() => {
+                            const p = playerRef.current;
+                            if (p?.getCurrentTime) ilerlemeIsle(p.getCurrentTime(), p.getDuration?.());
+                        }, 1000);
+                    } else if (event.data === 2) {
                         setIsPlaying(false);
+                        clearInterval(yoklamaRef.current);
+                    } else if (event.data === 0) {
+                        setIsPlaying(false);
+                        clearInterval(yoklamaRef.current);
                         if (onComplete) onComplete();
                     }
                 }
@@ -156,8 +185,18 @@ export default function VideoPlayer({
 
         playerRef.current.on('playing', () => setIsPlaying(true));
         playerRef.current.on('pause', () => setIsPlaying(false));
+        playerRef.current.on('timeupdate', () => {
+            const p = playerRef.current;
+            // Duraklatılmışken ya da arama sürerken gelen timeupdate sayılmaz;
+            // yoksa çubuğu boydan boya sürüklemek videoyu "izlemiş" yapardı.
+            if (p.paused || p.seeking) return;
+            ilerlemeIsle(p.currentTime, p.duration);
+        });
         playerRef.current.on('ended', () => {
             setIsPlaying(false);
+            // BURADA onProgress(1) ÇAĞRILMIYOR: kaydırma çubuğunu sona
+            // sürükleyip yarım saniye oynatmak 'ended' tetikliyor. Oran
+            // yalnızca gerçekten görülen saniyelerden çıkar.
             if (onComplete) onComplete();
         });
     };

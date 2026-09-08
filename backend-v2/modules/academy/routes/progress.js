@@ -9,6 +9,25 @@ import { courseVisibleToUser } from '../utils.js';
 
 const router = Router();
 
+/**
+ * Sınav sonucunu soru soru açar: hangi soruda ne işaretlendi, doğrusu neydi.
+ *
+ * NEDEN SUNUCUDA: doğru şıklar yalnızca `dersler.questions` içinde duruyor ve
+ * sınav ekranına HİÇ gönderilmiyor — gönderilseydi cevaplar tarayıcıdan
+ * okunabilirdi. Bu yüzden doğru şık ancak deneme yapıldıktan SONRA, bu
+ * fonksiyonun ürettiği yanıtla açılıyor.
+ */
+function soruSonuclari(questions, cevaplar = {}) {
+    return (questions || []).map((q) => ({
+        id: q.id,
+        soru: q.questionText,
+        secenekler: q.options || [],
+        verilen: cevaplar[q.id] ?? null,
+        dogru: q.correctOptionId,
+        dogruMu: cevaplar[q.id] === q.correctOptionId,
+    }));
+}
+
 // Admin istatistikleri için kısa ömürlü cache (kullanıcı sayısı arttıkça pahalı sorgu)
 let statsCache = null; // { ts, data }
 const STATS_TTL = 60 * 1000;
@@ -190,6 +209,15 @@ router.post('/quiz/:courseId/:lessonId/submit', verifyToken, asyncHandler(async 
         return res.status(400).json({ error: 'Cevaplar geçerli bir formatta gönderilmelidir.' });
     }
 
+    // SINAV BİR KEZ ÇÖZÜLÜR. Önceki sürümde yalnızca geçen deneme
+    // kaydediliyordu; kalan denemenin izi olmadığı için kişi soruları
+    // ezberleyene kadar tekrar girebiliyordu.
+    const { data: oncekiDeneme } = await supabase.from('sinav_denemeleri')
+        .select('uid').eq('uid', userId).eq('ders_id', lessonId).maybeSingle();
+    if (oncekiDeneme) {
+        return res.status(409).json({ error: 'Bu sınavı zaten çözdünüz.' });
+    }
+
     // Dersi + kursu tek round-trip'te getir (görünürlük kontrolü için ikisi de gerekli)
     const [{ data: dersSatiri }, { data: kursSatiri }] = await Promise.all([
         supabase.from('dersler').select('*').eq('id', lessonId).eq('kurs_id', courseId).maybeSingle(),
@@ -230,24 +258,90 @@ router.post('/quiz/:courseId/:lessonId/submit', verifyToken, asyncHandler(async 
     const score = Math.round((correctCount / questions.length) * 100);
     const passed = score >= passingScore;
 
-    if (passed) {
-        const { data: mevcut } = await supabase.from('ilerleme')
-            .select('score').eq('uid', userId).eq('ders_id', lessonId).maybeSingle();
-
-        // İlk geçişte kaydet; sonraki denemelerde yalnızca skor yükselirse güncelle
-        if (!mevcut || score > (Number(mevcut.score) || 0)) {
-            veriYaDaHata(
-                await supabase.from('ilerleme').upsert(
-                    { uid: userId, ders_id: lessonId, kurs_id: courseId, score, completed_at: new Date().toISOString() },
-                    { onConflict: 'uid,ders_id' }
-                ),
-                'sınav sonucu kaydedilemedi'
-            );
-            invalidateStatsCache();
-        }
+    // Deneme HER DURUMDA kaydedilir (geçse de kalsa da): tek deneme kuralını
+    // taşıyan kayıt bu. Yarış durumunda birincil anahtar ikinci gönderimi
+    // 23505 ile reddeder.
+    const { error: denemeHatasi } = await supabase.from('sinav_denemeleri').insert({
+        uid: userId, ders_id: lessonId, kurs_id: courseId,
+        cevaplar: answers, score, gecti: passed, baraj: passingScore,
+    });
+    if (denemeHatasi) {
+        if (denemeHatasi.code === '23505') return res.status(409).json({ error: 'Bu sınavı zaten çözdünüz.' });
+        throw new Error(denemeHatasi.message);
     }
 
-    res.json({ passed, score, correctCount, totalQuestions: questions.length, passingScore });
+    if (passed) {
+        veriYaDaHata(
+            await supabase.from('ilerleme').upsert(
+                { uid: userId, ders_id: lessonId, kurs_id: courseId, score, completed_at: new Date().toISOString() },
+                { onConflict: 'uid,ders_id' }
+            ),
+            'sınav sonucu kaydedilemedi'
+        );
+        invalidateStatsCache();
+    }
+
+    res.json({
+        passed, score, correctCount, totalQuestions: questions.length, passingScore,
+        sorular: soruSonuclari(questions, answers),
+    });
+}));
+
+/**
+ * GET /api/academy/progress/quiz/:courseId/:lessonId/deneme
+ * Kişinin bu sınavdaki denemesi — sayfa açılışında sonucu geri getirir.
+ * Deneme yoksa `{ deneme: null }` döner (sınav çözülebilir demektir).
+ */
+router.get('/quiz/:courseId/:lessonId/deneme', verifyToken, asyncHandler(async (req, res) => {
+    const { courseId, lessonId } = req.params;
+
+    const { data: deneme } = await supabase.from('sinav_denemeleri')
+        .select('*').eq('uid', req.user.uid).eq('ders_id', lessonId).maybeSingle();
+    if (!deneme) return res.json({ deneme: null });
+
+    const { data: dersSatiri } = await supabase.from('dersler')
+        .select('questions').eq('id', lessonId).eq('kurs_id', courseId).maybeSingle();
+
+    res.json({
+        deneme: {
+            score: Number(deneme.score),
+            passed: deneme.gecti,
+            passingScore: Number(deneme.baraj),
+            zaman: isoZ(deneme.zaman),
+            sorular: soruSonuclari(dersSatiri?.questions || [], deneme.cevaplar || {}),
+        },
+    });
+}));
+
+/**
+ * DELETE /api/academy/progress/quiz/:courseId/:lessonId/deneme
+ * Sınav hakkını yeniden açar — YALNIZCA MERKEZ.
+ *
+ * Tek deneme kuralı olmasa bu uca gerek yoktu; ama kural katı olduğu için
+ * bir çıkış kapısı şart: bağlantı koptu, soru hatalıydı, yanlış kişi çözdü.
+ * Şube kendi hakkını yenileyemez, yoksa kural anlamsız olurdu.
+ */
+router.delete('/quiz/:courseId/:lessonId/deneme', verifyToken, asyncHandler(async (req, res) => {
+    if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Sınav hakkı yalnızca merkez tarafından yenilenebilir.' });
+    }
+    const { lessonId } = req.params;
+    const uid = String(req.body?.uid || req.query?.uid || '').trim();
+    if (!uid) return res.status(400).json({ error: 'Kullanıcı belirtilmedi.' });
+
+    veriYaDaHata(
+        await supabase.from('sinav_denemeleri').delete().eq('uid', uid).eq('ders_id', lessonId),
+        'deneme silinemedi'
+    );
+    // Geçilmiş sayılan ders de geri alınır; aksi hâlde sınav "çözülmemiş" ama
+    // ders "tamamlanmış" görünürdü.
+    veriYaDaHata(
+        await supabase.from('ilerleme').delete().eq('uid', uid).eq('ders_id', lessonId),
+        'ilerleme silinemedi'
+    );
+    invalidateStatsCache();
+
+    res.json({ success: true });
 }));
 
 /**

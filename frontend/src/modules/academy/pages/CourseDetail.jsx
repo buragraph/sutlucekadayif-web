@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Video, FileText, CheckCircle, Circle, ChevronLeft, ChevronRight, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Video, FileText, CheckCircle, Circle, ChevronLeft, ChevronRight, HelpCircle, XCircle, Lock, Award } from 'lucide-react';
 import VideoPlayer from '../components/VideoPlayer';
 import PdfViewer from '../components/PdfViewer';
 import api from '../../../services/api';
@@ -8,6 +8,11 @@ import { useToast } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
+
+// Videonun tamamlanmış sayılması için izlenmesi gereken oran. %100 istemek
+// pratikte tuzak: son saniyeler jenerik oluyor, tarayıcı 'ended' olayını
+// bazen tam sürede tetiklemiyor.
+const IZLEME_ESIGI = 0.9;
 
 export default function CourseDetail() {
     const { courseId } = useParams();
@@ -23,8 +28,41 @@ export default function CourseDetail() {
     const [quizAnswers, setQuizAnswers] = useState({});
     const [quizResult, setQuizResult] = useState(null);
     const [submittingQuiz, setSubmittingQuiz] = useState(false);
+    // Kayıtlı deneme yükleniyor mu — sınav ekranı, hak kullanılmışsa soruları
+    // hiç göstermemeli; yükleme bitmeden form çizilirse bir an açık görünür.
+    const [denemeYukleniyor, setDenemeYukleniyor] = useState(false);
+    // İçeriğin sonuna gelindi mi (video izleme oranı / PDF son sayfa).
+    // Ders değişince sıfırlanır.
+    const [sonaGelindi, setSonaGelindi] = useState(false);
+    // Kurs listesi: son dersten sonra bir SONRAKİ KURSA geçebilmek için.
+    const [kurslar, setKurslar] = useState([]);
 
     useEffect(() => { fetchCourseData(); }, [courseId]);
+
+    // Kurs listesi bir kez: "Sonraki Ders" son derste bir sonraki kursa
+    // atlıyor, sıralamayı bu listeden alıyoruz.
+    useEffect(() => {
+        api.get('/academy/courses')
+            .then(({ data }) => setKurslar(data.courses || []))
+            .catch(() => {});
+    }, []);
+
+    // Ders değişince "sonuna gelindi" işareti sıfırlanır ve sınavsa kayıtlı
+    // deneme çekilir.
+    useEffect(() => {
+        setSonaGelindi(false);
+        setQuizAnswers({});
+        setQuizResult(null);
+        if (!currentLesson || currentLesson.lessonType !== 'quiz') return;
+
+        let iptal = false;
+        setDenemeYukleniyor(true);
+        api.get(`/academy/progress/quiz/${courseId}/${currentLesson.id}/deneme`)
+            .then(({ data }) => { if (!iptal && data.deneme) setQuizResult(data.deneme); })
+            .catch(() => {})
+            .finally(() => { if (!iptal) setDenemeYukleniyor(false); });
+        return () => { iptal = true; };
+    }, [currentLesson, courseId]);
 
     const fetchCourseData = async () => {
         try {
@@ -85,12 +123,27 @@ export default function CourseDetail() {
         }
     };
 
+    /**
+     * Sıradaki kurs — son dersten sonra "Sonraki Ders" burada devam ediyor.
+     *
+     * Kurslar akademide bir SIRA ile diziliyor ("Eğitim ve Hizmet
+     * Standartları" bitince "LED Ekranlar"). Önceden gezinme kursun içinde
+     * kilitliydi: son derste düğme sönüyor ve kişi listeye dönüp sıradaki
+     * kursu kendi bulmak zorunda kalıyordu.
+     */
+    const sonrakiKurs = (() => {
+        if (kurslar.length === 0) return null;
+        const i = kurslar.findIndex(k => k.id === courseId);
+        return i >= 0 && i < kurslar.length - 1 ? kurslar[i + 1] : null;
+    })();
+
     const goToNextLesson = () => {
         const idx = lessons.findIndex(l => l.id === currentLesson?.id);
         if (idx < lessons.length - 1) {
-            setQuizAnswers({}); setQuizResult(null);
             setCurrentLesson(lessons[idx + 1]);
+            return;
         }
+        if (sonrakiKurs) navigate(`/admin/akademi/kurs/${sonrakiKurs.id}`);
     };
 
     const goToPrevLesson = () => {
@@ -116,7 +169,17 @@ export default function CourseDetail() {
                 toast.error(`Sınavı Geçemediniz. Puanınız: ${data.score} (Baraj: ${data.passingScore})`);
             }
         } catch (err) {
-            toast.error(err.response?.data?.error || 'Sınav gönderilemedi');
+            // 409 = hak zaten kullanılmış (başka sekmede çözülmüş olabilir):
+            // hata gösterip bırakmak yerine kayıtlı sonucu getiriyoruz.
+            if (err.response?.status === 409) {
+                try {
+                    const { data } = await api.get(`/academy/progress/quiz/${courseId}/${currentLesson.id}/deneme`);
+                    if (data.deneme) setQuizResult(data.deneme);
+                } catch { /* sonuç çekilemedi, aşağıdaki mesaj yeterli */ }
+                toast.error('Bu sınavı zaten çözmüşsünüz.');
+            } else {
+                toast.error(err.response?.data?.error || 'Sınav gönderilemedi');
+            }
         } finally {
             setSubmittingQuiz(false);
         }
@@ -135,6 +198,15 @@ export default function CourseDetail() {
     );
 
     const currentIdx = lessons.findIndex(l => l.id === currentLesson?.id);
+    const sonDers = currentIdx >= lessons.length - 1;
+    // Video/PDF derslerinde "Dersi Tamamla" ancak içerik sonuna gelince açılır.
+    // Önceden ders ortasında da basılabiliyordu; ilerleme yüzdesi kişinin
+    // gerçekten izlediğini/okuduğunu göstermiyordu.
+    const icerikKilidi = !!currentLesson
+        && !completed[currentLesson.id]
+        && (currentLesson.lessonType === 'video' || currentLesson.lessonType === 'pdf')
+        && !sonaGelindi;
+    const sonrakiVar = !sonDers || !!sonrakiKurs;
     const completedCount = Object.keys(completed).length;
     const totalCount = lessons.length;
     const progressPct = totalCount > 0 ? Math.min(100, Math.round((completedCount / totalCount) * 100)) : 0;
@@ -197,6 +269,10 @@ export default function CourseDetail() {
                                                 key={currentLesson.id}
                                                 videoId={currentLesson.videoUrl}
                                                 title={currentLesson.title}
+                                                // Kilit YALNIZCA izlenen orana bakar; 'ended'
+                                                // olayı tek başına açmıyor çünkü sona sürükleyip
+                                                // bırakmak da onu tetikliyor.
+                                                onProgress={(oran) => { if (oran >= IZLEME_ESIGI) setSonaGelindi(true); }}
                                             />
                                         ) : (
                                                 <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/10 border-b border-border/10 min-h-[300px]">
@@ -210,6 +286,9 @@ export default function CourseDetail() {
                                                 key={currentLesson.id}
                                                 url={currentLesson.pdfUrl}
                                                 title={currentLesson.title}
+                                                onSayfa={(sayfa, toplam) => {
+                                                    if (toplam > 0 && sayfa >= toplam) setSonaGelindi(true);
+                                                }}
                                             />
                                         ) : (
                                                 <div className="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/10 border-b border-border/10 min-h-[300px]">
@@ -225,23 +304,33 @@ export default function CourseDetail() {
                                             <h3 className="text-lg font-bold mb-2">Sınav: {currentLesson.title}</h3>
                                             <p className="text-sm text-muted-foreground mb-6 text-center">Bu sınav {currentLesson.questions?.length || 0} sorudan oluşmaktadır. Geçme notu: {currentLesson.passingScore}</p>
                                             
-                                            {quizResult && quizResult.passed ? (
-                                                <div className="flex flex-col items-center justify-center py-10">
-                                                    <div className="size-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-4">
-                                                        <CheckCircle className="size-10" />
-                                                    </div>
-                                                    <h4 className="text-2xl font-bold text-emerald-600 mb-2">Sınavı Geçtiniz!</h4>
-                                                    <p className="text-lg font-medium text-foreground">Puanınız: %{quizResult.score}</p>
-                                                    <p className="text-sm text-muted-foreground mt-2 text-center max-w-sm">Tebrikler, bu dersi başarıyla tamamladınız. Sonraki derse geçebilirsiniz.</p>
+                                            {denemeYukleniyor ? (
+                                                <div className="flex items-center gap-3 py-10 text-sm text-muted-foreground">
+                                                    <Spinner className="size-5" /> Sınav durumu kontrol ediliyor…
                                                 </div>
+                                            ) : quizResult ? (
+                                                /* SONUÇ EKRANI — hak kullanıldığında sorular bir daha
+                                                   çözülebilir olarak çizilmiyor. Yanlışlar ve doğru
+                                                   şıklar burada açılıyor; önceki sürüm yalnızca yüzde
+                                                   gösterip hangi soruyu kaçırdığını söylemiyordu. */
+                                                <SinavSonucu
+                                                    sonuc={quizResult}
+                                                    sonrakiVar={sonrakiVar}
+                                                    sonDers={sonDers}
+                                                    sonrakiKurs={sonrakiKurs}
+                                                    onSonraki={goToNextLesson}
+                                                />
                                             ) : (
                                                 <div className="w-full max-w-2xl text-left space-y-6">
-                                                    {quizResult && !quizResult.passed && (
-                                                        <div className="bg-destructive/10 border border-destructive/20 text-destructive p-4 rounded-lg flex flex-col items-center justify-center text-center">
-                                                            <span className="font-bold mb-1">Sınavı Geçemediniz (Puan: %{quizResult.score})</span>
-                                                            <span className="text-sm">Geçmek için en az %{currentLesson.passingScore} almanız gerekmektedir. Lütfen tekrar deneyin.</span>
-                                                        </div>
-                                                    )}
+                                                    <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3.5 text-sm text-amber-800 dark:text-amber-300">
+                                                        <Lock className="mt-0.5 size-4 shrink-0" />
+                                                        <span>
+                                                            <strong>Sınav bir kez çözülür.</strong> Gönderdikten sonra
+                                                            cevaplarınızı değiştiremezsiniz; yeni hak yalnızca merkez
+                                                            tarafından tanımlanabilir.
+                                                        </span>
+                                                    </div>
+
                                                     {currentLesson.questions?.map((q, i) => (
                                                         <div key={q.id} className="p-4 border rounded-lg bg-background">
                                                             <h4 className="font-medium text-foreground mb-4">{i + 1}. {q.questionText}</h4>
@@ -280,12 +369,12 @@ export default function CourseDetail() {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="flex sm:flex-col items-center sm:items-end gap-2 shrink-0">
+                                        <div className="flex flex-col items-stretch sm:items-end gap-1.5 shrink-0">
                                             <Button
                                                 variant={completed[currentLesson.id] ? 'outline' : 'default'}
                                                 size="sm"
                                                 onClick={toggleComplete}
-                                                disabled={completing}
+                                                disabled={completing || icerikKilidi}
                                                 className={`w-full sm:w-auto ${completed[currentLesson.id] ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800' : ''}`}
                                             >
                                                 {currentLesson.lessonType !== 'quiz' && (
@@ -303,9 +392,18 @@ export default function CourseDetail() {
                                                     )
                                                 )}
                                             </Button>
+                                            {/* Kilidin SEBEBİ yazılı olmalı: sönük bir düğme
+                                                "bozuk" gibi görünüyor. */}
+                                            {icerikKilidi && (
+                                                <span className="text-[11px] text-muted-foreground sm:text-right">
+                                                    {currentLesson.lessonType === 'video'
+                                                        ? 'Videoyu sonuna kadar izleyin'
+                                                        : 'Belgenin son sayfasına gelin'}
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
-                                    
+
                                     {currentLesson.description && (
                                         <div className="mt-4 rounded-lg bg-muted/30 p-3.5 text-sm text-foreground/80 leading-relaxed border border-border/50">
                                             {currentLesson.description}
@@ -316,8 +414,11 @@ export default function CourseDetail() {
                                         <Button variant="outline" size="sm" onClick={goToPrevLesson} disabled={currentIdx <= 0} className="w-full sm:w-auto">
                                             <ChevronLeft className="size-4 mr-1" /> Önceki Ders
                                         </Button>
-                                        <Button size="sm" onClick={goToNextLesson} disabled={currentIdx >= lessons.length - 1} className="w-full sm:w-auto">
-                                            Sonraki Ders <ChevronRight className="size-4 ml-1" />
+                                        <Button size="sm" onClick={goToNextLesson} disabled={!sonrakiVar} className="w-full sm:w-auto">
+                                            {sonDers && sonrakiKurs
+                                                ? <>Sonraki Kurs: {sonrakiKurs.title}</>
+                                                : <>Sonraki Ders</>}
+                                            <ChevronRight className="size-4 ml-1" />
                                         </Button>
                                     </div>
                                 </div>
@@ -391,6 +492,103 @@ export default function CourseDetail() {
                         </div>
                     </div>
                 </div>
+            )}
+        </div>
+    );
+}
+
+
+/**
+ * Sınav sonucu — puan, soru soru inceleme ve sonraki derse geçiş.
+ *
+ * DOĞRU ŞIKLAR yalnızca burada görünür: sorular sınav ekranına doğru cevap
+ * OLMADAN gidiyor, doğrular ancak deneme kaydedildikten sonra sunucudan
+ * geliyor (bkz. soruSonuclari, backend progress.js).
+ */
+function SinavSonucu({ sonuc, sonrakiVar, sonDers, sonrakiKurs, onSonraki }) {
+    const gecti = sonuc.passed;
+    const sorular = sonuc.sorular || [];
+    const yanlisSayisi = sorular.filter((q) => !q.dogruMu).length;
+
+    return (
+        <div className="w-full max-w-2xl space-y-5 text-left">
+            <div className={`flex flex-col items-center rounded-xl border p-6 text-center ${
+                gecti
+                    ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30'
+                    : 'border-destructive/30 bg-destructive/5'
+            }`}>
+                <div className={`mb-3 flex size-16 items-center justify-center rounded-full ${
+                    gecti ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/50' : 'bg-destructive/10 text-destructive'
+                }`}>
+                    {gecti ? <Award className="size-8" /> : <XCircle className="size-8" />}
+                </div>
+                <h4 className={`text-xl font-bold ${gecti ? 'text-emerald-700 dark:text-emerald-400' : 'text-destructive'}`}>
+                    {gecti ? 'Sınavı geçtiniz' : 'Sınavı geçemediniz'}
+                </h4>
+                <p className="mt-1 text-sm text-foreground">
+                    Puanınız <strong>%{sonuc.score}</strong> · Baraj %{sonuc.passingScore}
+                </p>
+                {sorular.length > 0 && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                        {sorular.length - yanlisSayisi} doğru, {yanlisSayisi} yanlış
+                    </p>
+                )}
+                {/* Kalındığında ne yapılacağı YAZILI olmalı: tek deneme kuralı
+                    yüzünden kişi kendi başına tekrar giremiyor. */}
+                {!gecti && (
+                    <p className="mt-3 max-w-sm text-xs leading-relaxed text-muted-foreground">
+                        Sınav hakkınız kullanıldı. Yeniden girmek için merkezden hak tanımlanması gerekir.
+                    </p>
+                )}
+            </div>
+
+            {sorular.length > 0 && (
+                <div className="space-y-3">
+                    <h5 className="text-sm font-semibold text-foreground">Cevaplarınız</h5>
+                    {sorular.map((q, i) => (
+                        <div key={q.id} className={`rounded-lg border p-4 ${q.dogruMu ? 'bg-background' : 'border-destructive/30 bg-destructive/[0.03]'}`}>
+                            <div className="mb-3 flex items-start gap-2">
+                                {q.dogruMu
+                                    ? <CheckCircle className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                                    : <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />}
+                                <h4 className="font-medium text-foreground">{i + 1}. {q.soru}</h4>
+                            </div>
+                            <div className="space-y-1.5">
+                                {q.secenekler.map((opt) => {
+                                    const dogruSik = opt.id === q.dogru;
+                                    const secilen = opt.id === q.verilen;
+                                    return (
+                                        <div
+                                            key={opt.id}
+                                            className={`flex items-center gap-3 rounded-md border p-2.5 text-sm ${
+                                                dogruSik ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/30'
+                                                    : secilen ? 'border-destructive/40 bg-destructive/5'
+                                                    : 'border-transparent'
+                                            }`}
+                                        >
+                                            <span className="w-4 text-center text-sm font-bold">{opt.id})</span>
+                                            <span className="flex-1">{opt.text}</span>
+                                            {dogruSik && <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">doğru cevap</span>}
+                                            {secilen && !dogruSik && <span className="text-[11px] font-semibold text-destructive">sizin cevabınız</span>}
+                                        </div>
+                                    );
+                                })}
+                                {q.verilen == null && (
+                                    <p className="text-xs text-muted-foreground">Bu soruyu boş bırakmışsınız.</p>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Sınav ekranı sayfayı doldurduğu için alttaki gezinme çubuğu
+                görüş alanının dışında kalıyordu: geçişi buraya da koyuyoruz. */}
+            {sonrakiVar && (
+                <Button onClick={onSonraki} size="lg" className="w-full">
+                    {sonDers && sonrakiKurs ? `Sonraki kurs: ${sonrakiKurs.title}` : 'Sonraki derse geç'}
+                    <ChevronRight className="ml-1 size-4" />
+                </Button>
             )}
         </div>
     );
