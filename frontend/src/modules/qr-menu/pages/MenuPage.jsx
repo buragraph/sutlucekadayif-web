@@ -9,6 +9,7 @@ import IsBasvuruModal from '../components/IsBasvuruModal';
 import AlerjenModal from '../components/AlerjenModal';
 
 import { etiketKisaAd } from '../constants/etiketler';
+import { menuGoruntulendi } from '../utils/analitik';
 
 /* ─── Skeleton Loading ─── */
 function SkeletonLoading() {
@@ -170,6 +171,15 @@ export default function MenuPage() {
     // Sayfa başlığı — sekme + paylaşım için şube adı
     useEffect(() => {
         document.title = sube?.ad ? `${sube.ad} — Sütlüce Kadayıf Menü` : 'Sütlüce Kadayıf';
+    }, [sube]);
+
+    // Menü görüntülenme ölçümü. MENÜ GELDİKTEN SONRA: yüklenemeyen/olmayan
+    // şube de sayılsaydı "görüntülenme" hatalı QR okutmalarını da içerirdi.
+    // Şube bazında ayrılabilsin diye slug olay parametresi olarak gidiyor.
+    useEffect(() => {
+        if (sube?.slug || sube?.kod) {
+            menuGoruntulendi({ slug: sube.slug || sube.kod, ad: sube.ad });
+        }
     }, [sube]);
 
     // Global ayarlar (alerjen PDF'i + fiyat değiştirilme tarihi) — şube
