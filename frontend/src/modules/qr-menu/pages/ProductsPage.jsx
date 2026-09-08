@@ -1486,6 +1486,22 @@ export default function ProductsPage() {
                                         />
                                     );
                                 })}
+                                {/* Şeridin sonunda "hepsini gör": 170 ürünlü kategoride
+                                    sonuna kaydırmak uzun sürüyor; bu kart o kategorinin
+                                    sekmesine geçirip sayfalanmış grid'i açıyor.
+                                    Eşik: ekrana sığandan fazlası varsa göster — yoksa
+                                    zaten hepsi görünürken gereksiz bir kart olurdu. */}
+                                {yataySeritler && grup.urunler.length > 8 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedKategori(grup.id)}
+                                        className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed bg-card text-muted-foreground transition-colors hover:border-foreground/30 hover:text-foreground"
+                                    >
+                                        <ChevronRight className="size-5" />
+                                        <span className="text-xs font-medium">Hepsini gör</span>
+                                        <span className="text-[11px] tabular-nums">{grup.urunler.length} ürün</span>
+                                    </button>
+                                )}
                                     </div>
                                 </div>
                                 ))}
