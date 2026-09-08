@@ -47,16 +47,51 @@ function konulariAyikla(html) {
     return konular;
 }
 
-/** Bir liste sayfasındaki şikayet kartlarını çıkarır. */
+const AYLAR = ['ocak', 'şubat', 'mart', 'nisan', 'mayıs', 'haziran',
+    'temmuz', 'ağustos', 'eylül', 'ekim', 'kasım', 'aralık'];
+
+/**
+ * "14 Ağustos 14:02" veya "20 Kasım 2025 20:03" → ISO tarih.
+ *
+ * YIL İSTEĞE BAĞLI: Şikayetvar son bir yılın kayıtlarında yılı yazmıyor,
+ * eskilerde yazıyor. Yıl yoksa içinde bulunduğumuz yıl varsayılıyor; sonuç
+ * GELECEKTE kalıyorsa bir yıl geri çekiliyor (8 Eylül'de görülen "14 Aralık"
+ * geçen yılın aralığıdır).
+ */
+function tarihCoz(metin) {
+    const m = String(metin)
+        .match(/(\d{1,2}) ([A-Za-zçğıöşüÇĞİÖŞÜ]+)(?: (\d{4}))?(?: (\d{2}):(\d{2}))?/);
+    if (!m) return null;
+    const ay = AYLAR.indexOf(m[2].toLocaleLowerCase('tr'));
+    if (ay < 0) return null;
+    const simdi = new Date();
+    const yil = m[3] ? Number(m[3]) : simdi.getUTCFullYear();
+    const d = new Date(Date.UTC(yil, ay, Number(m[1]), Number(m[4] || 0), Number(m[5] || 0)));
+    if (!m[3] && d > simdi) d.setUTCFullYear(d.getUTCFullYear() - 1);
+    return d.toISOString();
+}
+
+/**
+ * Bir liste sayfasındaki şikayet kartlarını çıkarır.
+ *
+ * TARİH ŞART: kart tarihi alınmazsa kayıt "bugün geldi" gibi görünür ve
+ * masadaki yaşlanma/SLA görünümü tamamen yanlış çıkar (üç aylık şikayet
+ * "yeni" sayılırdı).
+ */
 function kartlariAyikla(html) {
-    const kartlar = [];
-    // Başlık bloğu: <h3 ...><a ... title="..." href="/sutluce-kadayif/...">
     const re = /<h3 class="font-bold[^"]*"><a class="[^"]*" title="([^"]*)" href="(\/sutluce-kadayif\/[^"]+)"/g;
-    let m;
-    while ((m = re.exec(html)) !== null) {
-        kartlar.push({ baslik: cozHtml(m[1]), yol: m[2] });
-    }
-    return kartlar;
+    const eslesmeler = [...html.matchAll(re)];
+    return eslesmeler.map((m, i) => {
+        // Tarih başlığın ARDINDAN, aria-label içinde geliyor — ama araya
+        // şikayetçinin adı da aria-label olarak giriyor, o yüzden desen
+        // "gün ay saat" arıyor. Pencere BİR SONRAKİ karta kadar: sabit
+        // uzunlukta kesilse, tarihi olmayan kartın tarihi diye sonrakinin
+        // tarihi alınırdı.
+        const son = i + 1 < eslesmeler.length ? eslesmeler[i + 1].index : m.index + 3000;
+        const t = html.slice(m.index, son)
+            .match(/aria-label="(\d{1,2} [A-Za-zçğıöşüÇĞİÖŞÜ]+(?: \d{4})? \d{2}:\d{2})"/);
+        return { baslik: cozHtml(m[1]), yol: m[2], tarih: t ? tarihCoz(t[1]) : null };
+    });
 }
 
 /**
@@ -126,7 +161,7 @@ let eklendi = 0; let vardi = 0; let hata = 0;
 for (const k of tekil) {
     // Konu sayfası > başlık tahmini: ilki Şikayetvar'ın kendi etiketi.
     const subeKod = konuSubesi.get(k.yol) || subeTahmini(k.baslik, subeler || []);
-    console.log(`${subeKod ? subeKod.padEnd(22) : '(şube tahmin edilemedi)'.padEnd(22)} ${k.baslik.slice(0, 60)}`);
+    console.log(`${(k.tarih || '').slice(0, 10).padEnd(11)}${subeKod ? subeKod.padEnd(22) : '(şube tahmin edilemedi)'.padEnd(22)} ${k.baslik.slice(0, 55)}`);
     if (!yaz) continue;
 
     const { data: sube } = subeKod
@@ -148,7 +183,8 @@ for (const k of tekil) {
         kaynak: 'sikayetvar',
         kaynak_url: `https://www.sikayetvar.com${k.yol}`,
         kaynak_id: k.yol,
-        olusturma: new Date().toISOString(),
+        // Şikayetin Şikayetvar'daki tarihi — çekim tarihi DEĞİL.
+        olusturma: k.tarih || new Date().toISOString(),
     });
     if (!error) eklendi++;
     else if (error.code === '23505') vardi++;
