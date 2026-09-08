@@ -8,6 +8,7 @@ import { yeniId, veriYaDaHata, isoZ, tumSatirlar } from '../../../utils/veri.js'
 import {
     regenerateAffectedMenuJsons, regenerateMenuJsons, regenerateMenuJson, regenerateForAffected,
 } from '../services/menu-cache.js';
+import { menuLogYaz } from '../services/menu-log.js';
 
 // katalog-cache.js + bumpKatalogVersion middleware'i TAŞINMADI: ikisi de
 // Firestore okuma maliyetini kısmak içindi (katalog 510 doküman = 510 okuma).
@@ -767,7 +768,7 @@ router.post(
         const temizIds = [...new Set(ids.map((x) => String(x).trim()).filter(Boolean))];
 
         const satirlar = veriYaDaHata(
-            await supabase.from('urunler').select('id, tur, silinme, kategori_id').in('id', temizIds).range(0, 999),
+            await supabase.from('urunler').select('id, ad, tur, silinme, kategori_id').in('id', temizIds).range(0, 999),
             'ürünler okunamadı'
         );
         const uyelikler = await uyelikleriGetir(temizIds, slug);
@@ -779,6 +780,7 @@ router.post(
         const kilitliKategori = [];
 
         const yazilacak = [];
+        const gunluk = [];
         for (const s of satirlar) {
             if (s.silinme) continue;
             if (s.tur === 'sube_ozel') continue;
@@ -787,6 +789,12 @@ router.post(
             // yoksa şube gizli ürünü menüsüne ekleyebilirdi.
             const uye = (uyelikler.get(s.id) || [])[0];
             if (uye?.gizli) continue;
+            // Zaten aynı durumda olan ürün günlüğe girmez: "hepsini ekle"
+            // düğmesi her basışta 400 satır anlamsız kayıt üretirdi.
+            if (!!uye?.menude !== menude) gunluk.push({
+                urun_id: s.id, urun_ad: s.ad,
+                islem: menude ? 'menuye_ekle' : 'menuden_cikar',
+            });
             yazilacak.push({ urun_id: s.id, sube_kod: slug, menude });
         }
 
@@ -795,6 +803,7 @@ router.post(
                 await supabase.from('urun_sube').upsert(yazilacak, { onConflict: 'urun_id,sube_kod' }),
                 'menü üyeliği yazılamadı'
             );
+            await menuLogYaz(req, slug, gunluk);
             // Yalnızca bu şubenin menüsü değişti (88 şubeyi yenilemek gereksiz).
             await regenerateMenuJson(slug).catch(console.error);
         }
@@ -1044,114 +1053,47 @@ router.delete(
 );
 
 /**
- * GET /api/products/sube-sapmalari/ozet
- * Sapmaların ÖZETİ — düz listenin cevaplayamadığı iki soru için.
+ * GET /api/products/menu-log
+ * Menü günlüğü — kim, hangi şubede, neyi değiştirdi.
  *
- *   ürün: hangi ürün kaç şubede kapatılmış? "88 şubede menüde, 88'inde
- *         kapalı" olan bir ürün 88 ayrı şube kararı değildir — fiilen var
- *         olmayan bir üründür ve katalog kararı gerektirir.
- *   şube: şube menüsünün ne kadarını kapatmış? Oran ham sayıdan anlamlı
- *         (39/58 ile 39/300 aynı şey değil) ve ortalamayla kıyaslanınca
- *         aykırı şube görünür.
+ * "Şube Değişiklikleri" ekranının yerini aldı. O ekran `urun_sube`nin SON
+ * DURUMUNU listeliyordu; aynı bilgi artık Ürünler sayfasında şube seçilerek
+ * hem görülüyor hem düzeltiliyor. Cevapsız kalan soru "ne zaman, kim"di —
+ * onu da urun_sube tutamıyor (satırda aktör/zaman kolonu yok), bu yüzden
+ * ayrı bir append-only tablo: menu_log (bkz. 0020_menu_gunlugu.sql).
  *
- * Gruplama SQL tarafında (bkz. 0018_sube_sapma_ozetleri.sql): 8.300 satırı
- * Worker'a çekmek sayfa başına ~9 alt-istek demekti, bütçe 50.
+ * Query: ?sube= &islem= &q= (ürün adı) &sayfa= &limit=
  *
- * ADMIN'E ÖZEL — şubeler arası görünüm.
- */
-router.get(
-    '/sube-sapmalari/ozet',
-    verifyToken,
-    requirePermission('products.view'),
-    asyncHandler(async (req, res) => {
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ error: 'Bu görünüm yalnızca merkez içindir' });
-        }
-
-        const [urunSonuc, subeSonuc] = await Promise.all([
-            supabase.rpc('sube_sapma_urun_ozeti'),
-            supabase.rpc('sube_sapma_sube_ozeti'),
-        ]);
-        if (urunSonuc.error) throw new Error(urunSonuc.error.message);
-        if (subeSonuc.error) throw new Error(subeSonuc.error.message);
-
-        const urunler = (urunSonuc.data || [])
-            .map((r) => ({
-                urunId: r.urun_id, ad: r.ad, kategoriId: r.kategori_id,
-                menude: r.menude, kapali: r.kapali, fiyatli: r.fiyatli, etiketli: r.etiketli,
-                // Menüde olduğu HER şubede kapalı → ürün fiilen yok.
-                tamamenKapali: r.menude > 0 && r.kapali >= r.menude,
-            }))
-            .sort((a, b) => b.kapali - a.kapali || b.fiyatli - a.fiyatli);
-
-        const subeler = (subeSonuc.data || [])
-            .map((r) => ({
-                subeKod: r.sube_kod, ad: r.ad, kapali: r.kapali, menude: r.menude,
-                fiyatli: r.fiyatli, etiketli: r.etiketli,
-                kapaliOran: r.menude > 0 ? r.kapali / r.menude : 0,
-                kapanmaTarihi: r.kapanma_tarihi || null,
-            }))
-            .sort((a, b) => b.kapaliOran - a.kapaliOran);
-
-        // Ortalama TÜM şubeler üzerinden (sapması olmayanlar dahil), yoksa
-        // aykırılık ölçüsü şişer.
-        const toplamMenude = subeler.reduce((t, x) => t + x.menude, 0);
-        const toplamKapali = subeler.reduce((t, x) => t + x.kapali, 0);
-
-        res.json({
-            urunler,
-            subeler,
-            ortalamaKapaliOran: toplamMenude > 0 ? toplamKapali / toplamMenude : 0,
-        });
-    })
-);
-
-/**
- * GET /api/products/sube-sapmalari
- * Şubelerin merkez kaydından SAPTIĞI yerler — admin denetimi için.
- *
- * Üç sapma türü tek listede: "mevcut değil" işaretleri, şubenin kendi
- * etiketleri ve şube fiyatları. Bunlar `urun_sube` satırında durduğu için
- * ürün listesinde görünmüyorlardı; merkez "hangi şube neyi kapatmış"
- * sorusunu ancak şube şube gezerek cevaplayabiliyordu.
- *
- * Query: ?tur=mevcut_degil|etiket|fiyat (boş = hepsi) &sube= &q= &sayfa= &limit=
- *
- * ADMIN'E ÖZEL: şubeler arası bir görünüm; şube sahibi başka şubenin
+ * ADMIN'E ÖZEL: şubeler arası görünüm; şube sahibi başka şubenin
  * kararlarını görmemeli.
  */
 router.get(
-    '/sube-sapmalari',
+    '/menu-log',
     verifyToken,
     requirePermission('products.view'),
     asyncHandler(async (req, res) => {
         if (req.user.role !== 'admin') {
             return res.status(403).json({ error: 'Bu görünüm yalnızca merkez içindir' });
         }
-        const { tur, sube, q } = req.query;
+        const { sube, islem, q } = req.query;
         const limit = Math.min(Number(req.query.limit) || 50, 200);
         const sayfa = Math.max(Number(req.query.sayfa) || 1, 1);
         const bas = (sayfa - 1) * limit;
 
-        let sorgu = supabase.from('urun_sube')
-            .select(
-                'sube_kod, mevcut_degil, etiket, fiyat_override, '
-                + 'urunler!inner(id, ad, fiyat, kategori_id, silinme), subeler(ad)',
-                { count: 'exact' }
-            )
-            .is('urunler.silinme', null);
-
-        // Tür süzgeci; boşsa üçünden HERHANGİ biri.
-        if (tur === 'mevcut_degil') sorgu = sorgu.is('mevcut_degil', true);
-        else if (tur === 'fiyat') sorgu = sorgu.not('fiyat_override', 'is', null);
-        else if (tur === 'etiket') sorgu = sorgu.neq('etiket', '{}');
-        else sorgu = sorgu.or('mevcut_degil.is.true,fiyat_override.not.is.null,etiket.neq.{}');
+        // Şube adı EMBED EDİLMİYOR: menu_log'un subeler'e FK'si yok (kasıtlı —
+        // FK, şube silmeyi günlüğe bağlardı). Kod → ad çevirisini ekran
+        // zaten elindeki şube listesiyle yapıyor.
+        let sorgu = supabase.from('menu_log').select('*', { count: 'exact' });
 
         if (sube) sorgu = sorgu.eq('sube_kod', sube);
-        if (q && q.trim()) sorgu = sorgu.ilike('urunler.ad', `%${q.trim()}%`);
+        if (islem) sorgu = sorgu.eq('islem', islem);
+        // Ürün adı SNAPSHOT: ürün sonradan silinse/yeniden adlandırılsa bile
+        // günlükteki satır o günkü adıyla aranabilir kalmalı.
+        if (q && q.trim()) sorgu = sorgu.ilike('urun_ad', `%${q.trim()}%`);
 
         const { data, error, count } = await sorgu
-            .order('sube_kod').order('urun_id').range(bas, bas + limit - 1);
+            .order('zaman', { ascending: false })
+            .range(bas, bas + limit - 1);
         if (error) throw new Error(error.message);
 
         res.json({
@@ -1159,15 +1101,16 @@ router.get(
             sayfa,
             limit,
             satirlar: (data || []).map((r) => ({
+                id: r.id,
+                zaman: r.zaman,
+                kullanici: r.kullanici_eposta || r.kullanici || '—',
+                rol: r.rol,
                 subeKod: r.sube_kod,
-                subeAd: r.subeler?.ad || r.sube_kod,
-                urunId: r.urunler.id,
-                urunAd: r.urunler.ad,
-                kategoriId: r.urunler.kategori_id,
-                merkezFiyat: Number(r.urunler.fiyat),
-                mevcutDegil: !!r.mevcut_degil,
-                etiket: r.etiket || [],
-                subeFiyat: r.fiyat_override == null ? null : Number(r.fiyat_override),
+                urunId: r.urun_id,
+                urunAd: r.urun_ad,
+                islem: r.islem,
+                eski: r.eski,
+                yeni: r.yeni,
             })),
         });
     })
@@ -1222,6 +1165,13 @@ router.put(
         }
 
         await uyelikYaz(id, subeSlug, { fiyat_override: yeni });
+        await menuLogYaz(req, subeSlug, [{
+            urun_id: id, urun_ad: found.urun.ad, islem: 'fiyat',
+            // Merkez fiyatı da yazılıyor: "195 → merkez" satırı tek başına
+            // okunduğunda merkezin o günkü fiyatı bilinmezse anlamsız.
+            eski: { fiyat: found.urun.fiyat_override?.[subeSlug] ?? null, merkez: found.urun.fiyat ?? null },
+            yeni: { fiyat: yeni, merkez: found.urun.fiyat ?? null },
+        }]);
         await regenerateMenuJson(subeSlug).catch(console.error);
         res.json({ success: true, fiyat: yeni });
     })
@@ -1257,10 +1207,10 @@ router.put(
         )];
 
         const { data: urun } = await supabase
-            .from('urunler').select('id, kategori_id').eq('id', id).is('silinme', null).maybeSingle();
+            .from('urunler').select('id, ad, kategori_id').eq('id', id).is('silinme', null).maybeSingle();
         if (!urun) return res.status(404).json({ error: 'Ürün bulunamadı' });
 
-        const { data: uye } = await supabase.from('urun_sube').select('menude, gizli')
+        const { data: uye } = await supabase.from('urun_sube').select('menude, gizli, etiket')
             .eq('urun_id', id).eq('sube_kod', subeSlug).maybeSingle();
 
         // Merkezin gizlediği ürün şube için yok hükmünde (ürün bayrağı ya da kategori).
@@ -1272,6 +1222,10 @@ router.put(
         if (!uye?.menude) return res.status(400).json({ error: 'Ürün menünüzde değil' });
 
         await uyelikYaz(id, subeSlug, { etiket });
+        await menuLogYaz(req, subeSlug, [{
+            urun_id: id, urun_ad: urun.ad, islem: 'etiket',
+            eski: { etiket: uye?.etiket || [] }, yeni: { etiket },
+        }]);
         await regenerateMenuJson(subeSlug).catch(console.error);
         res.json({ success: true, etiket });
     })
@@ -1294,9 +1248,12 @@ router.put(
             return res.status(403).json({ error: 'Sadece kendi şubenizin müsaitliğini değiştirebilirsiniz' });
         }
 
-        // Availability toggle sadece ortak ürünlerde çalışır
+        // Availability toggle sadece ortak ürünlerde çalışır.
+        // kategori_id ŞART: aşağıdaki "kategori bu şubeden gizli mi" kontrolü
+        // onu okuyor — seçilmediği sürece undefined kalıp kontrolü sessizce
+        // devre dışı bırakıyordu. `ad` günlüğe snapshot olarak yazılıyor.
         const { data: urun } = await supabase
-            .from('urunler').select('id, tur').eq('id', id).eq('tur', 'ortak').maybeSingle();
+            .from('urunler').select('id, tur, ad, kategori_id').eq('id', id).eq('tur', 'ortak').maybeSingle();
         if (!urun) {
             return res.status(404).json({ error: 'Ürün bulunamadı' });
         }
@@ -1318,6 +1275,10 @@ router.put(
         }
 
         await uyelikYaz(id, subeSlug, { mevcut_degil: !mevcut });
+        await menuLogYaz(req, subeSlug, [{
+            urun_id: id, urun_ad: urun.ad, islem: 'mevcut_degil',
+            eski: { mevcut: !uye?.mevcut_degil }, yeni: { mevcut: !!mevcut },
+        }]);
 
         // Sadece bu şubenin JSON'ını yenile (güvenilir — yanıttan önce)
         await regenerateMenuJson(subeSlug).catch(console.error);
