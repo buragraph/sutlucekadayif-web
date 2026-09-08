@@ -5,11 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Building2, UserCircle, QrCode, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight, Map as MapIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { parcaYukle } from '../../../shared/utils/parca-yukle';
 
-// MapLibre ağır bir paket — yalnızca harita gösterilince yüklensin (kod bölme)
-const BranchMap = lazy(() => import('../components/BranchMap'));
+// MapLibre ağır bir paket — yalnızca harita gösterilince yüklensin (kod bölme).
+// parcaYukle ŞART: yeni sürüm yayınlanınca eski hash'li parça sunucudan kalkıyor,
+// açık sekme onu isteyince SPA yedeği index.html döndürüyor ("Expected a
+// JavaScript-or-Wasm module script but the server responded with text/html").
+// Çıplak lazy'de bu hata Suspense sınırını aşıp SAYFAYI KOMPLE BEYAZ bırakıyordu;
+// sarmalayıcı hatayı tanıyıp sayfayı bir kez yeniliyor.
+const BranchMap = lazy(() => parcaYukle(() => import('../components/BranchMap'), 'Harita'));
 // recharts da ağır — yalnızca şube sahibi grafiğinde yüklensin
-const HarcamaGrafik = lazy(() => import('../components/HarcamaGrafik'));
+const HarcamaGrafik = lazy(() => parcaYukle(() => import('../components/HarcamaGrafik'), 'Grafik'));
 
 // Grafik yüklenirken yer ayıran iskelet — harita ile aynı boyda, layout sıçraması önler
 function GrafikIskelet() {
