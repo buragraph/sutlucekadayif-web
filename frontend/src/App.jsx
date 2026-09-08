@@ -52,7 +52,10 @@ export default function App() {
             <Route path="/admin/subeler" element={<BranchesPage />} />
             <Route path="/admin/qr-menu/kategoriler" element={<CategoriesPage />} />
             <Route path="/admin/qr-menu/talepler" element={<UrunTalepleriPage />} />
-            <Route path="/admin/qr-menu/menu-gunlugu" element={<MenuLogPage />} />
+            {/* Günlük şubeler arası bir görünüm: uç zaten 403 veriyor ama
+                korumasız rota, şube sahibine boş bir "kayıt yok" ekranı
+                gösterip hata varmış gibi görünmesine yol açardı. */}
+            <Route path="/admin/qr-menu/menu-gunlugu" element={<ProtectedRoute role="admin"><MenuLogPage /></ProtectedRoute>} />
             <Route path="/admin/medya" element={<ProtectedRoute role="admin"><PhotoLibraryPage /></ProtectedRoute>} />
             <Route path="/admin/basvurular" element={<ProtectedRoute role="admin"><BasvurularPage /></ProtectedRoute>} />
             <Route path="/admin/geri-bildirim" element={<GeriBildirimPage />} />
