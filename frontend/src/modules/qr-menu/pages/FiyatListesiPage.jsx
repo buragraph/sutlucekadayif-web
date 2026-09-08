@@ -93,9 +93,17 @@ export default function FiyatListesiPage() {
         // Motor kategori sırasını modül düzeyinde okuyor; çizimden önce dolar.
         kategoriSirasiniAyarla(kategoriler.map((k) => k.ad));
 
+        // ÜYELİK KONTROLÜ ROLE GÖRE: `/products` şube sahibine ZATEN yalnızca
+        // kendi menüsünü döndürüyor ve yanıtında `menude_subeler` yok (o alan
+        // admin'in katalog görünümü için). Admin'in listesi ise tüm katalog,
+        // orada seçili şubenin menüsüne süzmek şart.
+        const menudeMi = (u) => (role === 'admin'
+            ? (u.menude_subeler || []).includes(hedefSube)
+                || (u.tur === 'sube_ozel' && u.sube_slug === hedefSube)
+            : u.menude !== false);
+
         return urunler
-            .filter((u) => (u.menude_subeler || []).includes(hedefSube)
-                || (u.tur === 'sube_ozel' && u.sube_slug === hedefSube))
+            .filter(menudeMi)
             .filter((u) => !(u.mevcut_degil || []).includes(hedefSube))
             .map((u) => {
                 const kategoriAdi = katAdi.get(u.kategori) || 'Diğer';
@@ -114,7 +122,7 @@ export default function FiyatListesiPage() {
                     owner: 'central',
                 };
             });
-    }, [urunler, kategoriler, hedefSube]);
+    }, [urunler, kategoriler, hedefSube, role]);
 
     // Seçili ölçüde kâğıda kaç ürün düşüyor: LED/pleksi/A5 gruba göre süzdüğü
     // için sayı A4'ten farklı olur, boş kâğıt indirilmesin.
