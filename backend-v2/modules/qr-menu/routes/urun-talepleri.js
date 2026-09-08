@@ -303,6 +303,8 @@ router.patch(
         }
 
         let urunId = temizle(req.body?.urunId, 60) || null;
+        // Eşleştirme mi, sıfırdan ürün mü — aşağıda fiyat politikası buna bakıyor.
+        const yeniUrun = !urunId;
 
         if (!urunId) {
             const kategoriId = temizle(req.body?.kategoriId, 60) || talep.kategori_id;
@@ -336,6 +338,36 @@ router.patch(
 
             urunId = satir.id;
             veriYaDaHata(await supabase.from('urunler').insert(satir), 'ürün oluşturulamadı');
+        }
+
+        // Talepten DOĞAN ürünün fiyatı merkez standardı değil: ürünü bir şube
+        // istedi, fiyatı da yerel (maliyet, tedarikçi, konum). O yüzden ürün
+        // kataloğa "her şube kendi fiyatını girebilir" olarak açılıyor —
+        // fiyat_serbest tüm şubelerde işaretlenir. Merkezin onay ekranında
+        // girdiği fiyat VARSAYILAN olarak kalır; dokunmayan şube onu satar.
+        //
+        // YALNIZCA yeni üründe: merkezin mevcut bir ürünüyle eşleştirme
+        // yapıldığında o ürünün fiyat politikası tek bir talep yüzünden
+        // değişmemeli.
+        //
+        // Kapalı şubeler de dahil — geri açıldığında hakkını kaybetmesin.
+        // Tek upsert (90 satır) = tek alt-istek; yalnızca fiyat_serbest
+        // kolonuna dokunur, mevcut satırların menude/mevcut_degil değerleri
+        // olduğu gibi kalır.
+        if (yeniUrun) {
+            const kodlar = veriYaDaHata(
+                await supabase.from('subeler').select('kod').range(0, 999),
+                'şubeler okunamadı'
+            ).map((x) => x.kod);
+            if (kodlar.length > 0) {
+                veriYaDaHata(
+                    await supabase.from('urun_sube').upsert(
+                        kodlar.map((kod) => ({ urun_id: urunId, sube_kod: kod, fiyat_serbest: true })),
+                        { onConflict: 'urun_id,sube_kod' }
+                    ),
+                    'şube fiyat izni verilemedi'
+                );
+            }
         }
 
         // Ürün YALNIZCA talep eden şubede açılır; diğer şubeler isterse kendi

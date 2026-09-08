@@ -102,7 +102,7 @@ export default function UrunTalepleriPage() {
                 });
             toast.success(urunId
                 ? `Mevcut ürün ${talep.subeSlug} şubesinde açıldı`
-                : `"${talep.ad}" katalogda açıldı ve ${talep.subeSlug} menüsüne eklendi`);
+                : `"${talep.ad}" katalogda açıldı, ${talep.subeSlug} menüsüne eklendi — fiyatı her şube kendi belirleyebilir`);
             yukle();
         } catch (err) {
             toast.error(err.response?.data?.error || 'Onaylanamadı');
@@ -281,6 +281,12 @@ export default function UrunTalepleriPage() {
                                                        value={d.fiyat ?? t.fiyat ?? ''}
                                                        onChange={(e) => setTaslak((p) => ({ ...p, [t.id]: { ...d, fiyat: e.target.value } }))} />
                                             </div>
+                                            {/* Fiyat politikası onaydan ÖNCE görünmeli: merkez buraya
+                                                girdiği rakamın bağlayıcı olmadığını bilerek onaylasın. */}
+                                            <p className="w-full text-[11px] text-muted-foreground">
+                                                Talepten doğan ürünün fiyatını her şube kendi belirleyebilir;
+                                                buraya girdiğiniz fiyat varsayılan olur.
+                                            </p>
                                             <Button size="sm" className="h-8 text-xs" disabled={islenen === t.id}
                                                     onClick={() => onayla(t, null)}>
                                                 {islenen === t.id ? <Spinner className="size-3.5 mr-1.5" /> : <Check className="size-3.5 mr-1.5" />}
