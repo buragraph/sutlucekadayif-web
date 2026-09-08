@@ -40,7 +40,7 @@ export default function UrunKarti({
         <div
             className={`group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-colors ${
                 kilitli && !tiklamaSecer ? '' : 'cursor-pointer hover:border-foreground/30'
-            } ${secili ? 'ring-2 ring-primary' : ''}`}
+            } ${secili ? 'ring-2 ring-inset ring-primary' : ''}`}
             onClick={(e) => {
                 if (e.target.closest('button') || e.target.closest('[role=switch]')) return;
                 // Admin'de karta tıklamak SEÇER (toplu işlem için), düzenleme
