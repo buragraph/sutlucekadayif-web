@@ -16,7 +16,7 @@ import budgetRouter from './budget-routes.js';
 import { generateReportHtml } from './services/report-template.js';
 import {
   getAllSubeler, getSubeByKod, getDonemVeri, upsertSube, updateSube, deleteSube, deleteDonem,
-  upsertButce, updateOverrides, upsertGoogleToplanlar, getSettings, saveSettings,
+  upsertButce, updateOverrides, updateMetrikler, upsertGoogleToplanlar, getSettings, saveSettings,
   getCampaignMappings, getAdsetMappings, getSubeNot, saveSubeNot,
 } from './db.js';
 
@@ -624,14 +624,17 @@ router.get('/sube/:kod/donem/veriler', verifyToken, requirePermission('reports.v
 router.put('/sube/:kod/donem/overrides', verifyToken, requirePermission('reports.manage'), async (req, res) => {
   try {
     const { kod } = req.params;
-    const { baslangic, bitis, overrides } = req.body;
+    const { baslangic, bitis, overrides, metrikler } = req.body;
 
     const sube = await getSubeByKod(kod);
     if (!sube) return res.status(404).json({ error: 'Şube bulunamadı' });
 
-    // YALNIZCA bütçe alanları yazılır. Otomatik çekilen metrikler (harcama,
-    // erişim, gösterim, sonuç, google...) bu uçla DEĞİŞTİRİLEMEZ — kolon ayrımı
-    // sayesinde yapısal olarak imkânsız.
+    // Bütçe ve metrik AYRI yazılır; yazma semantikleri farklı: bütçede
+    // gönderilmeyen alan NULL'a çekilir (tam değişim), metrikte yalnızca
+    // gönderilen alan değişir (bkz. updateMetrikler).
+    // Metrikler eskiden hiç yazılamıyordu; gece çekimi yalnızca yeni kapanmış
+    // dönemleri tazelediği için (GRACE_DAYS) eski dönemin yanlış/eksik verisi
+    // hiçbir yoldan düzeltilemiyordu.
     const BUTCE_ALANLARI = ['planlananButce', 'devredilenMiktar', 'merkezDestegi'];
     const KOLON = { planlananButce: 'planlanan_butce', devredilenMiktar: 'devredilen_miktar', merkezDestegi: 'merkez_destegi' };
     const mevcutVeri = await getDonemVeri(sube.kod, baslangic, bitis);
@@ -644,6 +647,9 @@ router.put('/sube/:kod/donem/overrides', verifyToken, requirePermission('reports
       else if (mevcutVeri?.[KOLON[k]] !== undefined) butceOverrides[k] = mevcutVeri[KOLON[k]];
     }
     await updateOverrides(sube.kod, baslangic, bitis, butceOverrides, { donemVar: mevcutVeri !== null });
+    if (metrikler && Object.keys(metrikler).length > 0) {
+      await updateMetrikler(sube.kod, baslangic, bitis, metrikler);
+    }
 
     invalidateReportCache(sube.kod);
     invalidateCache('/reports');

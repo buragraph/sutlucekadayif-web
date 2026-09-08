@@ -317,11 +317,11 @@ export const reportsApi = {
         return data;
     },
 
-    async saveOverrides(kod, baslangic, bitis, overrides) {
+    async saveOverrides(kod, baslangic, bitis, overrides, metrikler) {
         const res = await authFetch(`${API}/sube/${kod}/donem/overrides`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ baslangic, bitis, overrides }),
+            body: JSON.stringify({ baslangic, bitis, overrides, metrikler }),
         });
         const d = await res.json();
         if (!res.ok) throw new Error(d.error || 'Hata');

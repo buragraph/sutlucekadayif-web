@@ -291,6 +291,27 @@ export function AddBranchModal() {
 }
 
 // --- Data Edit Modal (Overrides) ---
+// Form alanı → sunucudaki metrik anahtarı. Tıklama/paylaşım/yorum/mesaj
+// alanları formda GÖRÜNMÜYOR (modal zaten uzun), o yüzden burada da yok —
+// eklenirlerse tek yapılacak bu haritaya bir satır koymak.
+const METRIK_ALANLARI = {
+    deHarcama: 'toplamHarcama',
+    deErisim: 'toplamErisim',
+    deGosterim: 'toplamGosterim',
+    deSonuc: 'toplamSonuc',
+    deGoogleArama: 'googleArama',
+    deGoogleHarita: 'googleHarita',
+    deGoogleYol: 'googleYolTarifi',
+    deGoogleTelefon: 'googleTelefon',
+    deGoogleWeb: 'googleWebTiklama',
+    deGoogleMenu: 'googleMenuTiklama',
+};
+
+// Gece çekimi, bitişinin üzerinden 1–7 gün geçmiş dönemleri tazeliyor
+// (backend GRACE_DAYS). Bu aralıktaki bir dönemde elle girilen metrik
+// üzerine yazılabilir; kullanıcı bunu ÖNCEDEN bilmeli.
+const CEKIM_PENCERESI_GUN = 7;
+
 export function DataEditModal() {
     const open = useReportsStore(s => s.modals.dataEdit);
     const data = useReportsStore(s => s.modalData.dataEdit);
@@ -304,7 +325,10 @@ export function DataEditModal() {
         deGoogleArama:'', deGoogleHarita:'', deGoogleYol:'', deGoogleTelefon:'', deGoogleWeb:'', deGoogleMenu:'',
         dePlanlananButce:'', deDevredilenMiktar:'', deMerkezDestegi:''
     });
-    const [initialButce, setInitialButce] = useState({}); // dirty takibi (yalnızca bütçe alanları)
+    // Dirty takibi: hem bütçe hem metrik alanları. Yalnızca DEĞİŞTİRİLEN alan
+    // gönderiliyor — dokunulmamış metriği her kayıtta geri yazmak, gece
+    // çekiminin tazelediği değeri eski değerle ezerdi.
+    const [initialForm, setInitialForm] = useState({});
 
     useEffect(() => {
         if (open && data) {
@@ -349,18 +373,19 @@ export function DataEditModal() {
                         deMerkezDestegi: formatVal(o.merkezDestegi ?? c.merkezDestegi),
                     };
                     setForm(yeniForm);
-                    // Yalnızca kullanıcının DEĞİŞTİRDİĞİ bütçe alanını override olarak
-                    // göndermek için yüklenen değerler saklanır (dirty takibi)
-                    setInitialButce({
-                        dePlanlananButce: yeniForm.dePlanlananButce,
-                        deDevredilenMiktar: yeniForm.deDevredilenMiktar,
-                        deMerkezDestegi: yeniForm.deMerkezDestegi,
-                    });
+                    setInitialForm(yeniForm);
                 })
                 .catch(err => { toast.error('Veri yüklenemedi'); closeModal(); })
                 .finally(() => setLoading(false));
         }
     }, [open, data]);
+
+    // Dönem bitişinden bu yana geçen gün — çekim penceresi uyarısı için.
+    const cekimKapsaminda = (() => {
+        if (!data?.bitis) return false;
+        const fark = (Date.now() - new Date(data.bitis).getTime()) / 86400000;
+        return fark >= 0 && fark <= CEKIM_PENCERESI_GUN;
+    })();
 
     const handleInput = (key, val) => {
         let isNegative = val.startsWith('-');
@@ -381,17 +406,26 @@ export function DataEditModal() {
         // Yalnızca DEĞİŞEN alanlar gönderilir — backend eksik alanı mevcut override'ından
         // korur; dokunulmamış alanı her kayıtta override'a çevirmek gereksiz donduruyordu.
         const overrides = {};
-        if (form.dePlanlananButce !== initialButce.dePlanlananButce) overrides.planlananButce = getV(form.dePlanlananButce);
-        if (form.deDevredilenMiktar !== initialButce.deDevredilenMiktar) overrides.devredilenMiktar = getV(form.deDevredilenMiktar);
-        if (form.deMerkezDestegi !== initialButce.deMerkezDestegi) overrides.merkezDestegi = getV(form.deMerkezDestegi);
-        if (Object.keys(overrides).length === 0) {
+        if (form.dePlanlananButce !== initialForm.dePlanlananButce) overrides.planlananButce = getV(form.dePlanlananButce);
+        if (form.deDevredilenMiktar !== initialForm.deDevredilenMiktar) overrides.devredilenMiktar = getV(form.deDevredilenMiktar);
+        if (form.deMerkezDestegi !== initialForm.deMerkezDestegi) overrides.merkezDestegi = getV(form.deMerkezDestegi);
+
+        // Metrikler: Meta/Google alanları da elle düzeltilebiliyor. Geçmiş
+        // dönemler bir daha otomatik çekilmediği için (bkz. GRACE_DAYS) yanlış
+        // kalan veriyi düzeltmenin başka yolu yok.
+        const metrikler = {};
+        for (const [alan, anahtar] of Object.entries(METRIK_ALANLARI)) {
+            if (form[alan] !== initialForm[alan]) metrikler[anahtar] = getV(form[alan]);
+        }
+
+        if (Object.keys(overrides).length === 0 && Object.keys(metrikler).length === 0) {
             toast.info('Değişiklik yok.');
             setSaving(false);
             closeModal();
             return;
         }
         try {
-            await reportsApi.saveOverrides(data.kod, data.baslangic, data.bitis, overrides);
+            await reportsApi.saveOverrides(data.kod, data.baslangic, data.bitis, overrides, metrikler);
             toast.success('Rapor verileri güncellendi!');
             closeModal();
             // Düzenleme yalnızca bu şubeyi etkiler — tam dashboard yenileme yerine 1 read
@@ -439,16 +473,26 @@ export function DataEditModal() {
                         </div>
                     </div>
 
+                    {cekimKapsaminda && (
+                        <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+                            <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                            <span>
+                                Bu dönem hâlâ gece çekimi kapsamında. Elle girdiğiniz Meta/Google
+                                değerleri bir sonraki otomatik çekimde güncellenebilir.
+                            </span>
+                        </div>
+                    )}
+
                     <div>
                         <div className="text-xs font-semibold text-blue-600 mb-2 flex items-center gap-1.5">
                             <Target className="w-3 h-3" /> Meta Reklam Verileri
-                            <span className="font-normal text-muted-foreground">· otomatik çekilir (salt okunur)</span>
+                            <span className="font-normal text-muted-foreground">· otomatik çekilir, elle düzeltilebilir</span>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <FormGroup label="Toplam Harcama (₺)"><Input disabled value={form.deHarcama} onChange={e=>handleInput('deHarcama', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Toplam Erişim"><Input disabled value={form.deErisim} onChange={e=>handleInput('deErisim', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Toplam Gösterim"><Input disabled value={form.deGosterim} onChange={e=>handleInput('deGosterim', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Toplam Sonuç"><Input disabled value={form.deSonuc} onChange={e=>handleInput('deSonuc', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Toplam Harcama (₺)"><Input value={form.deHarcama} onChange={e=>handleInput('deHarcama', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Toplam Erişim"><Input value={form.deErisim} onChange={e=>handleInput('deErisim', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Toplam Gösterim"><Input value={form.deGosterim} onChange={e=>handleInput('deGosterim', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Toplam Sonuç"><Input value={form.deSonuc} onChange={e=>handleInput('deSonuc', e.target.value)} placeholder="0" /></FormGroup>
                         </div>
                     </div>
 
@@ -457,12 +501,12 @@ export function DataEditModal() {
                             <MapPin className="w-3 h-3" /> Google İşletme Verileri
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                            <FormGroup label="Arama (Toplam)"><Input disabled value={form.deGoogleArama} onChange={e=>handleInput('deGoogleArama', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Harita (Toplam)"><Input disabled value={form.deGoogleHarita} onChange={e=>handleInput('deGoogleHarita', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Yol Tarifi"><Input disabled value={form.deGoogleYol} onChange={e=>handleInput('deGoogleYol', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Telefon Araması"><Input disabled value={form.deGoogleTelefon} onChange={e=>handleInput('deGoogleTelefon', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Web Sitesi Tıklama"><Input disabled value={form.deGoogleWeb} onChange={e=>handleInput('deGoogleWeb', e.target.value)} placeholder="0" /></FormGroup>
-                            <FormGroup label="Menü Tıklama"><Input disabled value={form.deGoogleMenu} onChange={e=>handleInput('deGoogleMenu', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Arama (Toplam)"><Input value={form.deGoogleArama} onChange={e=>handleInput('deGoogleArama', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Harita (Toplam)"><Input value={form.deGoogleHarita} onChange={e=>handleInput('deGoogleHarita', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Yol Tarifi"><Input value={form.deGoogleYol} onChange={e=>handleInput('deGoogleYol', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Telefon Araması"><Input value={form.deGoogleTelefon} onChange={e=>handleInput('deGoogleTelefon', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Web Sitesi Tıklama"><Input value={form.deGoogleWeb} onChange={e=>handleInput('deGoogleWeb', e.target.value)} placeholder="0" /></FormGroup>
+                            <FormGroup label="Menü Tıklama"><Input value={form.deGoogleMenu} onChange={e=>handleInput('deGoogleMenu', e.target.value)} placeholder="0" /></FormGroup>
                         </div>
                     </div>
                 </div>

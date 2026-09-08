@@ -272,6 +272,60 @@ const OVERRIDE_KOLONU = {
 };
 
 /**
+ * ELLE GİRİLEBİLEN METRİK ALANLARI.
+ *
+ * Metrikler normalde Meta/Google'dan otomatik geliyor ve bu yüzden uzun süre
+ * salt okunurdu. Ama gece çekimi yalnızca yeni kapanmış dönemleri tazeliyor
+ * (bkz. scheduled-fetch.js, GRACE_DAYS); eski dönemler bir daha hiç
+ * çekilmiyor. Meta API'si de geriye dönük veriyi sınırsız vermiyor. Geçmiş
+ * bir dönemin harcaması yanlış ya da eksik kaldıysa merkezin elle düzeltmekten
+ * başka yolu yok — bu yüzden alanlar elle yazılabilir hâle geldi.
+ */
+const METRIK_KOLONU = {
+    toplamHarcama: 'harcama',
+    toplamErisim: 'erisim',
+    toplamGosterim: 'gosterim',
+    toplamSonuc: 'sonuc',
+    toplamTiklama: 'tiklama',
+    toplamTiklamaTumu: 'tiklama_tumu',
+    toplamPaylasim: 'paylasim',
+    toplamYorum: 'yorum',
+    toplamMesaj: 'mesaj',
+    googleArama: 'google_arama',
+    googleHarita: 'google_harita',
+    googleYolTarifi: 'google_yol_tarifi',
+    googleTelefon: 'google_telefon',
+    googleWebTiklama: 'google_web_tiklama',
+    googleMenuTiklama: 'google_menu_tiklama',
+};
+const METRIK_TAVAN = 1_000_000_000;
+
+/**
+ * Elle girilen metrikleri yazar.
+ *
+ * BÜTÇEDEN FARKI: yalnızca GÖNDERİLEN alan yazılır, gönderilmeyen alan
+ * olduğu gibi kalır. Bütçede "gönderilmeyen NULL'a çekilir" semantiği var
+ * ama metriklerde bu yıkıcı olurdu: kullanıcı tek bir Google alanını
+ * düzeltirken Meta harcamasını silmiş olurdu.
+ */
+export async function updateMetrikler(subeKod, donemBaslangic, donemBitis, metrikler) {
+    const alanlar = {};
+    for (const [alan, kolon] of Object.entries(METRIK_KOLONU)) {
+        if (metrikler?.[alan] === undefined) continue;
+        const n = Number(metrikler[alan]);
+        if (!Number.isFinite(n) || n < 0 || n > METRIK_TAVAN) {
+            const err = new Error(`Geçersiz metrik değeri: ${alan}`);
+            err.status = 400;
+            throw err;
+        }
+        alanlar[kolon] = n;
+    }
+    if (Object.keys(alanlar).length === 0) return false;
+    await donemYaz(subeKod, donemBaslangic, donemBitis, alanlar);
+    return true;
+}
+
+/**
  * Bütçe override'larını yazar.
  *
  * Eskiden ayrı bir `veri_overrides` haritasına yazılıyordu; artık doğrudan bütçe
