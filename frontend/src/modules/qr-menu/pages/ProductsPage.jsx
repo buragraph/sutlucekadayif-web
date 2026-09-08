@@ -507,11 +507,49 @@ export default function ProductsPage() {
         ? 'all'
         : selectedKategori;
 
+    // GÖRÜNEN ŞUBE: kartların/satırların hangi şubenin gözüyle gösterileceği.
+    // Şube sahibinde kendi şubesi; admin bir şube seçtiyse O şube. Admin'in de
+    // kendi `subeSlug`ı var ama katalog görünümünde onu kullanmak yanıltıcı
+    // olurdu — seçilen şubeyi değil, admin'in şubesini gösterirdi.
+    const gorunenSube = role === 'admin'
+        ? (selectedSube !== 'all' && selectedSube !== 'ortak' ? selectedSube : null)
+        : subeSlug;
+
+    // Şube başına MENÜ ürünü sayısı. /branches'ten gelen `urunSayisi` şubeye
+    // ÖZEL ürün sayısıydı ve hepsi 0'dı — seçicide her şube "(0)" görünüyordu.
+    const subeMenuSayisi = {};
+    if (role === 'admin') {
+        for (const u of urunler) {
+            for (const slug of (u.menude_subeler || [])) {
+                subeMenuSayisi[slug] = (subeMenuSayisi[slug] || 0) + 1;
+            }
+        }
+    }
+
+    // Şube seçilince O ŞUBENİN MENÜSÜ gelir. Eskiden yalnızca şubeye ÖZEL
+    // ürünlere bakıyordu; öyle ürün kalmadığı için her şube boş görünüyordu
+    // (ölçüldü: 58 ürünlük Denizli'de "Sonuç bulunamadı").
     const subeyeUyar = (u) => {
         if (role !== 'admin' || selectedSube === 'all') return true;
-        return selectedSube === 'ortak'
-            ? u.tur !== 'sube_ozel'
-            : u.tur === 'sube_ozel' && u.sube_slug === selectedSube;
+        if (selectedSube === 'ortak') return u.tur !== 'sube_ozel';
+        return (u.menude_subeler || []).includes(selectedSube)
+            || (u.tur === 'sube_ozel' && u.sube_slug === selectedSube);
+    };
+
+    /**
+     * Ürünü GÖRÜNEN ŞUBENİN gözünden zenginleştirir: o şubenin fiyatı ve
+     * etiketleri. Kart/satır zaten `etkinFiyat` ve `subeEtiket` okuyor;
+     * şube sahibinde bunları sunucu dolduruyor, admin bir şube seçtiğinde
+     * burada dolduruluyor (veri yanıtta zaten var: fiyat_override, sube_etiket).
+     */
+    const subeGozuyle = (u) => {
+        if (role !== 'admin' || !gorunenSube) return u;
+        const of = u.fiyat_override?.[gorunenSube];
+        return {
+            ...u,
+            etkinFiyat: of != null ? of : u.fiyat,
+            subeEtiket: u.sube_etiket?.[gorunenSube] || [],
+        };
     };
 
     // Sekme sayıları ARAMAYA bakmaz — yazdıkça sayılar oynasa ray güvenilmez
@@ -520,7 +558,7 @@ export default function ProductsPage() {
     const katSayim = sayimTabani.reduce((m, u) => m.set(u.kategori, (m.get(u.kategori) || 0) + 1), new Map());
 
     // Şubede satışta mı? (şubeye özel eski ürünlerde anahtar yok, satışta sayılır)
-    const satistaMi = (u) => !(u.mevcut_degil || []).includes(subeSlug);
+    const satistaMi = (u) => !(u.mevcut_degil || []).includes(gorunenSube);
     const durumSayim = {
         hepsi: sayimTabani.length,
         satista: sayimTabani.filter(satistaMi).length,
@@ -1175,7 +1213,7 @@ export default function ProductsPage() {
                                 <Popover open={subeComboOpen} onOpenChange={setSubeComboOpen}>
                                     <PopoverTrigger asChild>
                                         <Button variant="outline" role="combobox" aria-expanded={subeComboOpen} className="w-fit min-w-[180px] justify-between font-normal text-sm h-8">
-                                            {selectedSube === 'all' ? 'Tüm Şubeler' : selectedSube === 'ortak' ? `Ortak Ürünler (${ortakUrunSayisi})` : (() => { const s = subeler.find(s => s.slug === selectedSube); return s ? `${s.ad} (${s.urunSayisi || 0})` : selectedSube; })()}
+                                            {selectedSube === 'all' ? 'Tüm Şubeler' : selectedSube === 'ortak' ? `Ortak Ürünler (${ortakUrunSayisi})` : (() => { const s = subeler.find(s => s.slug === selectedSube); return s ? `${s.ad} (${subeMenuSayisi[selectedSube] || 0})` : selectedSube; })()}
                                             <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
                                         </Button>
                                     </PopoverTrigger>
@@ -1190,7 +1228,7 @@ export default function ProductsPage() {
                                                     </CommandItem>
                                                     {subeler.map((s) => (
                                                         <CommandItem key={s.id} value={s.ad || s.slug} data-checked={selectedSube === s.slug} onSelect={() => { setSelectedSube(s.slug); setSubeComboOpen(false); }}>
-                                                            {s.ad} ({s.urunSayisi || 0})
+                                                            {s.ad} ({subeMenuSayisi[s.slug] || 0})
                                                         </CommandItem>
                                                     ))}
                                                 </CommandGroup>
@@ -1235,9 +1273,10 @@ export default function ProductsPage() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody className="**:data-[slot=table-row]:border-border/50 **:data-[slot=table-cell]:py-3">
-                                    {paginatedUrunler.map((urun) => {
+                                    {paginatedUrunler.map((ham) => {
+                                        const urun = subeGozuyle(ham);
                                         const mevcutDegil = urun.mevcut_degil || [];
-                                        const buSubedeMevcut = !mevcutDegil.includes(subeSlug);
+                                        const buSubedeMevcut = !mevcutDegil.includes(gorunenSube);
                                         const isKilitli = kilitliMi(urun);
 
                                         // Mevcut değilse satır soluklaşır AMA ilk hücre hariç: anahtar artık
@@ -1406,7 +1445,8 @@ export default function ProductsPage() {
                                     <div className={yataySeritler
                                         ? 'flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [&>*]:w-40 [&>*]:shrink-0 [&>*]:snap-start sm:[&>*]:w-44'
                                         : 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'}>
-                                {grup.urunler.map((urun) => {
+                                {grup.urunler.map((ham) => {
+                                    const urun = subeGozuyle(ham);
                                     const mevcutDegil = urun.mevcut_degil || [];
                                     // ŞUBE EYLEMLERİ ADMİN'DE ÇIKMAZ. Admin'in de bir `subeSlug`ı
                                     // var (kendi şubesi) ama katalog görünümünde "satışta / fiyat
@@ -1421,16 +1461,19 @@ export default function ProductsPage() {
                                         <UrunKarti
                                             key={urun.id}
                                             urun={urun}
-                                            mevcut={!mevcutDegil.includes(subeSlug)}
+                                            mevcut={!mevcutDegil.includes(gorunenSube)}
                                             kilitli={kilitliMi(urun)}
                                             bekliyor={mevcutBekleyen.has(urun.id)}
                                             secili={adminKart ? selectedIds.has(urun.id) : undefined}
                                             onSecim={adminKart ? toggleSelect : null}
-                                            altBilgi={adminKart
-                                                ? (urun.tur === 'sube_ozel'
-                                                    ? `şubeye özel · ${urun.sube_slug || ''}`
-                                                    : `${acikSube} şubede açık`)
-                                                : null}
+                                            altBilgi={!adminKart ? null
+                                                : gorunenSube
+                                                    // Bir şubeye bakılıyorken "90 şubede açık" bilgisi
+                                                    // alakasız; o şubedeki durum lazım.
+                                                    ? (mevcutDegil.includes(gorunenSube) ? 'bu şubede kapalı' : 'bu şubede satışta')
+                                                    : (urun.tur === 'sube_ozel'
+                                                        ? `şubeye özel · ${urun.sube_slug || ''}`
+                                                        : `${acikSube} şubede açık`)}
                                                     onMevcutDegistir={ortakUrun ? handleMevcutToggle : null}
                                                     onEtiket={ortakUrun ? ((u) => { setEtiketUrun(u); setEtiketSecim(u.subeEtiket || []); }) : null}
                                             onDuzenle={openEditUrun}
