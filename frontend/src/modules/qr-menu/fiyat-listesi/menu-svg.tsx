@@ -47,7 +47,7 @@ const ALLERGEN_NOTE =
   "Alerjen bilgilerine web sayfamız üzerinden ulaşabilir veya kasadan talep edebilirsiniz.";
 
 function displayPrice(value: number) {
-  return value === 0 ? "000₺" : `${value}₺`;
+  return value === 0 ? "000₺" : `${String(value).replace(".", ",")}₺`;
 }
 
 const canvasSpecs: Record<ExportFormat, CanvasSpec> = {
