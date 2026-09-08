@@ -4099,6 +4099,101 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   font-size: 26px;
 }
 
+/* ── Form iyileştirmeleri: alan bazlı hata, zorunluluk işareti, bölüm başlığı ──
+   Önceki sürüm tek satırlık ortak bir hata basıyordu; müşteri hangi alanı
+   düzelteceğini görmüyordu. Alanlar artık kendi hatasını taşıyor. */
+.pm-form__field { margin-bottom: 2px; }
+.pm-form__field .pm-form__label { margin-top: 14px; }
+
+.pm-form__intro {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--pm-text-60);
+}
+
+/* Zorunlu alan yıldızı — etiketle aynı satırda, ekran okuyucudan gizli
+   (zorunluluk zaten doğrulama mesajıyla bildiriliyor). */
+.pm-form__req {
+  margin-left: 3px;
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.pm-form__input--hata {
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.03);
+}
+.pm-form__input--hata:focus { border-color: #dc2626; }
+
+.pm-form__field-error {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #b91c1c;
+}
+
+/* Karakter sayacı yalnızca sınıra yaklaşınca çiziliyor (bkz. bileşen). */
+.pm-form__sayac {
+  margin: 4px 0 0;
+  text-align: right;
+  font-size: 11px;
+  color: var(--pm-text-50);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Kişisel bilgi alanlarını ayıran başlık: form tek blok hâlinde uzun
+   görünüyordu, "daha ne kadar var" hissini kırıyor. */
+.pm-form__bolum {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 0 2px;
+}
+.pm-form__bolum::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(8, 69, 41, 0.12);
+}
+.pm-form__bolum-baslik {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--pm-text-60);
+}
+
+.pm-form__chip-tik { margin-right: 4px; vertical-align: -2px; }
+.pm-form__chip { display: inline-flex; align-items: center; }
+
+.pm-form__consent--hata { color: #b91c1c; }
+.pm-form__consent--hata input { outline: 1px solid #dc2626; outline-offset: 2px; }
+
+/* Takip kodu + kopyala düğmesi aynı satırda */
+.pm-form__takip-satir {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pm-form__takip-satir .pm-form__takip-kod { margin-top: 0; }
+.pm-form__kopyala {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid rgba(8, 69, 41, 0.25);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--pm-green, #084529);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background var(--pm-transition);
+}
+.pm-form__kopyala:hover { background: rgba(8, 69, 41, 0.06); }
+
 @keyframes pmFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes pmSlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
 @keyframes pmZoomIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
