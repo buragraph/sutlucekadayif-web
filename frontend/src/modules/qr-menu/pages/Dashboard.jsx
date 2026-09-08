@@ -7,6 +7,7 @@ import { Building2, UserCircle, QrCode, Layers, Image as ImageIcon, ClipboardLis
 import { Link } from 'react-router-dom';
 import { parcaYukle } from '../../../shared/utils/parca-yukle';
 import DuyuruKartlari from '../components/DuyuruKartlari';
+import SikayetUyarisi from '../components/SikayetUyarisi';
 import SubeMetrikleri from '../components/SubeMetrikleri';
 
 // MapLibre ağır bir paket — yalnızca harita gösterilince yüklensin (kod bölme).
@@ -145,6 +146,11 @@ export default function Dashboard() {
                 şube giriş yapınca ilk okuyacağı şey burası. Duyuru yoksa
                 bileşen hiç çizmiyor, boşluk kalmıyor. */}
             <DuyuruKartlari />
+
+            {/* Bekleyen şikayet uyarısı — duyuruların hemen altında. Şikayet
+                masası sessizdi: kayıt düşüyordu ama kimse haberdar olmuyordu.
+                Bekleyen yoksa bileşen hiç çizmiyor. */}
+            <SikayetUyarisi />
 
             {/* Rapor sayıları — yalnızca şube sahibinde. Admin'in dashboard'u
                 şube ağı geneline bakıyor, tek şubenin dönem sayısı orada
