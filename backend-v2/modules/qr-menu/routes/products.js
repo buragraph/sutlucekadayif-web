@@ -1195,6 +1195,72 @@ router.put(
 );
 
 /**
+ * POST /api/products/:id/sube-fiyat/sifirla
+ * Ürünün TÜM şube fiyatlarını siler; her şube merkez fiyatına döner.
+ *
+ * NEDEN GEREKLİ: merkez fiyatı `urunler.fiyat`a yazılır, şube fiyatı
+ * `urun_sube.fiyat_override`a — menüde `coalesce(override, fiyat)` geçerli,
+ * yani override kazanır. Merkez zam yaptığında kendi fiyatını girmiş şubeler
+ * eski fiyatta asılı kalıyor ve bunu kimse görmüyordu. Bu uç, zammın
+ * ardından "hepsini hizala" demenin tek adımlık yolu.
+ *
+ * `fiyat_serbest` İZNİNE DOKUNMAZ: şube yarın yine kendi fiyatını girebilir.
+ * İzni de kaldırmak isteniyorsa ürün düzenleme ekranındaki liste kullanılır
+ * (orada izinden çıkarılan şubenin override'ı zaten temizleniyor).
+ *
+ * ADMIN'E ÖZEL: bir şubenin kararını başka bir şube silemez.
+ */
+router.post(
+    '/:id/sube-fiyat/sifirla',
+    verifyToken,
+    requirePermission('products.edit'),
+    asyncHandler(async (req, res) => {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Bu işlem yalnızca merkez içindir' });
+        }
+        const { id } = req.params;
+
+        const { data: urun } = await supabase
+            .from('urunler').select('id, ad, fiyat').eq('id', id).is('silinme', null).maybeSingle();
+        if (!urun) return res.status(404).json({ error: 'Ürün bulunamadı' });
+
+        // Hangi şubelerin fiyatı vardı — hem günlük hem menü yenileme için
+        // silmeden ÖNCE okunmalı.
+        const satirlar = veriYaDaHata(
+            await supabase.from('urun_sube').select('sube_kod, fiyat_override')
+                .eq('urun_id', id).not('fiyat_override', 'is', null).range(0, 999),
+            'şube fiyatları okunamadı'
+        );
+        if (satirlar.length === 0) {
+            return res.json({ success: true, temizlenen: 0, merkezFiyat: Number(urun.fiyat) });
+        }
+
+        veriYaDaHata(
+            await supabase.from('urun_sube').update({ fiyat_override: null })
+                .eq('urun_id', id).not('fiyat_override', 'is', null),
+            'şube fiyatları temizlenemedi'
+        );
+
+        // Şube başına bir günlük satırı, tek INSERT: "fiyatım neden değişti"
+        // sorusunun cevabı şubenin kendi geçmişinde durmalı.
+        await menuLogYaz(req, null, satirlar.map((r) => ({
+            sube_kod: r.sube_kod, urun_id: id, urun_ad: urun.ad, islem: 'fiyat',
+            eski: { fiyat: Number(r.fiyat_override), merkez: Number(urun.fiyat) },
+            yeni: { fiyat: null, merkez: Number(urun.fiyat) },
+        })));
+
+        // Yalnızca fiyatı değişen şubeler; bütçeye sığmayan kuyruğa devrolur.
+        await regenerateMenuJsons(satirlar.map((r) => r.sube_kod)).catch(console.error);
+
+        res.json({
+            success: true,
+            temizlenen: satirlar.length,
+            merkezFiyat: Number(urun.fiyat),
+        });
+    })
+);
+
+/**
  * PUT /api/products/:id/etiket
  * Şube, KENDİ menüsündeki ürüne kendi etiketlerini koyar.
  * Body: { etiket: string[] }

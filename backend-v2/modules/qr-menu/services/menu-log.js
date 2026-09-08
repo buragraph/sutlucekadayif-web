@@ -14,18 +14,21 @@ import { supabase } from '../../../config/supabase.js';
  *   YAPAN kişi. Admin bir şube adına işlem yapabildiği için ikisi ayrı
  *   (bkz. Ürünler sayfasındaki şube seçici).
  *
- * @param {object} req            — aktör `req.user`dan okunur
- * @param {string} subeKod        — menüsü değişen şube
- * @param {Array}  kayitlar       — { urun_id, urun_ad, islem, eski, yeni }
+ * @param {object} req       — aktör `req.user`dan okunur
+ * @param {string|null} subeKod — menüsü değişen şube; tek işlem tek şubeyi
+ *   etkilediğinde buradan verilir. Bir işlem birden çok şubeyi etkiliyorsa
+ *   (ör. bir ürünün tüm şube fiyatlarını sıfırlamak) null geçilir ve şube
+ *   kaydın kendi `sube_kod` alanından gelir.
+ * @param {Array}  kayitlar  — { urun_id, urun_ad, islem, eski, yeni, sube_kod? }
  */
 export async function menuLogYaz(req, subeKod, kayitlar) {
-    if (!subeKod || !Array.isArray(kayitlar) || kayitlar.length === 0) return;
+    if (!Array.isArray(kayitlar) || kayitlar.length === 0) return;
     const u = req?.user || {};
     const satirlar = kayitlar.map((k) => ({
         kullanici: u.uid || null,
         kullanici_eposta: u.email || null,
         rol: u.role || null,
-        sube_kod: subeKod,
+        sube_kod: k.sube_kod || subeKod,
         urun_id: k.urun_id ?? null,
         urun_ad: k.urun_ad ?? null,
         islem: k.islem,
@@ -33,6 +36,10 @@ export async function menuLogYaz(req, subeKod, kayitlar) {
         eski: k.eski === undefined ? null : k.eski,
         yeni: k.yeni === undefined ? null : k.yeni,
     }));
-    const { error } = await supabase.from('menu_log').insert(satirlar);
+    // Şubesi olmayan kayıt yazılmaz: sube_kod NOT NULL, tek eksik satır
+    // insert'in TAMAMINI düşürür ve o işlemin günlüğü büsbütün kaybolurdu.
+    const gecerli = satirlar.filter((x) => x.sube_kod);
+    if (gecerli.length === 0) return;
+    const { error } = await supabase.from('menu_log').insert(gecerli);
     if (error) console.error('menu_log yazılamadı:', error.message);
 }

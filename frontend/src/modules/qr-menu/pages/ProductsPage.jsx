@@ -179,6 +179,7 @@ export default function ProductsPage() {
     const ITEMS_PER_PAGE = role !== 'admin' ? 24 : 36;
 
     const [fiyatKaydediliyor, setFiyatKaydediliyor] = useState(false);
+    const [sifirlaniyor, setSifirlaniyor] = useState(false);
     const [urunForm, setUrunForm] = useState({ ad: '', fiyat: '', kategori: '', aciklama: '', sube_slug: '', gorsel: '', etiket: [], miktar: '', birim: 'gr', kalori: '', kilitli: '', gizli_subeler: [], fiyat_serbest: [], menude_subeler: [] });
     // Katalogdan menüye ürün ekleme penceresi (şube sahibi) — ürün OLUŞTURMAZ,
     // merkezin eklediği ortak ürünlerden şubenin sattıklarını işaretler.
@@ -253,6 +254,38 @@ export default function ProductsPage() {
             setOrtakUrunSayisi(data.ortakUrunSayisi || 0);
         }
         catch (err) { console.error('Şubeler yüklenemedi:', err); }
+    }
+
+    /**
+     * Ürünün tüm şube fiyatlarını siler; herkes merkez fiyatına döner.
+     *
+     * Menüde `coalesce(override, merkez)` geçerli olduğu için merkez zammı,
+     * kendi fiyatını girmiş şubelere İŞLEMEZ. Bu düğme zammın ardından
+     * "hepsini hizala" demenin tek adımlık yolu; `fiyat_serbest` iznine
+     * dokunmaz, şube yarın yine kendi fiyatını girebilir.
+     */
+    async function subeFiyatlariniSifirla() {
+        if (!editingUrun) return;
+        const n = Object.keys(editingUrun.fiyat_override || {}).length;
+        const ok = await confirm(
+            `${n} şubenin kendi fiyatı silinsin ve hepsi merkez fiyatına (${fiyatYaz(editingUrun.fiyat)} ₺) dönsün mü?`
+        );
+        if (!ok) return;
+        setSifirlaniyor(true);
+        try {
+            const { data } = await api.post(`/products/${editingUrun.id}/sube-fiyat/sifirla`);
+            // Sunucu doğrulanmış durumu döndürmüyor (yalnızca sayaç): yerelde
+            // override haritasını boşaltmak yeterli, liste ve pencere aynı
+            // kaydı gösteriyor.
+            setEditingUrun((p) => ({ ...p, fiyat_override: {} }));
+            setUrunler((prev) => prev.map((u) => (u.id === editingUrun.id ? { ...u, fiyat_override: {} } : u)));
+            toast.success(data.temizlenen > 0
+                ? `${data.temizlenen} şube merkez fiyatına döndü`
+                : 'Kendi fiyatını girmiş şube yoktu');
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Şube fiyatları sıfırlanamadı');
+        }
+        setSifirlaniyor(false);
     }
 
     function openAddUrun() {
@@ -818,6 +851,33 @@ export default function ProductsPage() {
                                             </div>
                                         </div>
 
+                                        {/* Merkez fiyatı override'ları EZMEZ: menüde
+                                            coalesce(override, merkez) geçerli. Zam yapan
+                                            merkezin bunu fiyat kutusunun DİBİNDE görmesi
+                                            gerekiyor, yoksa zam sessizce eksik uygulanır. */}
+                                        {(() => {
+                                            if (role !== 'admin' || !editingUrun) return null;
+                                            const kendiFiyatli = Object.keys(editingUrun.fiyat_override || {}).length;
+                                            if (kendiFiyatli === 0) return null;
+                                            return (
+                                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs">
+                                                    <span className="text-amber-700 dark:text-amber-500">
+                                                        <strong className="tabular-nums">{kendiFiyatli} şube</strong> kendi fiyatını girmiş —
+                                                        buradaki fiyat onlara işlemez.
+                                                    </span>
+                                                    <Button
+                                                        type="button" variant="outline" size="sm"
+                                                        className="ml-auto h-7 text-xs"
+                                                        disabled={sifirlaniyor}
+                                                        onClick={subeFiyatlariniSifirla}
+                                                    >
+                                                        <RotateCcw className="mr-1.5 size-3" />
+                                                        Hepsini merkez fiyatına döndür
+                                                    </Button>
+                                                </div>
+                                            );
+                                        })()}
+
                                         {/* Merkez ayarları — yalnızca admin, yalnızca ORTAK ürünlerde.
                                             Şubeye özel üründe anlamsız: o ürün zaten tek şubeye ait. */}
                                         {(() => {
@@ -1196,7 +1256,7 @@ export default function ProductsPage() {
                         kart hem admin hem şube için aynı bilgiyi (seçim, "kaç şubede
                         açık", şube durumu) taşıyor, iki ayrı düzen bakmaya değmiyordu. */}
                     <div className="flex-1 min-h-0 overflow-auto">
-                        <div className="flex flex-col gap-6 p-4">
+                        <div className="flex min-w-0 flex-col gap-6 p-4">
                             {gridGruplari.length === 0 && (
                                 <p className="py-12 text-center text-sm text-muted-foreground">
                                     {durumFiltre === 'kapali' ? 'Kapalı ürününüz yok — hepsi satışta.'
@@ -1205,7 +1265,7 @@ export default function ProductsPage() {
                                 </p>
                             )}
                             {gridGruplari.map((grup) => (
-                            <div key={grup.id} className="flex flex-col gap-2">
+                            <div key={grup.id} className="flex min-w-0 flex-col gap-2">
                                 {grup.ad && (
                                     <div className="flex items-baseline gap-2 border-b pb-1.5">
                                         <h3 className="text-sm font-medium text-foreground">{grup.ad}</h3>
@@ -1216,8 +1276,13 @@ export default function ProductsPage() {
                                     `[&>*]:w-40` — flex çocuğu kart olduğu için sabit genişlik
                                     şart, yoksa içeriğe göre büzülür. `snap` ile kart kart durur.
                                     Kategori seçiliyken sarmalı grid: orada dikey akış doğru. */}
+                                {/* min-w-0: sütun yönlü flex'te çocuk, içeriğinin
+                                    min-content genişliğinin altına inmiyor — şerit
+                                    kendi içinde kaydırılacağına kartı (1775px) taşırıp
+                                    overflow-hidden'ın altına saklıyordu; odak bir kartı
+                                    görünür yapmak isteyince tüm sayfa yana kayıyordu. */}
                                 <div className={yataySeritler
-                                    ? 'flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [&>*]:w-40 [&>*]:shrink-0 [&>*]:snap-start sm:[&>*]:w-44'
+                                    ? 'flex min-w-0 snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [&>*]:w-40 [&>*]:shrink-0 [&>*]:snap-start sm:[&>*]:w-44'
                                     : 'grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6'}>
                             {grup.urunler.map((ham) => {
                                 const urun = subeGozuyle(ham);
