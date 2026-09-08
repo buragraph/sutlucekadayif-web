@@ -1174,6 +1174,60 @@ router.get(
 );
 
 /**
+ * PUT /api/products/:id/sube-fiyat
+ * Bir ŞUBENİN fiyatını ayarlar (urun_sube.fiyat_override). Ortak ürünün
+ * merkez fiyatına DOKUNMAZ.
+ * Body: { subeSlug?, fiyat }  — `fiyat` boş/null ise override TEMİZLENİR
+ *   ve şube merkez fiyatına döner.
+ *
+ * NEDEN AYRI UÇ: şube sahibi kendi fiyatını `PUT /products/:id` üzerinden
+ * yazıyor, ama o yol admin'de "tam yetki" dalına giriyor ve `fiyat` merkez
+ * fiyatını değiştiriyor. Yani admin, bir şubenin fiyatını hiçbir yerden
+ * ayarlayamıyordu — ürünler ekranında şube seçip düzeltmek için gerekti.
+ *
+ * `fiyat_serbest` KURALI ADMIN İÇİN DE GEÇERLİ: merkez fiyatlı bir üründe
+ * (ör. fincanlar) şubeye özel fiyat açılmaz. Merkez fiyatı değişecekse ürünün
+ * kendisi düzenlenir; burada yapılan iş "şubenin sapmasını yönetmek".
+ */
+router.put(
+    '/:id/sube-fiyat',
+    verifyToken,
+    requirePermission('products.edit'),
+    asyncHandler(async (req, res) => {
+        const { id } = req.params;
+        const subeSlug = req.user.role === 'admin' ? req.body.subeSlug : req.user.subeSlug;
+        if (!subeSlug) return res.status(400).json({ error: 'Şube bilgisi gerekli' });
+        if (req.user.role !== 'admin' && req.user.subeSlug !== subeSlug) {
+            return res.status(403).json({ error: 'Sadece kendi şubenizin fiyatını değiştirebilirsiniz' });
+        }
+
+        const ham = req.body?.fiyat;
+        const temizle = ham === null || ham === undefined || ham === '';
+        const yeni = temizle ? null : Number(ham);
+        if (!temizle && (!Number.isFinite(yeni) || yeni < 0)) {
+            return res.status(400).json({ error: 'Geçerli bir fiyat girin' });
+        }
+
+        const found = await findProduct(id, subeSlug);
+        if (!found) return res.status(404).json({ error: 'Ürün bulunamadı' });
+
+        const uye = (found.urun.menude_subeler || []).includes(subeSlug);
+        if (!uye) return res.status(400).json({ error: 'Ürün bu şubenin menüsünde değil' });
+
+        // Şube fiyatı yalnızca merkezin serbest bıraktığı üründe anlamlı.
+        if (!(found.urun.fiyat_serbest || []).includes(subeSlug)) {
+            return res.status(403).json({
+                error: 'Bu ürün merkez fiyatlı — önce şubeye kendi fiyatını girme izni verilmeli.',
+            });
+        }
+
+        await uyelikYaz(id, subeSlug, { fiyat_override: yeni });
+        await regenerateMenuJson(subeSlug).catch(console.error);
+        res.json({ success: true, fiyat: yeni });
+    })
+);
+
+/**
  * PUT /api/products/:id/etiket
  * Şube, KENDİ menüsündeki ürüne kendi etiketlerini koyar.
  * Body: { etiket: string[] }

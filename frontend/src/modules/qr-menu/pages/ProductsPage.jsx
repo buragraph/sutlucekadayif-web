@@ -377,8 +377,8 @@ export default function ProductsPage() {
     // Şube, merkezin eklediği ortak ürünlerden sattıklarını menüsüne alır.
     // Tekil çıkarma da çoklu ekleme de aynı uçtan geçer: menü JSON'ı işlem
     // başına bir kez yenilenir (ürün başına değil).
-    async function menuyeYaz(ids, menude) {
-        const { data } = await api.post('/products/menu', { ids, menude, subeSlug });
+    async function menuyeYaz(ids, menude, hedefSube = subeSlug) {
+        const { data } = await api.post('/products/menu', { ids, menude, subeSlug: hedefSube });
         // Liste ve katalog artık iki ayrı uçtan geliyor; ürün hangi yöne gittiyse
         // bir listeden çıkıp diğerine geçer. Sunucuya yeniden sormaya gerek yok.
         if (menude) {
@@ -412,17 +412,21 @@ export default function ProductsPage() {
     // Mevcut / mevcut değil — İYİMSER güncelleme: anahtar anında düşer, istek
     // başarısız olursa eski değere geri alınır. Sunucu yanıtını beklemek
     // anahtarı "takılıyor" gibi gösteriyordu.
+    // Admin bir şube seçtiyse o ŞUBE ADINA yazar; şube sahibinde kendi şubesi.
+    // Uçlar admin'den `subeSlug` kabul ediyor (bkz. availability/etiket/menu).
     async function handleMevcutToggle(urun, mevcut) {
+        const hedef = gorunenSube;
+        if (!hedef) return;
         const oncekiMevcutDegil = urun.mevcut_degil || [];
         setUrunler((prev) => prev.map((u) => (u.id === urun.id ? {
             ...u,
             mevcut_degil: mevcut
-                ? oncekiMevcutDegil.filter((s) => s !== subeSlug)
-                : [...oncekiMevcutDegil, subeSlug],
+                ? oncekiMevcutDegil.filter((s) => s !== hedef)
+                : [...oncekiMevcutDegil, hedef],
         } : u)));
         setMevcutBekleyen((p) => new Set(p).add(urun.id));
         try {
-            await api.put(`/products/${urun.id}/availability`, { subeSlug, mevcut });
+            await api.put(`/products/${urun.id}/availability`, { subeSlug: hedef, mevcut });
         } catch (err) {
             setUrunler((prev) => prev.map((u) => (u.id === urun.id ? { ...u, mevcut_degil: oncekiMevcutDegil } : u)));
             toast.error(err.response?.data?.error || 'Güncelleme başarısız');
@@ -437,7 +441,8 @@ export default function ProductsPage() {
         if (!etiketUrun) return;
         setEtiketKaydediliyor(true);
         try {
-            const { data } = await api.put(`/products/${etiketUrun.id}/etiket`, { etiket: etiketSecim });
+            const { data } = await api.put(`/products/${etiketUrun.id}/etiket`,
+                { etiket: etiketSecim, subeSlug: gorunenSube });
             const yeni = data?.etiket ?? etiketSecim;
             setUrunler((p) => p.map((u) => (u.id === etiketUrun.id ? { ...u, subeEtiket: yeni } : u)));
             setEtiketUrun(null);
@@ -452,7 +457,7 @@ export default function ProductsPage() {
         const ok = await confirm(`"${urun.ad}" menünüzden çıkarılsın mı? Katalogdan tekrar ekleyebilirsiniz.`);
         if (!ok) return;
         try {
-            await menuyeYaz([urun.id], false);
+            await menuyeYaz([urun.id], false, gorunenSube);
             toast.success('Ürün menünüzden çıkarıldı');
         } catch (err) { toast.error(err.response?.data?.error || 'Ürün çıkarılamadı'); }
     }
@@ -635,9 +640,16 @@ export default function ProductsPage() {
     // Fiyat kalemi de aynı tuzağa düşüyordu: `fiyatDuzenlenebilir` sunucuda
     // admin için her zaman true (bkz. fiyatDuzenlenebilirMi). Simülasyonda şube
     // kuralı uygulanır: ortak üründe yalnızca merkez `fiyat_serbest` verdiyse.
-    const fiyatiDuzenlenebilirMi = (u) => (rolSimulasyonu
-        ? u.tur !== 'sube_ozel' && (u.fiyat_serbest || []).includes(subeSlug)
-        : !!u.fiyatDuzenlenebilir);
+    const fiyatiDuzenlenebilirMi = (u) => {
+        if (rolSimulasyonu) return u.tur !== 'sube_ozel' && (u.fiyat_serbest || []).includes(subeSlug);
+        // Admin bir ŞUBEYE bakıyorken: o şubenin fiyatını ancak merkez serbest
+        // bıraktıysa girebilir. Merkez fiyatlı üründe (ör. fincanlar) şubeye
+        // özel fiyat açılmaz — sunucu da aynı kuralı uyguluyor.
+        if (role === 'admin' && gorunenSube) {
+            return u.tur !== 'sube_ozel' && (u.fiyat_serbest || []).includes(gorunenSube);
+        }
+        return !!u.fiyatDuzenlenebilir;
+    };
 
     // ── Toplu işlem yardımcıları ──
     const seciliebilir = (u) => !kilitliMi(u);
@@ -1448,11 +1460,12 @@ export default function ProductsPage() {
                                 {grup.urunler.map((ham) => {
                                     const urun = subeGozuyle(ham);
                                     const mevcutDegil = urun.mevcut_degil || [];
-                                    // ŞUBE EYLEMLERİ ADMİN'DE ÇIKMAZ. Admin'in de bir `subeSlug`ı
-                                    // var (kendi şubesi) ama katalog görünümünde "satışta / fiyat
-                                    // değiştir / menüden çıkar" o şube üzerinde işlem yapardı —
-                                    // anlamsız ve yanıltıcı. Admin kartı katalog kartıdır.
-                                    const ortakUrun = role !== 'admin' && !!subeSlug && urun.tur !== 'sube_ozel';
+                                    // ŞUBE EYLEMLERİ yalnızca bir şubeye BAKILIRKEN çıkar.
+                                    // Admin katalog görünümündeyken (Ortak Ürünler / Tüm Şubeler)
+                                    // `gorunenSube` boştur ve eylemler görünmez — eskiden admin'in
+                                    // KENDİ şubesi üzerinden işlem yapıyorlardı, yanıltıcıydı.
+                                    // Admin bir şube seçtiğinde o şube adına işlem yapar.
+                                    const ortakUrun = !!gorunenSube && urun.tur !== 'sube_ozel';
                                     // Admin kartında tablodaki bilgi kaybolmasın: toplu seçim
                                     // kutusu ve "kaç şubede açık" karta taşındı.
                                     const adminKart = role === 'admin';
@@ -1811,16 +1824,59 @@ export default function ProductsPage() {
                                     </p>
                                 </div>
                             </div>
-                            <div className="flex justify-end gap-2 pt-1">
+                            <div className="flex items-center justify-end gap-2 pt-1">
+                                {/* Yanlış girilmiş şube fiyatını merkeze döndürmek
+                                    için: override silinir, şube merkez fiyatına döner. */}
+                                {role === 'admin' && gorunenSube
+                                    && fiyatUrun.fiyat_override?.[gorunenSube] != null && (
+                                    <Button
+                                        variant="ghost"
+                                        className="mr-auto text-xs text-muted-foreground"
+                                        disabled={fiyatKaydediliyor}
+                                        onClick={async () => {
+                                            setFiyatKaydediliyor(true);
+                                            try {
+                                                await api.put(`/products/${fiyatUrun.id}/sube-fiyat`,
+                                                    { subeSlug: gorunenSube, fiyat: null });
+                                                setUrunler((prev) => prev.map((u) => {
+                                                    if (u.id !== fiyatUrun.id) return u;
+                                                    const o = { ...(u.fiyat_override || {}) };
+                                                    delete o[gorunenSube];
+                                                    return { ...u, fiyat_override: o };
+                                                }));
+                                                toast.success('Şube fiyatı kaldırıldı, merkez fiyatı geçerli');
+                                                setFiyatUrun(null);
+                                            } catch (err) {
+                                                toast.error(err.response?.data?.error || 'Fiyat sıfırlanamadı');
+                                            }
+                                            setFiyatKaydediliyor(false);
+                                        }}
+                                    >
+                                        Merkez fiyatına döndür
+                                    </Button>
+                                )}
                                 <Button variant="outline" onClick={() => setFiyatUrun(null)}>İptal</Button>
                                 <Button
                                     disabled={fiyatKaydediliyor || fiyatDeger === ''}
                                     onClick={async () => {
                                         setFiyatKaydediliyor(true);
                                         try {
-                                            const { data } = await api.put(`/products/${fiyatUrun.id}`, { fiyat: Number(fiyatDeger) });
+                                            // Admin bir şubeye bakıyorsa ŞUBE fiyatını yazar
+                                            // (urun_sube.fiyat_override); merkez fiyatı ürün
+                                            // düzenleme formundan değişir. Şube sahibi eski
+                                            // yolu kullanır — sunucu onu override'a çeviriyor.
+                                            const { data } = (role === 'admin' && gorunenSube)
+                                                ? await api.put(`/products/${fiyatUrun.id}/sube-fiyat`,
+                                                    { subeSlug: gorunenSube, fiyat: fiyatDeger === '' ? null : Number(fiyatDeger) })
+                                                : await api.put(`/products/${fiyatUrun.id}`, { fiyat: Number(fiyatDeger) });
                                             const yeni = data?.urun?.etkinFiyat ?? Number(fiyatDeger);
-                                            setUrunler((prev) => prev.map((u) => (u.id === fiyatUrun.id ? { ...u, etkinFiyat: yeni } : u)));
+                                            setUrunler((prev) => prev.map((u) => (u.id !== fiyatUrun.id ? u
+                                                // Admin görünümünde kart fiyatı `fiyat_override`dan
+                                                // türetiliyor (bkz. subeGozuyle); `etkinFiyat` yazmak
+                                                // yetmez, harita tazelenmeli.
+                                                : (role === 'admin' && gorunenSube)
+                                                    ? { ...u, fiyat_override: { ...(u.fiyat_override || {}), [gorunenSube]: yeni } }
+                                                    : { ...u, etkinFiyat: yeni })));
                                             toast.success('Fiyat güncellendi');
                                             setFiyatUrun(null);
                                         } catch (err) {
