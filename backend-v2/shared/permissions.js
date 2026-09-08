@@ -92,6 +92,9 @@ const PERMISSIONS = {
     'geribildirim.view': ['admin', 'sube_sahibi'],
     'geribildirim.manage': ['admin', 'sube_sahibi'],
     'geribildirim.delete': ['admin'],
+    // Dış kaynaktan (Şikayetvar, telefon) gelen şikayeti masaya elle eklemek —
+    // şube kendi hakkında kayıt açamaz.
+    'geribildirim.create': ['admin'],
 
     // ── İş Başvuruları (QR menüsü) ──
     // Başvuru hem ilgili şubeye hem merkeze düşer: şube sahibi kendi şubesine
