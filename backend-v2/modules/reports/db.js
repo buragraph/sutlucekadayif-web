@@ -376,6 +376,13 @@ async function ayarYaz(anahtar, deger, { merge = true } = {}) {
 }
 
 export async function getSettings() { return ayarOku('settings', {}); }
+
+// ── Son çekim özeti ──
+// Gece çekiminin sonucu ekranda görünsün diye tutuluyor: hata yalnızca Worker
+// loglarına düşüyordu ve 90 şubenin 14'ünün aylarca çekilmemesi böyle
+// görünmez kalmıştı (bkz. scheduled-fetch.js).
+export async function getSonCekim() { return ayarOku('son_cekim', null); }
+export async function saveSonCekim(ozet) { await ayarYaz('son_cekim', ozet, { merge: false }); }
 export async function saveSettings(data) { await ayarYaz('settings', data, { merge: true }); }
 
 // ── Google Token ──

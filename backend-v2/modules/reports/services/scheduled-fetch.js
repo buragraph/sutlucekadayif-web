@@ -1,6 +1,6 @@
 import { supabase } from '../../../config/supabase.js';
 import { veriYaDaHata } from '../../../utils/veri.js';
-import { getSettings, upsertGoogleToplanlar } from '../db.js';
+import { getSettings, upsertGoogleToplanlar, saveSonCekim } from '../db.js';
 import { campaignBasedImport } from './meta-api.js';
 import { loadGoogleMappings, fetchLocationMetrics, isGoogleConnected } from './google-business.js';
 import { bugunStr, gunFarki, tarihObj } from './date-utils.js';
@@ -24,22 +24,38 @@ const GRACE_DAYS = 7;
 const KUYRUK_ANAHTARI = 'cekim_kuyrugu';
 const CRON_DILIM = Number(process.env.CEKIM_CRON_DILIM || 8);
 
+/**
+ * Kuyruk kaydı: { isler, ozet }.
+ *
+ * ÖZET NEDEN BURADA: turun sonucu ekranda görünmeli ama kuyruk zaten her
+ * turda okunup yazılıyor — sayaçları aynı kayda iliştirmek EK ALT-İSTEK
+ * GEREKTİRMİYOR. Ayrı bir kayıt tutulsaydı her tur +2 istek olurdu ve tur
+ * bütçesi (~42/50) buna elverişli değil.
+ */
 async function kuyrukOku() {
   const { data } = await supabase
     .from('ayarlar').select('deger').eq('anahtar', KUYRUK_ANAHTARI).maybeSingle();
   const i = data?.deger?.isler;
-  return Array.isArray(i) ? i : [];
+  return { isler: Array.isArray(i) ? i : [], ozet: data?.deger?.ozet || null };
 }
 
-async function kuyrukYaz(isler) {
+async function kuyrukYaz(isler, ozet = null) {
   veriYaDaHata(
     await supabase.from('ayarlar').upsert(
-      { anahtar: KUYRUK_ANAHTARI, deger: { isler, zaman: new Date().toISOString() }, guncelleme: new Date().toISOString() },
+      {
+        anahtar: KUYRUK_ANAHTARI,
+        deger: { isler, ozet, zaman: new Date().toISOString() },
+        guncelleme: new Date().toISOString(),
+      },
       { onConflict: 'anahtar' }
     ),
     'çekim kuyruğu yazılamadı'
   );
 }
+
+// Ekranda gösterilecek hata listesi sınırlı: 90 şube birden patlarsa kayıt
+// şişer, kullanıcı da ilk birkaçından fazlasını okumaz.
+const HATA_SINIRI = 20;
 
 /**
  * Bir dilimdeki şubelerin Meta + Google verisini çeker.
@@ -95,7 +111,7 @@ async function dilimCek(is) {
  * kuyruklandığı için kaçan şube ertesi gece tekrar denenir.
  */
 export async function cekimKuyrugunuIsle() {
-  const kuyruk = await kuyrukOku();
+  const { isler: kuyruk, ozet: oncekiOzet } = await kuyrukOku();
   if (kuyruk.length === 0) return { islenen: 0, kalan: 0 };
 
   const is = kuyruk[0];
@@ -110,13 +126,36 @@ export async function cekimKuyrugunuIsle() {
   // sonsuza kadar tekrar denenir ve kuyruk hiç ilerlemezdi. Bu sırayla en
   // kötü ihtimalle bir dilim o gece atlanır; dönem GRACE_DAYS boyunca her
   // gece yeniden kuyruklandığı için ertesi gece tekrar denenir.
-  await kuyrukYaz(yeniKuyruk);
+  const kalan = yeniKuyruk.reduce((t, x) => t + x.kodlar.length, 0);
+  // Özet dilimden ÖNCE yazılıyor (kuyrukla aynı yazımda): dilim bütçeyi
+  // tüketip ölürse bile "şu ana kadar ne oldu" kaydı duruyor.
+  const ozet = {
+    ...(oncekiOzet || { baslangic: new Date().toISOString(), hedef: 0, islenen: 0, meta: 0, google: 0, hatalar: [] }),
+    kalan,
+  };
+  await kuyrukYaz(yeniKuyruk, ozet);
 
   const sonuc = await dilimCek(dilim);
 
-  const kalan = yeniKuyruk.reduce((t, x) => t + x.kodlar.length, 0);
+  ozet.islenen += dilim.kodlar.length;
+  ozet.meta += sonuc.meta || 0;
+  ozet.google += sonuc.google || 0;
+  ozet.hatalar = [...ozet.hatalar, ...sonuc.hata].slice(0, HATA_SINIRI);
+  ozet.kalan = kalan;
+  ozet.bitis = new Date().toISOString();
+
   console.log(`[Cekim] dilim: ${dilim.kodlar.join(',')} | meta=${sonuc.meta} google=${sonuc.google} kalan=${kalan}`);
   if (sonuc.hata.length) console.log('[Cekim] hata:', sonuc.hata.join(' | '));
+
+  if (kalan === 0) {
+    // Tur bitti: özet kalıcı kayda geçiyor (ekran burayı okuyor). Yalnızca
+    // SON turda bir ek yazım — ara turların bütçesine dokunmuyor.
+    await saveSonCekim({ ...ozet, durum: 'bitti' }).catch((e) => console.error('[Cekim] özet yazılamadı:', e.message));
+    await kuyrukYaz(yeniKuyruk, null);
+  } else {
+    await kuyrukYaz(yeniKuyruk, ozet);
+  }
+
   return { islenen: dilim.kodlar.length, kalan, sonuc };
 }
 
@@ -174,8 +213,13 @@ export async function runScheduledFetch() {
     if (kodlar.length) isler.push({ since: d.since, until: d.until, kodlar });
   }
 
-  await kuyrukYaz(isler);
   const kuyruklanan = isler.reduce((t, x) => t + x.kodlar.length, 0);
+  await kuyrukYaz(isler, {
+    baslangic: new Date().toISOString(),
+    hedef: kuyruklanan,
+    donemler: [...donemler.values()].map((d) => `${d.since}_${d.until}`),
+    islenen: 0, meta: 0, google: 0, hatalar: [], kalan: kuyruklanan,
+  });
   console.log(`[Cekim] ${donemler.size} dönem, ${kuyruklanan} şube kuyruğa alındı (dilim ${CRON_DILIM}).`);
 
   // Token/bağlantı gibi kalıcı konfigürasyon eksikleri her gece alarm üretmesin.

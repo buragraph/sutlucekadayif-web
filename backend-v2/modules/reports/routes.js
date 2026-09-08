@@ -257,6 +257,40 @@ function dashSube(sube, role) {
 }
 
 // Dashboard API — Hafif şube listesi
+/**
+ * GET /api/reports/cekim-durumu
+ * Gece çekiminin son turu — "veri geldi mi" sorusunun ekrandaki cevabı.
+ *
+ * NEDEN VAR: çekim hataları yalnızca Worker loglarına düşüyordu; 90 şubenin
+ * 14'ünün aylarca çekilmemesi böyle görünmez kalmıştı. Üstelik bir dönem
+ * yalnızca bitişinden sonraki 7 gece kuyruğa giriyor (GRACE_DAYS) — o pencere
+ * sessizce hatalı geçerse o ayın verisi kalıcı olarak eksik kalıyor.
+ *
+ * ADMIN'E ÖZEL: şubeler arası operasyon bilgisi.
+ */
+router.get('/cekim-durumu', verifyToken, requirePermission('reports.manage'), async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('ayarlar').select('anahtar, deger').in('anahtar', ['son_cekim', 'cekim_kuyrugu']);
+    if (error) throw new Error(error.message);
+
+    const kayit = Object.fromEntries((data || []).map((x) => [x.anahtar, x.deger]));
+    const kuyruk = kayit.cekim_kuyrugu || {};
+    const suren = (kuyruk.isler || []).reduce((t, x) => t + (x.kodlar?.length || 0), 0);
+
+    res.json({
+      // Kuyrukta iş varsa tur DEVAM ediyor; özet o turun o ana kadarki hâli.
+      suruyor: suren > 0,
+      kalan: suren,
+      surenOzet: kuyruk.ozet || null,
+      sonCekim: kayit.son_cekim || null,
+    });
+  } catch (err) {
+    console.error('[Reports]', err);
+    res.status(500).json({ error: err.message || 'Sunucu hatası oluştu' });
+  }
+});
+
 router.get('/dashboard', verifyToken, requirePermission('reports.view'), kapsamliCacheMiddleware(60), async (req, res) => {
   try {
     let subeler;

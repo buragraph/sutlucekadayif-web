@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { tr } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import CekimDurumu from '../components/CekimDurumu';
 
 export default function ReportsPage() {
     const loadDashboard = useReportsStore((s) => s.loadDashboard);
@@ -138,6 +139,10 @@ export default function ReportsPage() {
                     </Button>
                 </div>
             </div>
+
+            {/* Gece çekiminin son turu. Hata yalnızca Worker loglarına
+                düşüyordu; buradan görünüyor (bkz. CekimDurumu). */}
+            <CekimDurumu />
 
             {branches.length > 0 && (
                 <div className="bg-card border rounded-lg p-3 flex flex-wrap items-center justify-between gap-4 shrink-0">
