@@ -41,6 +41,63 @@ function kapsamUygula(sorgu, req) {
 }
 
 /**
+ * POST /api/branches/konum-doldur
+ * Şubelerin il/ilçesini Google Business Profile kaydından doldurur.
+ *
+ * NEDEN GOOGLE: şubelerin çoğu zaten Google'da eşleşmiş ve Google adresi
+ * YAPISAL tutuyor (administrativeArea = il, locality = ilçe). Adı ya da
+ * serbest metin adresi yorumlamaya göre tahmin payı sıfır — elle
+ * çıkarımda Kayseri'yi Melikgazi sanıp Talas'ı kaçırmak gibi hatalar oluyor.
+ *
+ * Varsayılan yalnızca BOŞ olanları doldurur; `uzerineYaz: true` gövdesi elle
+ * girilmiş değerleri de Google'ınkiyle değiştirir.
+ */
+router.post(
+    '/konum-doldur',
+    verifyToken,
+    requirePermission('branches.edit'),
+    asyncHandler(async (req, res) => {
+        const uzerineYaz = req.body?.uzerineYaz === true;
+
+        const [{ listAccounts, loadGoogleMappings }] = await Promise.all([
+            import('../modules/reports/services/google-business.js'),
+        ]);
+        const [konumlar, esleme] = await Promise.all([
+            listAccounts().catch(() => []),
+            loadGoogleMappings().catch(() => ({})),
+        ]);
+        if (!konumlar.length) {
+            return res.status(400).json({ error: 'Google konumları alınamadı — bağlantıyı kontrol edin.' });
+        }
+
+        // Google adları karışık büyük/küçük harfle geliyor (ŞİŞLİ, altındağ).
+        // İlçe adı sonradan demografi verisiyle eşleştirileceği için Türkçe
+        // başlık biçimine çekiliyor.
+        const baslik = (v) => String(v || '').trim().toLocaleLowerCase('tr')
+            .replace(/\S+/g, (k) => k.charAt(0).toLocaleUpperCase('tr') + k.slice(1));
+
+        const veri = [];
+        const eksik = [];
+        for (const k of konumlar) {
+            const kod = esleme[k.name];
+            if (!kod || kod === '__atla__') continue;
+            if (!k.il || !k.ilce) { eksik.push(kod); continue; }
+            veri.push({ kod, il: baslik(k.il), ilce: baslik(k.ilce) });
+        }
+
+        const { data, error } = await supabase.rpc('sube_konum_yaz', { veri, uzerine_yaz: uzerineYaz });
+        if (error) throw new Error(error.message);
+
+        res.json({
+            success: true,
+            eslesen: veri.length,
+            yazilan: data ?? 0,
+            adressiz: eksik,
+        });
+    })
+);
+
+/**
  * GET /api/branches
  * Tüm şubeleri listele
  */

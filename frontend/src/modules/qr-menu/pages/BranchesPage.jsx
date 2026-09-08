@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, MapPin, FileText, Store, RotateCcw, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, MapPin, FileText, Store, RotateCcw, Search, Download } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import illerIlceler from '@/data/tr-iller-ilceler.json';
+import { adrestenIlIlce } from '../utils/adres-coz';
 
 const IL_LISTESI = Object.keys(illerIlceler);
 
@@ -27,6 +28,7 @@ export default function BranchesPage() {
     // için kullanılıyor. Geçmiş kayıt hâlâ duruyor, sekmeyle görünür.
     const [durum, setDurum] = useState('acik');   // 'acik' | 'kapali' | 'tumu'
     const [arama, setArama] = useState('');
+    const [konumYukleniyor, setKonumYukleniyor] = useState(false);
 
     useEffect(() => { loadSubeler(); }, []);
 
@@ -134,11 +136,38 @@ export default function BranchesPage() {
         catch (err) { toast.error(err.response?.data?.error || 'Silme işlemi başarısız'); }
     }
 
+    // İl/ilçesi eksik şube sayısı — düğmenin gerekli olup olmadığını söyler.
+    const konumEksik = subeler.filter((x) => !x.il || !x.ilce).length;
+
+    async function konumDoldur() {
+        setKonumYukleniyor(true);
+        try {
+            const { data } = await api.post('/branches/konum-doldur');
+            if (data.yazilan > 0) toast.success(`${data.yazilan} şubenin il/ilçesi Google kaydından dolduruldu`);
+            else toast.info('Doldurulacak boş il/ilçe kalmamış');
+            await loadSubeler();
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Google kaydından doldurulamadı');
+        }
+        setKonumYukleniyor(false);
+    }
+
     return (
         <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-3xl leading-none tracking-tight">Şubeler</h1>
-                <Button onClick={openAdd}><Plus className="size-4" /> Şube Ekle</Button>
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Google Business Profile adresi YAPISAL: il ve ilçe ayrı
+                        alanlarda geliyor, ad ya da serbest metinden tahmin
+                        etmeye gerek kalmıyor. Yalnızca boş olanları doldurur. */}
+                    {konumEksik > 0 && (
+                        <Button variant="outline" onClick={konumDoldur} disabled={konumYukleniyor}>
+                            <Download className="size-4" />
+                            {konumYukleniyor ? 'Dolduruluyor…' : `Google'dan il/ilçe doldur (${konumEksik})`}
+                        </Button>
+                    )}
+                    <Button onClick={openAdd}><Plus className="size-4" /> Şube Ekle</Button>
+                </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -291,6 +320,34 @@ export default function BranchesPage() {
                         <div className="space-y-1.5">
                             <Label>Adres</Label>
                             <Input type="text" value={form.adres} onChange={(e) => setForm({ ...form, adres: e.target.value })} placeholder="Açık adres (opsiyonel)" />
+                            {/* Adresten il/ilçe algılama. OTOMATİK YAZMIYOR, öneriyor:
+                                yanlış bir eşleşme sessizce kaydedilirse demografi
+                                başka ilçenin verisini gösterir. Eşleşme resmî ilçe
+                                listesinden geliyor (bkz. utils/adres-coz.js). */}
+                            {(() => {
+                                const bulunan = adrestenIlIlce(form.adres);
+                                if (bulunan.guven !== 'yuksek') return null;
+                                if (bulunan.il === form.il && bulunan.ilce === form.ilce) return null;
+                                return (
+                                    <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed bg-muted/40 px-2.5 py-1.5 text-xs">
+                                        <MapPin className="size-3.5 shrink-0 text-muted-foreground" />
+                                        <span className="text-muted-foreground">
+                                            Adresten algılandı: <strong className="text-foreground">{bulunan.il} · {bulunan.ilce}</strong>
+                                        </span>
+                                        <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-xs"
+                                            onClick={() => {
+                                                // İKİ ADIM: ilçe seçicisi il boşken devre dışı ve
+                                                // seçenek listesi boş; ikisi aynı anda yazılınca
+                                                // ilçe değeri karşılığı olmayan bir seçenek olarak
+                                                // düşüyordu. Önce il, bir sonraki turda ilçe.
+                                                setForm((f) => ({ ...f, il: bulunan.il, ilce: '' }));
+                                                setTimeout(() => setForm((f) => ({ ...f, ilce: bulunan.ilce })), 0);
+                                            }}>
+                                            Uygula
+                                        </Button>
+                                    </div>
+                                );
+                            })()}
                         </div>
                         <div className="space-y-1.5">
                             <Label>Telefon</Label>

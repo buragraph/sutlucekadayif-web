@@ -136,6 +136,11 @@ export async function listAccounts() {
           // eskiden koda gömülü tek bir link vardı ve o link ölüydü.
           reviewUri: loc.metadata?.newReviewUri || '',
           mapsUri: loc.metadata?.mapsUri || '',
+          // Yapısal alanlar AYRICA veriliyor: `address` insan okusun diye
+          // birleştirilmiş metin, ama şubenin il/ilçesini doldururken metni
+          // yeniden ayrıştırmak yerine Google'ın kendi alanları kullanılıyor.
+          il: loc.storefrontAddress?.administrativeArea || null,
+          ilce: loc.storefrontAddress?.locality || null,
           address: loc.storefrontAddress 
             ? [loc.storefrontAddress.addressLines?.join(', '), loc.storefrontAddress.locality, loc.storefrontAddress.administrativeArea].filter(Boolean).join(', ')
             : '',
