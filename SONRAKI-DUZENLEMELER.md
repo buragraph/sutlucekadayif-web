@@ -54,4 +54,10 @@ değişen bütçe alanını gönderiyor.
 ## Daha önce ertelenen planlar (hatırlatma)
 
 - R2 custom domain: müşteri görselleri/menü JSON'u proxy yerine R2 CDN'den servis edilecek.
+- **Workspace DKIM kapalı** (`google._domainkey.sutlucekadayif.com` kaydı yok) ama DMARC
+  `p=quarantine`. Kurumsal posta DMARC'ı yalnızca SPF ile geçiyor; yönlendirilen mektup
+  spam'e düşüyor. Admin konsolu → Apps → Gmail → Authenticate email'den açılmalı.
+  Şifre sıfırlama e-postası Supabase SMTP'sine bağlanmadan ÖNCE yapılmalı, yoksa
+  mektuplar sessizce spam'e düşer. (Resend değerlendirildi, Workspace relay'i yeterli
+  olduğu için vazgeçildi: smtp-relay.gmail.com, gönderen info@sutlucekadayif.com.)
 - Analytics: menü + panele GA4/Firebase Analytics, dashboard'da özet (en sona ertelendi).

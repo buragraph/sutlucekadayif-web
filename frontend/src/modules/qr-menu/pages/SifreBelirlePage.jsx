@@ -20,10 +20,10 @@ import { Spinner } from '@/components/ui/spinner';
  * dinleniyor, sonra kısa bir süre sonunda hâlâ oturum yoksa bağlantı geçersiz
  * sayılıyor — aksi hâlde geçerli bağlantıda bile "süresi dolmuş" yazardı.
  *
- * E-POSTA GÖNDERİMİ Supabase'in SMTP ayarına bağlı. Resend proje SMTP'si
- * olarak tanımlandığında bu akışta değişecek bir şey yok; Supabase panelinde
- * dönüş adresi (Authentication → URL Configuration → Redirect URLs) bu
- * sayfanın adresini içermeli.
+ * E-POSTA GÖNDERİMİ Supabase'in SMTP ayarına bağlı. Google Workspace relay'i
+ * tanımlandığında bu akışta değişecek bir şey yok; Supabase panelinde dönüş
+ * adresi (Authentication → URL Configuration → Redirect URLs) bu sayfanın
+ * adresini içermeli.
  */
 const ASGARI_UZUNLUK = 8;
 

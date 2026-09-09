@@ -61,10 +61,14 @@ export default function LoginPage() {
     /**
      * Şifre sıfırlama bağlantısı ister.
      *
-     * E-POSTAYI SUPABASE GÖNDERİYOR. Proje SMTP'si Resend'e bağlandığında
-     * mektup Resend üzerinden çıkar; kodda değişecek bir şey yok. Bağlanana
-     * kadar Supabase'in yerleşik gönderimi çok düşük kotayla çalışır, o
-     * yüzden hata mesajını yutmuyoruz.
+     * E-POSTAYI SUPABASE GÖNDERİYOR. Proje SMTP'si Google Workspace relay'ine
+     * (smtp-relay.gmail.com, gönderen info@sutlucekadayif.com) bağlanacak;
+     * kodda değişecek bir şey yok. Bağlanana kadar Supabase'in yerleşik
+     * gönderimi çok düşük kotayla çalışır, o yüzden hata mesajını yutmuyoruz.
+     *
+     * DİKKAT — SESSİZ BAŞARISIZLIK: alan adında DMARC `p=quarantine` açık ama
+     * Workspace DKIM'i KAPALI. DKIM açılmadan gönderilen sıfırlama mektupları
+     * spam'e düşebilir ve burada hata görünmez (Supabase 200 döner).
      *
      * DÖNÜŞ ADRESİ Supabase panelinde "Redirect URLs" listesinde tanımlı
      * olmalı (Authentication → URL Configuration), yoksa bağlantı site
