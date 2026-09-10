@@ -6,6 +6,7 @@ import asyncHandler from '../utils/asyncHandler.js';
 import { temizNull, veriYaDaHata } from '../utils/veri.js';
 import { deleteMenuJson, regenerateMenuJsons } from '../modules/qr-menu/services/menu-cache.js';
 import { acikKampanyalaraEkle } from '../modules/reports/services/kampanya-uyelik.js';
+import { menuyuCekirdekKatalogdanKur } from '../modules/qr-menu/services/sube-menusu.js';
 
 // konum-store.js KULLANILMIYOR: il/ilçe/lat/lng artık şube satırının kolonu,
 // tek-doküman konum listesi ve transaction'ı yapısal olarak gereksiz.
@@ -262,7 +263,18 @@ router.post(
         // Şube kaydı bu yüzden geri alınmaz — hata içeride loglanıyor.
         await acikKampanyalaraEkle(slugVal);
 
-        res.status(201).json({ slug: slugVal, ad: ad.trim() });
+        // Menüyü çekirdek katalogla kur ve ürünleri satışta işaretle. Menü bir
+        // opt-in listesi olduğu için yeni şube aksi hâlde bomboş açılıyordu.
+        const menuAdedi = await menuyuCekirdekKatalogdanKur(slugVal);
+
+        // Menü JSON'u ancak ürünler yazıldıktan SONRA üretilmeli, yoksa QR
+        // menüde boş bir dosya kalır ve bir sonraki ürün değişikliğine kadar
+        // öyle durur (bkz. CLAUDE.md kural 7).
+        if (menuAdedi > 0) {
+            await regenerateMenuJsons([slugVal]).catch(console.error);
+        }
+
+        res.status(201).json({ slug: slugVal, ad: ad.trim(), menuUrunSayisi: menuAdedi });
     })
 );
 
