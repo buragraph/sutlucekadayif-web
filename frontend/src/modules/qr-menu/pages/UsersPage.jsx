@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import TopluKullaniciEkle from '../components/TopluKullaniciEkle';
+import SubeSecici from '../components/SubeSecici';
 
 // PAROLA İKİ YOLDAN BİRİ:
 //  - Parola boş bırakılırsa hesap parolasız açılır; kişi giriş ekranına ilk
@@ -103,6 +104,12 @@ export default function UsersPage() {
 
     async function handleSubmit(e) {
         e.preventDefault();
+        // Şube alanı artık native `select` değil (aranabilir seçici), yani
+        // tarayıcının `required` doğrulaması devrede değil — elle kontrol.
+        if (form.role !== 'admin' && !form.subeSlug) {
+            toast.error('Şube seçin.');
+            return;
+        }
         setSaving(true);
 
         try {
@@ -386,19 +393,12 @@ export default function UsersPage() {
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1.5">
                                     <Label>Şube</Label>
-                                    <select
-                                        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-                                        value={form.subeSlug}
-                                        onChange={(e) => setForm({ ...form, subeSlug: e.target.value })}
-                                        required={form.role !== 'admin'}
-                                    >
-                                        <option value="">Seçiniz</option>
-                                        {subeler.map((s) => (
-                                            <option key={s.slug} value={s.slug}>
-                                                {s.ad}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <SubeSecici
+                                        subeler={subeler}
+                                        deger={form.subeSlug}
+                                        yerTutucu="Seçiniz"
+                                        onSec={(slug) => setForm({ ...form, subeSlug: slug })}
+                                    />
                                 </div>
 
                                 <div className="space-y-1.5">

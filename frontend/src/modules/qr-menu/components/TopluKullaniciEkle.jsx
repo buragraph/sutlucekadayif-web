@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import SubeSecici from './SubeSecici';
 
 /**
  * Listeden toplu kullanıcı açma.
@@ -209,19 +210,13 @@ export default function TopluKullaniciEkle({ subeler, acik, onKapat, onBitti }) 
                                                     {rol === 'admin' ? (
                                                         <span className="text-muted-foreground text-xs">—</span>
                                                     ) : (
-                                                        <Select
-                                                            value={s.slug}
-                                                            onValueChange={(v) => setElleSube((o) => ({ ...o, [s.i]: v }))}
-                                                        >
-                                                            <SelectTrigger className="h-8 w-56 text-xs">
-                                                                <SelectValue placeholder={s.subeAdi || 'Şube seçin'} />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {subeler.map((x) => (
-                                                                    <SelectItem key={x.slug} value={x.slug}>{x.ad}</SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
+                                                        <SubeSecici
+                                                            subeler={subeler}
+                                                            deger={s.slug}
+                                                            yerTutucu={s.subeAdi || 'Şube seçin'}
+                                                            kucuk
+                                                            onSec={(v) => setElleSube((o) => ({ ...o, [s.i]: v }))}
+                                                        />
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-xs">
