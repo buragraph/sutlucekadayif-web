@@ -4337,20 +4337,21 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   position: sticky;
   top: 0;
   z-index: 30;
-  display: flex;
-  align-items: center;
-  gap: 10px;
   background: var(--pm-bg);
-  padding: 10px 12px;
+  padding: 10px 0;
   box-shadow: 0 1px 0 var(--pm-border);
 }
 
-/* Ok düğmeleri şeridin YANINDA (flex kardeşi), üstünde değil — üstteyken
-   kenardaki sekmeyi örtüyorlardı. Aktif kategori hapıyla aynı koyu yeşil;
-   beyaz daire markanın dışında duruyordu. Gidilecek yer yokken gizlenmiyor,
-   soluyor: gizlense şerit her seferinde enini değiştirirdi. */
+/* Ok düğmeleri şeridin ÜSTÜNDE duruyor; kategoriler altlarından akıyor.
+   Yanlarına alınmıştı ama o zaman şerit daralıyor, kenarda sert bir kesim
+   oluşuyor ve onu yumuşatmak için konan maske aktif hapın üstüne biniyordu.
+   Üstte durunca kesim diye bir şey kalmıyor. Aktif kategori hapıyla aynı
+   koyu yeşil; gidilecek yer yokken gizlenmiyor, soluyor. */
 .pm-navok {
-  flex-shrink: 0;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4365,42 +4366,26 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   transition: opacity var(--pm-transition), transform var(--pm-transition);
 }
 .pm-navok svg { width: 15px; height: 15px; }
-.pm-navok:not(:disabled):hover { transform: scale(1.06); }
+.pm-navok:not(:disabled):hover { transform: translateY(-50%) scale(1.06); }
+.pm-navok--sol { left: 10px; }
+.pm-navok--sag { right: 10px; }
 .pm-navok:disabled {
   opacity: 0.22;
   cursor: default;
   box-shadow: none;
 }
 .pm-navbar__scroll {
-  flex: 1;
-  min-width: 0;
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding: 0 8px;
+  /* Dolgu ok genişliği kadar: uçlardaki sekme okun altında hapsolmuyor,
+     aradakiler ise okun altından geçip gidiyor. */
+  padding: 0 50px;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 .pm-navbar__scroll::-webkit-scrollbar { display: none; }
 
-/* Kenar geçişi MASKEYLE. Önce üste krem gradyan seriliyordu; açık sekmede
-   sorun yoktu ama aktif kategorinin koyu yeşil hapının üstünde çamurlu,
-   keskin bir bant oluşuyordu — komşu kategoriye geçince göze çarpıyordu.
-   Maske içeriğin kendi saydamlığını azaltıyor, altındaki zemine temiz
-   biçimde sönüyor. Geçiş yalnızca o yönde kategori varken uygulanıyor;
-   iki uçta da sabit maske olsaydı ilk/son sekme boşuna soluk kalırdı. */
-.pm-navbar--sol .pm-navbar__scroll {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 18px);
-  mask-image: linear-gradient(to right, transparent 0, #000 18px);
-}
-.pm-navbar--sag .pm-navbar__scroll {
-  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 18px);
-  mask-image: linear-gradient(to left, transparent 0, #000 18px);
-}
-.pm-navbar--sol.pm-navbar--sag .pm-navbar__scroll {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
-}
 .pm-navtab {
   flex-shrink: 0;
   padding: 9px 16px;

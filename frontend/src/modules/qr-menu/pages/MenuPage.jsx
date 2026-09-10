@@ -219,9 +219,6 @@ export default function MenuPage() {
 
     const tabRefs = useRef({});      // { katId: <button> }
     const navScrollRef = useRef(null);
-    // Şeridin uçlarında içerik devam ediyor mu — kenardaki sert kesimi
-    // yumuşatan dar geçiş yalnızca o yönde çiziliyor.
-    const [seritUc, setSeritUc] = useState({ sol: false, sag: false });
     const navbarRef = useRef(null);
 
     useEffect(() => {
@@ -327,38 +324,10 @@ export default function MenuPage() {
         return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
     }, [searchQuery, tumUrunler]);
 
-    useEffect(() => {
-        const bar = navScrollRef.current;
-        if (!bar) return;
-        // DEĞER DEĞİŞMEDİYSE STATE'E DOKUNMA: her kaydırma karesinde yeni bir
-        // nesne yazmak React'e "değişti" dedirtiyor ve 57 ürünlük sayfayı
-        // saniyede onlarca kez yeniden çizdiriyordu — parmakla kaydırma
-        // takılıyordu.
-        const olc = () => {
-            const sol = bar.scrollLeft > 2;
-            const sag = bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2;
-            setSeritUc((eskiDurum) => (
-                eskiDurum.sol === sol && eskiDurum.sag === sag ? eskiDurum : { sol, sag }
-            ));
-        };
-        olc();
-        bar.addEventListener('scroll', olc, { passive: true });
-        window.addEventListener('resize', olc);
-        return () => {
-            bar.removeEventListener('scroll', olc);
-            window.removeEventListener('resize', olc);
-        };
-    }, [visibleKategoriler]);
-
-    // AKTİF SEKMEYİ ORTALAMIYORUZ, SOLA HİZALIYORUZ.
-    //
-    // Şerit oklardan sonra ~267px kalıyor, kategori hapları ise 141px'e kadar
-    // çıkıyor. Ortalayınca iki yanda 9'ar px boşluk kalıyordu; kenar maskesi
-    // 18px olduğu için maske doğrudan aktif hapın üstüne biniyor ve komşu
-    // kategoriye geçerken hap kırpılmış görünüyordu. Sola hizalayıp maske
-    // payı kadar içeride bırakınca hap tam görünüyor, sağda da sıradaki
-    // kategoriler beliriyor.
-    const MASKE_PAYI = 22;
+    // AKTİF SEKMEYİ ORTALAMIYORUZ, SOL OKUN HEMEN SAĞINA HİZALIYORUZ.
+    // Ortalamak, hapların 141px'e çıktığı dar şeritte hapı okun altında
+    // bırakıyordu. Bu pay ok genişliği + kenar boşluğu kadar.
+    const OK_PAYI = 50;
     useEffect(() => {
         const tab = tabRefs.current[activeKat];
         const bar = navScrollRef.current;
@@ -370,7 +339,7 @@ export default function MenuPage() {
         // dikdörtgenin farkından alıyoruz.
         const fark = tab.getBoundingClientRect().left - bar.getBoundingClientRect().left;
         const enFazla = bar.scrollWidth - bar.clientWidth;
-        const hedef = Math.min(Math.max(0, bar.scrollLeft + fark - MASKE_PAYI), enFazla);
+        const hedef = Math.min(Math.max(0, bar.scrollLeft + fark - OK_PAYI), enFazla);
         bar.scrollTo({ left: hedef, behavior: 'smooth' });
     }, [activeKat]);
 
@@ -529,10 +498,7 @@ export default function MenuPage() {
                 ) : (
                     /* ═══ GEZİNME MODU — yapışkan bar + TEK kategori (sayfa kısa kalır) ═══ */
                     <>
-                        <nav
-                            className={`pm-navbar ${seritUc.sol ? 'pm-navbar--sol' : ''} ${seritUc.sag ? 'pm-navbar--sag' : ''}`}
-                            ref={navbarRef}
-                        >
+                        <nav className="pm-navbar" ref={navbarRef}>
                             {/* OK DÜĞMELERİ şeridin ÜSTÜNDE değil YANINDA duruyor:
                                 üstte dururken kenardaki sekmeyi örtüyorlardı. İkisi de
                                 her zaman çiziliyor, gidilecek yer yoksa `disabled` —
@@ -541,7 +507,7 @@ export default function MenuPage() {
                             }
                             <button
                                 type="button"
-                                className="pm-navok"
+                                className="pm-navok pm-navok--sol"
                                 onClick={() => komsuKategori(-1)}
                                 disabled={aktifSira <= 0}
                                 aria-label="Önceki kategori"
@@ -562,7 +528,7 @@ export default function MenuPage() {
                             </div>
                             <button
                                 type="button"
-                                className="pm-navok"
+                                className="pm-navok pm-navok--sag"
                                 onClick={() => komsuKategori(1)}
                                 disabled={aktifSira < 0 || aktifSira >= visibleKategoriler.length - 1}
                                 aria-label="Sonraki kategori"
