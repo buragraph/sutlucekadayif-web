@@ -39,7 +39,13 @@ export default function App() {
           {/* Şube Sahibi Giriş */}
           <Route path="/giris" element={<LoginPage />} />
 
-          {/* Korumalı Admin Bölümü — Sidebar Layout */}
+          {/* Korumalı Admin Bölümü — Sidebar Layout
+              ROTA DÜZEYİNDE İZİN: kapı yalnızca "giriş yapılmış mı" diye
+              bakıyordu, sayfa izinleri kenar çubuğunda gizlenerek uygulanıyordu.
+              Adresi elle yazan (ör. `calisan`) sayfayı açıyor, içerik API'den
+              403 aldığı için boş görünüyordu. Veri sızmıyordu ama kırık ekran
+              çıkıyordu; izinler kenar çubuğundaki kuralın aynısıyla buraya da
+              yazıldı. */}
           <Route
             element={
               <ProtectedRoute>
@@ -48,15 +54,15 @@ export default function App() {
             }
           >
             <Route path="/admin" element={<Dashboard />} />
-            <Route path="/admin/raporlar" element={<ReportsPage />} />
-            <Route path="/admin/reklam" element={<BranchReklamPage />} />
-            <Route path="/admin/qr-menu" element={<ProductsPage />} />
-            <Route path="/admin/kullanicilar" element={<UsersPage />} />
+            <Route path="/admin/raporlar" element={<ProtectedRoute permission="reports.view"><ReportsPage /></ProtectedRoute>} />
+            <Route path="/admin/reklam" element={<ProtectedRoute permission="reports.view"><BranchReklamPage /></ProtectedRoute>} />
+            <Route path="/admin/qr-menu" element={<ProtectedRoute permission="products.view"><ProductsPage /></ProtectedRoute>} />
+            <Route path="/admin/kullanicilar" element={<ProtectedRoute permission="users.view"><UsersPage /></ProtectedRoute>} />
             <Route path="/admin/profil" element={<ProfilePage />} />
-            <Route path="/admin/subeler" element={<BranchesPage />} />
-            <Route path="/admin/qr-menu/kategoriler" element={<CategoriesPage />} />
-            <Route path="/admin/qr-menu/talepler" element={<UrunTalepleriPage />} />
-            <Route path="/admin/qr-menu/fiyat-listesi" element={<FiyatListesiPage />} />
+            <Route path="/admin/subeler" element={<ProtectedRoute role="admin"><BranchesPage /></ProtectedRoute>} />
+            <Route path="/admin/qr-menu/kategoriler" element={<ProtectedRoute permission="categories.create"><CategoriesPage /></ProtectedRoute>} />
+            <Route path="/admin/qr-menu/talepler" element={<ProtectedRoute permission="urunTalep.view"><UrunTalepleriPage /></ProtectedRoute>} />
+            <Route path="/admin/qr-menu/fiyat-listesi" element={<ProtectedRoute permission="products.view"><FiyatListesiPage /></ProtectedRoute>} />
             {/* Günlük şubeler arası bir görünüm: uç zaten 403 veriyor ama
                 korumasız rota, şube sahibine boş bir "kayıt yok" ekranı
                 gösterip hata varmış gibi görünmesine yol açardı. */}
@@ -64,13 +70,13 @@ export default function App() {
             <Route path="/admin/duyurular" element={<ProtectedRoute permission="duyuru.manage"><DuyurularPage /></ProtectedRoute>} />
             <Route path="/admin/medya" element={<ProtectedRoute role="admin"><PhotoLibraryPage /></ProtectedRoute>} />
             <Route path="/admin/basvurular" element={<ProtectedRoute role="admin"><BasvurularPage /></ProtectedRoute>} />
-            <Route path="/admin/geri-bildirim" element={<GeriBildirimPage />} />
-            <Route path="/admin/is-basvurulari" element={<IsBasvurulariPage />} />
+            <Route path="/admin/geri-bildirim" element={<ProtectedRoute permission="geribildirim.view"><GeriBildirimPage /></ProtectedRoute>} />
+            <Route path="/admin/is-basvurulari" element={<ProtectedRoute permission="isbasvuru.view"><IsBasvurulariPage /></ProtectedRoute>} />
             <Route path="/admin/akademi" element={<AcademyDashboard />} />
             <Route path="/admin/akademi/kurs/:courseId" element={<CourseDetail />} />
-            <Route path="/admin/akademi/yonetim" element={<AcademyAdmin />} />
-            <Route path="/admin/butce-kampanyalari" element={<BudgetCampaignsPage />} />
-            <Route path="/admin/butce-bildirim" element={<BudgetSubmitPage />} />
+            <Route path="/admin/akademi/yonetim" element={<ProtectedRoute permission="academy.manage"><AcademyAdmin /></ProtectedRoute>} />
+            <Route path="/admin/butce-kampanyalari" element={<ProtectedRoute permission="budget.manage"><BudgetCampaignsPage /></ProtectedRoute>} />
+            <Route path="/admin/butce-bildirim" element={<ProtectedRoute permission="budget.submit"><BudgetSubmitPage /></ProtectedRoute>} />
           </Route>
 
           {/* Şifre sıfırlama bağlantısının indiği sayfa — giriş istemez,

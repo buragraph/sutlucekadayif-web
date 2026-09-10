@@ -39,7 +39,11 @@ export function getNavGroups(can, role) {
                 ...(can('geribildirim.view')
                     ? [{ title: 'Şikayet ve Geri Bildirim', url: '/admin/geri-bildirim', icon: MessageSquare }]
                     : []),
-                {
+                // QR MENÜ GRUBU İZNE BAĞLI: grup koşulsuzdu, alt maddeler tek tek
+                // gizleniyordu. `products.view` çalışanda yok, ama "Ürünler"
+                // maddesi de koşulsuz olduğu için çalışan grubu görüp tıklıyor
+                // ve yetki uyarısına düşüyordu.
+                ...(can('products.view') ? [{
                     title: 'QR Menü',
                     url: '/admin/qr-menu',
                     icon: QrCode,
@@ -59,7 +63,7 @@ export function getNavGroups(can, role) {
                             ? [{ title: 'İş Başvuruları', url: '/admin/is-basvurulari', icon: BriefcaseBusiness }]
                             : []),
                     ],
-                },
+                }] : []),
             ],
         },
     ];

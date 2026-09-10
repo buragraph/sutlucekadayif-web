@@ -182,6 +182,9 @@ export default function ProfilePage() {
                         <Field label="Ad Soyad" editing={editing} value={editing ? form.ad_soyad : hesap.ad_soyad} onChange={(v) => setForm((f) => ({ ...f, ad_soyad: v }))} placeholder="Ad Soyad" />
                         <Field label="Telefon" editing={editing} value={editing ? form.telefon : hesap.telefon} onChange={(v) => setForm((f) => ({ ...f, telefon: v }))} placeholder="05XX XXX XX XX" />
                         <Alan label="E-posta" value={hesap.email} />
+                        {/* Şube adı yalnızca mağaza kartı YOKKEN burada: çalışan
+                            şubesinin adını görsün ama şube verisini düzenlemesin. */}
+                        {!magaza && hesap.sube_adi && <Alan label="Şube" value={hesap.sube_adi} />}
                         <div className="flex flex-col gap-1.5">
                             <span className="text-xs text-muted-foreground">Şifre</span>
                             {editing ? (

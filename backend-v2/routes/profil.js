@@ -23,15 +23,32 @@ router.get(
         const kayit = await kullaniciGetir(req.user.uid);
         const authUser = kayit ? hesapAlanlari(kayit) : null;
 
+        // ŞUBE BLOKLARI ÇALIŞANA KAPALI — yazma gibi OKUMA da.
+        //
+        // Bu uçta izin halkası yok ve `fatura` bloğu şubeye atanmış HERKESE
+        // dönüyordu: kasiyer hesabı şubenin VKN'sini, fatura adresini ve şirket
+        // tipini okuyabiliyordu. Aynı alanları veren resmî uç (/api/branches)
+        // `branches.view` istiyor ve o izin çalışanda YOK — yani buradan
+        // dolaşılıyordu. `magaza` da kapatıldı: yazma zaten engelli olduğu için
+        // çalışana düzenlenebilir görünmesi sessiz bir "kaydedildi" yalanıydı.
+        const subeBloklari = req.user.role === 'admin' || req.user.role === 'sube_sahibi';
+
         // Şubeye atanmamış kullanıcı (ör. admin) → yalnızca hesap bilgisi.
-        if (!req.user.subeSlug) {
-            const { data: u } = await supabase
-                .from('kullanici_sube').select('telefon').eq('uid', req.user.uid).maybeSingle();
+        if (!req.user.subeSlug || !subeBloklari) {
+            const [{ data: u }, { data: s }] = await Promise.all([
+                supabase.from('kullanici_sube').select('telefon').eq('uid', req.user.uid).maybeSingle(),
+                req.user.subeSlug
+                    ? supabase.from('subeler').select('ad').eq('kod', req.user.subeSlug).maybeSingle()
+                    : Promise.resolve({ data: null }),
+            ]);
             return res.json({
                 hesap: {
                     ad_soyad: authUser?.displayName || '',
                     email: authUser?.email || '',
                     telefon: u?.telefon || '',
+                    // Çalışan hangi şubede olduğunu görsün — ad dışında şube
+                    // verisi almıyor.
+                    sube_adi: s?.ad || '',
                 },
                 magaza: null,
                 fatura: null,

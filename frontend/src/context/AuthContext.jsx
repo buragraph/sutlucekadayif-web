@@ -31,7 +31,11 @@ export function AuthProvider({ children }) {
     function oturumuUygula(session) {
         setUser(kullaniciNesnesi(session));
         setSubeSlug(session?.user?.app_metadata?.subeSlug || null);
-        setRole(session ? session.user.app_metadata?.role || 'sube_sahibi' : null);
+        // VARSAYILAN SUNUCUYLA AYNI OLMALI: middleware/auth.js claim yoksa
+        // 'calisan' varsayıyor. Burada 'sube_sahibi' varsayılıyordu, yani
+        // claim'i eksik bir hesap panelde şube sahibi menüsünü görüyor ama
+        // her isteği 403 alıyordu — en dar rol doğru varsayılan.
+        setRole(session ? session.user.app_metadata?.role || 'calisan' : null);
     }
 
     useEffect(() => {
