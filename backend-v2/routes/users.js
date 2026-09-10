@@ -10,6 +10,7 @@ import {
     tumKullanicilar,
 } from '../shared/kullanici-dizini.js';
 import { ilerlemeDevral } from '../modules/academy/devir.js';
+import { EN_AZ_PAROLA, geciciParolaUret } from '../shared/parola.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { veriYaDaHata } from '../utils/veri.js';
 
@@ -134,17 +135,21 @@ router.post(
                 sonuclar.push({ ...satir, durum: 'hata', mesaj: 'Şube zorunlu' });
                 continue;
             }
+            if (parola.length < EN_AZ_PAROLA) {
+                sonuclar.push({ ...satir, durum: 'hata', mesaj: `Parola en az ${EN_AZ_PAROLA} karakter olmalı` });
+                continue;
+            }
             if (mevcut.has(email)) {
                 sonuclar.push({ ...satir, durum: 'zaten_var', mesaj: 'Bu e-posta ile hesap zaten var' });
                 continue;
             }
 
-            const parolaVerildi = !!parola && parola.length >= 6;
+            const parolaVerildi = true;
             let yeni = null;
             try {
                 yeni = await kullaniciYarat({
                     email,
-                    password: parolaVerildi ? parola : undefined,
+                    password: parola,
                     displayName: adSoyad || null,
                     role,
                     subeSlug: subeSlug || null,
@@ -206,14 +211,17 @@ router.post(
             subeSlug = req.user.subeSlug;
         }
 
-        // Parola BOŞ bırakılabilir: hesap parolasız açılır ve kişi giriş
-        // ekranına ilk yazdığı parolayı kendi parolası yapar (bkz. routes/parola.js).
-        // Eskiden burada rastgele bir parola üretiliyordu ama hiçbir yerde
-        // gösterilmediği için hesap kullanılamaz kalıyordu.
-        const parolaVerildi = !!password && String(password).length >= 6;
+        // PAROLA ZORUNLU. Eskiden boş bırakılabiliyordu: hesap parolasız açılıp
+        // kişinin giriş ekranına yazdığı ilk parola kalıcı yapılıyordu. O akış
+        // kaldırıldı (doğrulaması yoktu, e-postayı bilen hesabı sahipleniyordu),
+        // dolayısıyla parolasız açılan hesap artık hiçbir yoldan girilemez.
+        if (!password || String(password).length < EN_AZ_PAROLA) {
+            return res.status(400).json({ error: `Parola en az ${EN_AZ_PAROLA} karakter olmalıdır` });
+        }
+        const parolaVerildi = true;
         const yeni = await kullaniciYarat({
             email,
-            password: parolaVerildi ? password : undefined,
+            password,
             displayName: displayName || null,
             role,
             subeSlug: subeSlug || null,
@@ -295,16 +303,26 @@ router.put(
             ...(displayName !== undefined ? { displayName: displayName || null } : {}),
         });
 
-        // Parola sıfırlama: yeni parola ATAMAYIZ, hesabı "ilk giriş" durumuna
-        // döndürürüz — kişi giriş ekranında yeni parolasını kendi belirler
-        // (bkz. routes/parola.js). Yönetici düz metin parola görmez/iletmez.
+        // Parola sıfırlama: YENİ GEÇİCİ PAROLA ATANIR ve yanıtta bir kez
+        // döndürülür — yönetici onu kişiye iletir. Eskiden hesap "parolasız"
+        // duruma düşürülüp kişinin giriş ekranına yazdığı ilk parola kalıcı
+        // yapılıyordu; o akış kaldırıldı, çünkü doğrulaması yoktu.
+        //
+        // Parola hiçbir yerde SAKLANMAZ: yanıttan sonra yalnızca Auth'taki
+        // hash'i kalır. Kayboldu ise tekrar sıfırlanır.
+        let geciciParola;
         if (parolaSifirla) {
+            geciciParola = geciciParolaUret();
+            await kullaniciGuncelle(uid, { password: geciciParola });
             veriYaDaHata(
-                await supabase.from('kullanici_sube')
-                    .update({ parola_kuruldu: false }).eq('uid', uid),
+                await supabase.from('kullanici_sube').update({
+                    parola_kuruldu: true,
+                    // Kişi bu parolayla girer girmez kendi parolasını belirlesin.
+                    parola_degistir_gerekli: true,
+                }).eq('uid', uid),
                 'parola sıfırlanamadı'
             );
-            console.log(`🔑 ${uid}: parola sıfırlandı, ilk giriş bekleniyor`);
+            console.log(`🔑 ${uid}: geçici parola atandı, ilk girişte değiştirilecek`);
         }
 
         // Şube/rol güncelle
@@ -326,7 +344,7 @@ router.put(
             });
         }
 
-        res.json({ success: true });
+        res.json({ success: true, ...(geciciParola ? { geciciParola } : {}) });
     })
 );
 

@@ -19,7 +19,6 @@ import usersRouter from './routes/users.js';
 import categoriesRouter from './routes/categories.js';
 import branchesRouter from './routes/branches.js';
 import onboardingRouter from './routes/onboarding.js';
-import parolaRouter from './routes/parola.js';
 import profilRouter from './routes/profil.js';
 import basvurularRouter from './routes/basvurular.js';
 import geribildirimRouter from './routes/geribildirim.js';
@@ -108,7 +107,6 @@ const MOUNTLAR = [
     ['/api/categories', categoriesRouter],
     ['/api/branches', branchesRouter],
     ['/api/onboarding', onboardingRouter],
-    ['/api/parola', parolaRouter],          // PUBLIC — ilk girişte parola belirleme
     ['/api/profil', profilRouter],
     ['/api/basvurular', basvurularRouter],
     ['/api/geribildirim', geribildirimRouter],

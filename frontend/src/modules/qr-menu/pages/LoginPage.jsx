@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
-import api from '../../../services/api';
 import { supabase } from '../../../supabase';
 import { Mail, Lock, Eye, EyeOff, Sparkles, Layers, Image as ImageIcon, UtensilsCrossed, ArrowRight, TriangleAlert, CheckCircle2, ChevronLeft } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -45,18 +44,6 @@ export default function LoginPage() {
     const [sifirlaGonderildi, setSifirlaGonderildi] = useState(false);
     const { login } = useAuth();
     const navigate = useNavigate();
-
-    /**
-     * İLK GİRİŞ: hesaplar parolasız açılıyor; kişinin ilk yazdığı parola kalıcı
-     * oluyor. Supabase parolasız hesapta da "invalid_credentials" döndüğü için
-     * "parola yanlış" ile "parola henüz kurulmamış" istemciden ayırt edilemez —
-     * bu yüzden başarısız girişte bir kez /parola/belirle denenir, tutarsa aynı
-     * bilgilerle giriş tekrarlanır. Tutmazsa kullanıcı farkı görmez.
-     */
-    async function ilkGirisDene() {
-        await api.post('/parola/belirle', { email: email.trim(), password });
-        await login(email, password);
-    }
 
     /**
      * Şifre sıfırlama bağlantısı ister.
@@ -105,21 +92,10 @@ export default function LoginPage() {
             navigate('/admin');
         } catch (err) {
             console.error('Giriş hatası:', err);
+            // Hesabın var olup olmadığı SIZDIRILMAZ: yanlış parola da kayıtsız
+            // adres de aynı mesajı görür.
             if (err.code === 'invalid_credentials' || err.status === 400) {
-                try {
-                    await ilkGirisDene();
-                    navigate('/admin');
-                    return;
-                } catch (belirleHatasi) {
-                    const durum = belirleHatasi.response?.status;
-                    const mesaj = belirleHatasi.response?.data?.error || '';
-                    // Parola uzunluğu hatası girdiye dairdir, aynen gösterilir.
-                    // Diğer her durumda hesabın var olup olmadığını sızdırmamak
-                    // için tek tip mesaj.
-                    if (durum === 429) setError('Çok fazla deneme. Lütfen biraz bekleyin.');
-                    else if (durum === 400 && mesaj.includes('karakter')) setError(mesaj);
-                    else setError('E-posta veya şifre hatalı');
-                }
+                setError('E-posta veya şifre hatalı');
             } else if (err.status === 429) {
                 setError('Çok fazla deneme. Lütfen biraz bekleyin.');
             } else {

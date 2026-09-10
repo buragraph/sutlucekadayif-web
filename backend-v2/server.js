@@ -48,7 +48,6 @@ import usersRouter from './routes/users.js';
 import categoriesRouter from './routes/categories.js';
 import branchesRouter from './routes/branches.js';
 import onboardingRouter from './routes/onboarding.js';
-import parolaRouter from './routes/parola.js';
 import profilRouter from './routes/profil.js';
 import basvurularRouter from './routes/basvurular.js';
 import geribildirimRouter from './routes/geribildirim.js';
@@ -166,8 +165,6 @@ app.use('/api/users', authLimiter, expressRotasi(express.Router, usersRouter));
 app.use('/api/categories', expressRotasi(express.Router, categoriesRouter));
 app.use('/api/branches', expressRotasi(express.Router, branchesRouter));
 app.use('/api/onboarding', expressRotasi(express.Router, onboardingRouter));
-// PUBLIC: ilk girişte parola belirleme (bkz. routes/parola.js) — auth yok, kendi oran sınırı var
-app.use('/api/parola', expressRotasi(express.Router, parolaRouter));
 app.use('/api/profil', expressRotasi(express.Router, profilRouter));
 app.use('/api/basvurular', expressRotasi(express.Router, basvurularRouter));
 app.use('/api/geribildirim', expressRotasi(express.Router, geribildirimRouter));

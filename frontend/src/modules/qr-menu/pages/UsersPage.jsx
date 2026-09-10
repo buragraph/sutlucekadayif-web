@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw, Copy, KeyRound, Search, Upload } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw, Copy, KeyRound, Search, Upload, Shuffle } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,12 +13,14 @@ import { Spinner } from '@/components/ui/spinner';
 import TopluKullaniciEkle from '../components/TopluKullaniciEkle';
 import SubeSecici from '../components/SubeSecici';
 
-// PAROLA İKİ YOLDAN BİRİ:
-//  - Parola boş bırakılırsa hesap parolasız açılır; kişi giriş ekranına ilk
-//    yazdığı parolayı kendi parolası yapar (bkz. backend routes/parola.js).
-//  - Merkez bir parola verirse (toplu devirde olduğu gibi) hesapta
-//    `parola_degistir_gerekli` işaretlenir ve kişi panele girer girmez
-//    ParolaDegistirKapisi ile kendi parolasını belirlemeden ilerleyemez.
+// PAROLAYI MERKEZ BELİRLER. Hesap geçici bir parolayla açılır, parola bir kez
+// ekranda gösterilir ve `parola_degistir_gerekli` işaretlenir; kişi panele girer
+// girmez ParolaDegistirKapisi ile kendi parolasını belirlemeden ilerleyemez.
+//
+// ESKİ AKIŞ KALDIRILDI: hesap parolasız açılıp kişinin giriş ekranına yazdığı
+// ilk parola kalıcı yapılıyordu. Doğrulaması olmadığı için e-postayı bilen
+// herkes kurulmamış bir hesabı sahiplenebiliyordu (backend routes/parola.js
+// silindi).
 
 // Son erişim: sunucu, kişinin panele en son eriştiği anı gönderiyor (parola
 // girişi DEĞİL, oturum hareketi — bkz. backend routes/users.js). Aynı gün içinde
@@ -31,6 +33,24 @@ function sonErisimYazisi(deger) {
     if (fark === 0) return `Bugün ${saat}`;
     if (fark === 1) return `Dün ${saat}`;
     return t.toLocaleDateString('tr-TR');
+}
+
+// Parola kuralı sunucuyla aynı (backend-v2/shared/parola.js) ve zorunlu
+// parola değiştirme kapısıyla da aynı: EN_AZ 8.
+const EN_AZ_PAROLA = 8;
+
+// Karıştırılabilir karakterler (0/O, 1/l/I) yok: bu parola telefonda okunup
+// elle yazılıyor, "sıfır mı O mu" sorusu doğrudan destek çağrısı demek.
+function geciciParolaUret() {
+    const BUYUK = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const RAKAM = '23456789';
+    const havuz = BUYUK + 'abcdefghijkmnopqrstuvwxyz' + RAKAM;
+    const bayt = new Uint32Array(12);
+    crypto.getRandomValues(bayt);
+    let p = BUYUK[bayt[0] % BUYUK.length];
+    for (let i = 1; i < 8; i++) p += havuz[bayt[i] % havuz.length];
+    for (let i = 8; i < 12; i++) p += RAKAM[bayt[i] % RAKAM.length];
+    return p;
 }
 
 export default function UsersPage() {
@@ -77,7 +97,9 @@ export default function UsersPage() {
         setEditingUser(null);
         setForm({
             email: '',
-            password: '',
+            // Hazır bir parola üretilir; yönetici isterse değiştirir. Boş kutu
+            // bırakmak "zayıf parola yazma" davranışını davet ediyordu.
+            password: geciciParolaUret(),
             displayName: '',
             subeSlug: subeler[0]?.slug || '',
             role: 'sube_sahibi',
@@ -110,6 +132,10 @@ export default function UsersPage() {
             toast.error('Şube seçin.');
             return;
         }
+        if (!editingUser && form.password.length < EN_AZ_PAROLA) {
+            toast.error(`Geçici parola en az ${EN_AZ_PAROLA} karakter olmalı.`);
+            return;
+        }
         setSaving(true);
 
         try {
@@ -126,16 +152,20 @@ export default function UsersPage() {
                 await loadData();
                 toast.success('Kullanıcı güncellendi');
             } else {
-                // Parola GÖNDERİLMEZ: hesap parolasız açılır.
+                // GEÇİCİ PAROLA: merkez belirler, kişi ilk girişte değiştirmek
+                // zorunda kalır (bkz. ParolaDegistirKapisi).
+                const yeniParola = form.password;
+                const yeniEposta = form.email;
                 await api.post('/users', {
-                    email: form.email,
+                    email: yeniEposta,
+                    password: yeniParola,
                     displayName: form.displayName,
                     subeSlug: form.subeSlug,
                     role: form.role,
                 });
                 closeModal();
                 await loadData();
-                setYeniKimlik({ email: form.email });
+                setYeniKimlik({ baslik: 'Kullanıcı oluşturuldu', email: yeniEposta, parola: yeniParola });
             }
         } catch (err) {
             console.error('İşlem hatası:', err);
@@ -175,20 +205,30 @@ export default function UsersPage() {
         }
     }
 
-    // Parola sıfırlama: yeni parola ATANMAZ, hesap "ilk giriş" durumuna döner —
-    // kişi giriş ekranında yeni parolasını kendisi belirler.
+    // Parola sıfırlama: sunucu yeni bir GEÇİCİ parola üretip yanıtta bir kez
+    // döndürür. Ekranda gösterilir, yönetici kişiye iletir; kişi o parolayla
+    // girer girmez kendi parolasını belirlemek zorunda kalır.
     async function handleParolaSifirla(u) {
         const ok = await confirm(
-            `${u.displayName || u.email} kullanıcısının parolası sıfırlansın mı? ` +
-            'Mevcut parolası geçersiz olur; giriş ekranında yazacağı ilk parola yeni parolası olur.'
+            `${u.displayName || u.email} kullanıcısına yeni bir geçici parola atansın mı? ` +
+            'Mevcut parolası geçersiz olur. Yeni parola bir kez ekranda gösterilecek.'
         );
         if (!ok) return;
         try {
-            await api.put(`/users/${u.uid}`, { parolaSifirla: true });
-            toast.success('Parola sıfırlandı — kullanıcı ilk girişte yenisini belirleyecek');
+            const { data } = await api.put(`/users/${u.uid}`, { parolaSifirla: true });
+            setYeniKimlik({ baslik: 'Yeni geçici parola', email: u.email, parola: data.geciciParola });
         } catch (err) {
             console.error('Parola sıfırlama hatası:', err);
             toast.error(err.response?.data?.error || 'Parola sıfırlanamadı');
+        }
+    }
+
+    async function kopyala(metin) {
+        try {
+            await navigator.clipboard.writeText(metin);
+            toast.success('Kopyalandı');
+        } catch {
+            toast.error('Kopyalanamadı, elle seçin');
         }
     }
 
@@ -373,10 +413,32 @@ export default function UsersPage() {
                         </div>
 
                         {!editingUser && (
-                            <p className="text-sm text-muted-foreground">
-                                Parola belirlemenize gerek yok. Kullanıcı giriş ekranına e-postasını
-                                ve istediği parolayı yazdığında o parola hesabına kaydedilir.
-                            </p>
+                            <div className="space-y-1.5">
+                                <Label>Geçici parola</Label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        type="text"
+                                        className="font-mono"
+                                        value={form.password}
+                                        onChange={(e) => setForm({ ...form, password: e.target.value })}
+                                        required
+                                        minLength={EN_AZ_PAROLA}
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        title="Yeni parola üret"
+                                        onClick={() => setForm({ ...form, password: geciciParolaUret() })}
+                                    >
+                                        <Shuffle className="size-4" />
+                                    </Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    Kullanıcı bu parolayla girer, panele girer girmez kendi parolasını
+                                    belirlemek zorunda kalır. En az {EN_AZ_PAROLA} karakter.
+                                </p>
+                            </div>
                         )}
 
                         <div className="space-y-1.5">
@@ -432,17 +494,19 @@ export default function UsersPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Hesap açıldı — parola dağıtımı yok, kişi ilk girişte kendi belirler */}
+            {/* Giriş bilgileri — parola BURADAN BAŞKA HİÇBİR YERDE görünmüyor:
+                sunucu onu saklamıyor, yalnızca Auth'taki hash'i kalıyor. Pencere
+                kapandıktan sonra kaybolursa yeniden sıfırlamak gerekir. */}
             <Dialog open={!!yeniKimlik} onOpenChange={(open) => !open && setYeniKimlik(null)}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Kullanıcı oluşturuldu</DialogTitle>
+                        <DialogTitle>{yeniKimlik?.baslik || 'Giriş bilgileri'}</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-3">
                         <p className="text-sm text-muted-foreground">
-                            Hesap parolasız açıldı. Kullanıcıya yalnızca e-posta adresini bildirin:
-                            giriş ekranında bu adresi ve istediği parolayı yazdığında o parola
-                            hesabına kaydedilir ve girişi tamamlanır.
+                            Bu bilgileri kullanıcıya iletin. Parola yalnızca şimdi görünüyor;
+                            pencereyi kapattıktan sonra bir daha gösterilemez. Kullanıcı panele
+                            girer girmez kendi parolasını belirlemek zorunda kalacak.
                         </p>
                         <div className="space-y-1.5">
                             <Label>E-posta</Label>
@@ -453,19 +517,35 @@ export default function UsersPage() {
                                     variant="outline"
                                     size="icon"
                                     title="Kopyala"
-                                    onClick={async () => {
-                                        try {
-                                            await navigator.clipboard.writeText(yeniKimlik.email);
-                                            toast.success('Kopyalandı');
-                                        } catch {
-                                            toast.error('Kopyalanamadı, elle seçin');
-                                        }
-                                    }}
+                                    onClick={() => kopyala(yeniKimlik.email)}
                                 >
                                     <Copy className="size-4" />
                                 </Button>
                             </div>
                         </div>
+                        <div className="space-y-1.5">
+                            <Label>Geçici parola</Label>
+                            <div className="flex gap-2">
+                                <Input readOnly value={yeniKimlik?.parola || ''} className="font-mono" />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    title="Kopyala"
+                                    onClick={() => kopyala(yeniKimlik.parola)}
+                                >
+                                    <Copy className="size-4" />
+                                </Button>
+                            </div>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            className="w-full"
+                            onClick={() => kopyala(`E-posta: ${yeniKimlik.email}\nGeçici parola: ${yeniKimlik.parola}`)}
+                        >
+                            <Copy className="mr-2 size-4" /> İkisini birden kopyala
+                        </Button>
                     </div>
                     <DialogFooter>
                         <Button onClick={() => setYeniKimlik(null)}>Tamam</Button>

@@ -51,6 +51,9 @@ function satirAyir(satir) {
 }
 
 const EPOSTA_KALIBI = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Sunucudaki kuralla aynı (backend-v2/shared/parola.js). Parola ZORUNLU:
+// parolasız açılan hesaba girilecek bir yol kalmadı.
+const EN_AZ_PAROLA = 8;
 
 export default function TopluKullaniciEkle({ subeler, acik, onKapat, onBitti }) {
     const toast = useToast();
@@ -71,7 +74,7 @@ export default function TopluKullaniciEkle({ subeler, acik, onKapat, onBitti }) 
             const slug = elleSube[i] ?? otomatik ?? '';
             const hatalar = [];
             if (!EPOSTA_KALIBI.test(email)) hatalar.push('e-posta geçersiz');
-            if (parola && parola.length < 6) hatalar.push('parola çok kısa');
+            if (parola.length < EN_AZ_PAROLA) hatalar.push(`parola en az ${EN_AZ_PAROLA} karakter olmalı`);
             if (rol !== 'admin' && !slug) hatalar.push('şube eşleşmedi');
             return { i, email, parola, subeAdi, adSoyad, slug, hatalar };
         });
@@ -86,7 +89,7 @@ export default function TopluKullaniciEkle({ subeler, acik, onKapat, onBitti }) 
             const { data } = await api.post('/users/toplu', {
                 kayitlar: gecerli.map((s) => ({
                     email: s.email,
-                    password: s.parola || undefined,
+                    password: s.parola,
                     ad_soyad: s.adSoyad || undefined,
                     subeSlug: s.slug || undefined,
                     role: rol,
@@ -109,8 +112,9 @@ export default function TopluKullaniciEkle({ subeler, acik, onKapat, onBitti }) 
                     </DialogTitle>
                     <DialogDescription>
                         Excel'den kopyalayıp yapıştırın. Sütun sırası:
-                        <strong> e-posta · parola · şube adı · ad soyad</strong> (son ikisi boş bırakılabilir).
-                        Parola girilirse kullanıcı ilk girişte değiştirmek zorunda kalır.
+                        <strong> e-posta · parola · şube adı · ad soyad</strong> (ad soyad boş bırakılabilir).
+                        Kullanıcı bu parolayla girer, panele girer girmez kendi parolasını
+                        belirlemek zorunda kalır.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -220,7 +224,7 @@ export default function TopluKullaniciEkle({ subeler, acik, onKapat, onBitti }) 
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-xs">
-                                                    {s.parola ? 'var' : <span className="text-muted-foreground">yok</span>}
+                                                    {s.parola ? 'var' : <span className="text-destructive">yok</span>}
                                                 </TableCell>
                                                 <TableCell className="text-xs">
                                                     {s.hatalar.length ? (
