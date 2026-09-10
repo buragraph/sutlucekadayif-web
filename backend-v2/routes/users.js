@@ -60,6 +60,108 @@ router.get(
 );
 
 /**
+ * POST /api/users/toplu
+ * Listeden çok sayıda kullanıcı açar (şube sahibi devri, akademi hesapları).
+ *
+ * NEDEN AYRI UÇ: 88 hesabı tek tek açmak hem yavaş hem hataya açık; asıl
+ * mesele her satırın ŞUBE EŞLEŞTİRMESİ. Uç, satır satır sonuç döndürür ve
+ * hiçbir satır diğerini düşürmez — biri patlarsa kalanlar açılmaya devam eder.
+ *
+ * NEDEN SADECE ADMIN: `users.create` şube sahibinde de açık ama orada rol ve
+ * şube zorla kendi şubesine çevriliyor (bkz. tekil uç). Toplu açmada gövdeden
+ * serbest `subeSlug` geliyor, dolayısıyla izin değil ROL kontrolü yapılıyor.
+ *
+ * IDEMPOTENT DEĞİL AMA GÜVENLİ: var olan e-posta atlanır ('zaten_var'), yani
+ * aynı liste iki kez gönderilse de kopya hesap doğmaz.
+ */
+const TOPLU_EN_FAZLA = 200;
+
+router.post(
+    '/toplu',
+    verifyToken,
+    requirePermission('users.create'),
+    asyncHandler(async (req, res) => {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Toplu kullanıcı açma yalnızca yöneticilere açıktır.' });
+        }
+        const kayitlar = Array.isArray(req.body?.kayitlar) ? req.body.kayitlar : null;
+        if (!kayitlar || kayitlar.length === 0) {
+            return res.status(400).json({ error: 'Kayıt listesi boş.' });
+        }
+        if (kayitlar.length > TOPLU_EN_FAZLA) {
+            return res.status(400).json({ error: `Tek seferde en fazla ${TOPLU_EN_FAZLA} kayıt gönderilebilir.` });
+        }
+
+        // Var olan e-postalar tek seferde okunur; satır başına dizin taraması
+        // 200 kayıtta 200 tam listeleme demekti.
+        const mevcut = new Set((await tumKullanicilar()).map((u) => (u.email || '').toLowerCase()));
+
+        const sonuclar = [];
+        for (const [i, ham] of kayitlar.entries()) {
+            const email = String(ham?.email ?? '').trim().toLowerCase();
+            const parola = String(ham?.password ?? '');
+            const adSoyad = String(ham?.ad_soyad ?? '').trim();
+            const subeSlug = String(ham?.subeSlug ?? '').trim();
+            const role = String(ham?.role ?? '').trim();
+            const satir = { sira: i + 1, email };
+
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                sonuclar.push({ ...satir, durum: 'hata', mesaj: 'Geçersiz e-posta' });
+                continue;
+            }
+            if (!['admin', 'sube_sahibi', 'calisan'].includes(role)) {
+                sonuclar.push({ ...satir, durum: 'hata', mesaj: 'Geçersiz rol' });
+                continue;
+            }
+            if (role !== 'admin' && !subeSlug) {
+                sonuclar.push({ ...satir, durum: 'hata', mesaj: 'Şube zorunlu' });
+                continue;
+            }
+            if (mevcut.has(email)) {
+                sonuclar.push({ ...satir, durum: 'zaten_var', mesaj: 'Bu e-posta ile hesap zaten var' });
+                continue;
+            }
+
+            const parolaVerildi = !!parola && parola.length >= 6;
+            let yeni = null;
+            try {
+                yeni = await kullaniciYarat({
+                    email,
+                    password: parolaVerildi ? parola : undefined,
+                    displayName: adSoyad || null,
+                    role,
+                    subeSlug: subeSlug || null,
+                });
+                veriYaDaHata(
+                    await supabase.from('kullanici_sube').upsert(
+                        {
+                            uid: yeni.id, role, sube_slug: subeSlug || null,
+                            parola_kuruldu: parolaVerildi,
+                            parola_degistir_gerekli: parolaVerildi,
+                        },
+                        { onConflict: 'uid' }
+                    ),
+                    'kullanıcı kaydı yazılamadı'
+                );
+                const devir = await ilerlemeDevral(yeni.id, email);
+                mevcut.add(email);
+                sonuclar.push({
+                    ...satir, durum: 'olusturuldu', uid: yeni.id,
+                    ilerlemeBaglandi: Number(devir) > 0 ? Number(devir) : 0,
+                });
+            } catch (err) {
+                // Auth hesabı açıldıysa ortada kalmasın
+                if (yeni?.id) await kullaniciSil(yeni.id).catch(() => {});
+                sonuclar.push({ ...satir, durum: 'hata', mesaj: err.message || 'Açılamadı' });
+            }
+        }
+
+        const ozet = sonuclar.reduce((a, s) => ({ ...a, [s.durum]: (a[s.durum] || 0) + 1 }), {});
+        res.json({ ozet, sonuclar });
+    })
+);
+
+/**
  * POST /api/users
  * Yeni kullanıcı oluştur
  * Body: { email, password, displayName?, subeSlug, role }
