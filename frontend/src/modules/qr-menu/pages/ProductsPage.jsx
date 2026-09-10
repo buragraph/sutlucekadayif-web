@@ -1119,7 +1119,17 @@ export default function ProductsPage() {
                         sağda arama + sıralama. Dar ekranda satır alt satıra sarıyor
                         (referans kalıbı: yatay kaydırma yok, flex-wrap var). */}
                     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4">
-                      <div className="flex flex-wrap items-center gap-2">
+                      {/* min-w-0 + flex-1 ŞART: bu kutu, dıştaki flex satırının bir
+                          öğesi ve varsayılan `min-width:auto` onun içeriğinin altına
+                          inmesini engelliyordu. İçindeki kategori rayı bu yüzden hiç
+                          kaydırmıyor, tam genişliğiyle (ölçüldü: 1803px) kutuyu ve
+                          onunla birlikte SAYFAYI şişiriyordu — 900px'lik pencerede
+                          959px yatay taşma, yani panelin tamamı sağa kayıyordu.
+                          `min-w-0` rayın kendisinde vardı ama ebeveyninde yoktu;
+                          zincirin bir halkası eksik olunca hiçbiri işe yaramıyor.
+                          lg altında `w-full`: arama kutusuyla aynı satırı paylaşırsa
+                          raya 57px kalıyordu (ölçüldü), kendi satırına alınıyor. */}
+                      <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto lg:flex-1">
                         {role !== 'admin' && (
                             <div className="inline-flex items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
                                 {[
@@ -1178,7 +1188,7 @@ export default function ProductsPage() {
                         ) : (
                             // min-w-0: flex satırında öğenin varsayılan `min-width:auto`
                             // değeri, rayın içerik genişliğinin altına inmesini engelliyor.
-                            <KaydirilirRay className="min-w-0 lg:flex-1">
+                            <KaydirilirRay className="min-w-0 flex-1">
                             <div className="inline-flex w-max items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
                                 {[{ id: 'all', ad: 'Tümü' }, ...gosterilecekKategoriler].map((k) => {
                                     const active = etkinKategori === k.id;
