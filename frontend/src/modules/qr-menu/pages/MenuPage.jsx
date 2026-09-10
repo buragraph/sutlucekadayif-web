@@ -470,33 +470,43 @@ export default function MenuPage() {
                 ) : (
                     /* ═══ GEZİNME MODU — yapışkan bar + TEK kategori (sayfa kısa kalır) ═══ */
                     <>
-                        {/* KATEGORİLER YATAY KAYMIYOR: eskiden tek satırda kaydırılıyordu
-                            ve sağdaki kategorilerin varlığı fark edilmiyordu. Şimdi hepsi
-                            sarılarak diziliyor. Ama şube başına 9-12 kategori var; tümü
-                            açık dururken yapışkan bar mobilde ekranın yarısını yiyor.
-                            Bu yüzden iki satırla sınırlı, gerisi "Tümü" ile açılıyor ve
-                            kategori seçilince kendiliğinden toplanıyor. */}
+                        {/* KATEGORİ SEÇİCİ — yatay kaydırma da, sarmalı şerit de olmadı.
+                            Kaydırmada sağdaki kategorilerin varlığı fark edilmiyordu;
+                            sarınca 9-12 kategori yapışkan barı 277px'e çıkarıp ekranın
+                            üçte birini yiyordu. Bar artık HER ZAMAN tek satır: seçili
+                            kategoriyi yazar, dokununca tümü tek panelde açılır. Hiçbir
+                            kategori gizli değil ve kaydırma gerekmiyor. */}
                         <nav className="pm-navbar" ref={navbarRef}>
-                            <div className={`pm-navbar__liste ${katAcik ? 'pm-navbar__liste--acik' : ''}`}>
-                                {visibleKategoriler.map((kat) => (
-                                    <button
-                                        key={kat.id}
-                                        className={`pm-navtab ${activeKat === kat.id ? 'pm-navtab--active' : ''}`}
-                                        onClick={() => selectKat(kat.id)}
-                                    >
-                                        {kat.ad}
-                                    </button>
-                                ))}
-                            </div>
-                            {visibleKategoriler.length > 4 && (
-                                <button
-                                    type="button"
-                                    className="pm-navbar__ac"
-                                    onClick={() => setKatAcik((v) => !v)}
-                                    aria-expanded={katAcik}
-                                >
-                                    {katAcik ? 'Daha az' : 'Tüm kategoriler'}
-                                </button>
+                            <button
+                                type="button"
+                                className={`pm-katsec ${katAcik ? 'pm-katsec--acik' : ''}`}
+                                onClick={() => setKatAcik((v) => !v)}
+                                aria-expanded={katAcik}
+                            >
+                                <span className="pm-katsec__ad">{activeKatObj?.ad || 'Kategoriler'}</span>
+                                <span className="pm-katsec__sayi">{visibleKategoriler.length} kategori</span>
+                                <svg className="pm-katsec__ok" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            </button>
+
+                            {katAcik && (
+                                <>
+                                    {/* Dışarı dokununca kapansın; yoksa panel asılı kalıyor. */}
+                                    <div className="pm-katsec__perde" onClick={() => setKatAcik(false)} />
+                                    <div className="pm-katsec__panel">
+                                        {visibleKategoriler.map((kat) => (
+                                            <button
+                                                key={kat.id}
+                                                type="button"
+                                                className={`pm-katsec__sec ${activeKat === kat.id ? 'pm-katsec__sec--aktif' : ''}`}
+                                                onClick={() => selectKat(kat.id)}
+                                            >
+                                                {kat.ad}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
                             )}
                         </nav>
 

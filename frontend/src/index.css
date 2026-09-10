@@ -4341,57 +4341,91 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   padding: 10px 0;
   box-shadow: 0 1px 0 var(--pm-border);
 }
-/* İKİ SATIR SINIRI: 9-12 kategori sarılınca mobilde 4-5 satır ediyor ve
-   yapışkan bar ekranın yarısını kaplıyor. Kapalıyken iki satır görünür,
-   "Tüm kategoriler" ile açılır. max-height animasyon için sabit değer;
-   satır yüksekliği (~38px) + gap (8px) üzerinden hesaplandı. */
-.pm-navbar__liste {
+/* Kategori seçici: yapışkan bar her zaman TEK satır. Şerit denemeleri
+   (yatay kaydırma / sarmalı iki satır) için bkz. MenuPage'deki yorum. */
+.pm-katsec {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0 20px;
-  max-height: 84px;
-  overflow: hidden;
-  transition: max-height var(--pm-transition);
-}
-.pm-navbar__liste--acik {
-  max-height: 400px;
-}
-.pm-navbar__ac {
-  display: block;
-  margin: 8px auto 0;
-  padding: 4px 14px;
-  border: none;
-  background: transparent;
-  color: var(--pm-text-60);
-  font-family: 'Montserrat', sans-serif;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.pm-navbar__ac:hover { color: var(--pm-dark); }
-.pm-navtab {
-  flex-shrink: 0;
-  padding: 9px 16px;
+  align-items: center;
+  gap: 10px;
+  width: calc(100% - 40px);
+  margin: 0 20px;
+  padding: 11px 16px;
+  border: 1px solid var(--pm-border);
   border-radius: 999px;
+  background: var(--pm-card, #fff);
+  color: var(--pm-text);
+  font-family: 'Montserrat', sans-serif;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--pm-transition), box-shadow var(--pm-transition);
+}
+.pm-katsec:hover { border-color: var(--pm-dark); }
+.pm-katsec--acik {
+  border-color: var(--pm-dark);
+  box-shadow: 0 4px 14px rgba(8, 69, 41, 0.12);
+}
+.pm-katsec__ad {
+  flex: 1;
+  font-size: 14.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pm-katsec__sayi {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--pm-text-60);
+  white-space: nowrap;
+}
+.pm-katsec__ok {
+  width: 18px;
+  height: 18px;
+  color: var(--pm-dark);
+  flex-shrink: 0;
+  transition: transform var(--pm-transition);
+}
+.pm-katsec--acik .pm-katsec__ok { transform: rotate(180deg); }
+
+/* Perde bar'ın ALTINDA kalmalı (z-index panelden düşük) ki panel tıklanabilsin. */
+.pm-katsec__perde {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+}
+.pm-katsec__panel {
+  position: absolute;
+  z-index: 2;
+  left: 20px;
+  right: 20px;
+  top: calc(100% - 4px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--pm-border);
+  border-radius: 18px;
+  background: var(--pm-card, #fff);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.pm-katsec__sec {
+  padding: 11px 12px;
   border: none;
+  border-radius: 12px;
   background: transparent;
   color: var(--pm-text-60);
   font-family: 'Montserrat', sans-serif;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
-  white-space: nowrap;
+  text-align: left;
   cursor: pointer;
   transition: background var(--pm-transition), color var(--pm-transition);
 }
-/* Hover YALNIZCA aktif olmayan sekmelere uygulanır. Düz `.pm-navtab:hover`
-   yazılırsa sözde-sınıf yüzünden `--active`'ten daha özgül olur ve aktif
-   sekmenin üzerine gelindiğinde metin de arka plan da koyu yeşile döner —
-   yazı görünmez olur. */
-.pm-navtab:not(.pm-navtab--active):hover { color: var(--pm-dark); }
-.pm-navtab--active { background: var(--pm-dark); color: var(--pm-cream); }
+.pm-katsec__sec:hover { background: var(--pm-bg); color: var(--pm-dark); }
+.pm-katsec__sec--aktif { background: var(--pm-dark); color: var(--pm-cream); }
+
 
 /* ── Kategori bölümleri (scroll-spy hedefleri) ── */
 .pm-cat-section {
