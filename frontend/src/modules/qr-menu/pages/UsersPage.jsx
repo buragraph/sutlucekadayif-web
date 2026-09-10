@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
-import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw, Copy, KeyRound, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, UserPlus, RotateCcw, Copy, KeyRound, Search, Upload } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,10 +10,14 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
+import TopluKullaniciEkle from '../components/TopluKullaniciEkle';
 
-// GEÇİCİ PAROLA YOK: hesap parolasız açılır, kişi giriş ekranına ilk yazdığı
-// parolayı kendi parolası yapar (bkz. backend routes/parola.js). Yönetici artık
-// hiçbir parola görmüyor ve iletmiyor.
+// PAROLA İKİ YOLDAN BİRİ:
+//  - Parola boş bırakılırsa hesap parolasız açılır; kişi giriş ekranına ilk
+//    yazdığı parolayı kendi parolası yapar (bkz. backend routes/parola.js).
+//  - Merkez bir parola verirse (toplu devirde olduğu gibi) hesapta
+//    `parola_degistir_gerekli` işaretlenir ve kişi panele girer girmez
+//    ParolaDegistirKapisi ile kendi parolasını belirlemeden ilerleyemez.
 
 export default function UsersPage() {
     const { user: currentUser, refreshClaims } = useAuth();
@@ -23,6 +27,7 @@ export default function UsersPage() {
     const [subeler, setSubeler] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const [topluAcik, setTopluAcik] = useState(false);
     const [yeniKimlik, setYeniKimlik] = useState(null);   // { email, parola } — yaratımdan sonra gösterilir
     const [editingUser, setEditingUser] = useState(null);
     const [arama, setArama] = useState('');
@@ -194,10 +199,20 @@ export default function UsersPage() {
         <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-3xl leading-none tracking-tight">{isSubeSahibi ? 'Çalışanlar' : 'Kullanıcılar'}</h1>
-                <Button onClick={openAddModal}>
-                    <UserPlus className="size-4" />
-                    {isSubeSahibi ? 'Çalışan Ekle' : 'Kullanıcı Ekle'}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                    {/* Toplu açma yalnızca yöneticide: uç gövdeden serbest şube
+                        aldığı için sunucu tarafında da role göre kapalı. */}
+                    {!isSubeSahibi && (
+                        <Button variant="outline" onClick={() => setTopluAcik(true)}>
+                            <Upload className="size-4" />
+                            Toplu Ekle
+                        </Button>
+                    )}
+                    <Button onClick={openAddModal}>
+                        <UserPlus className="size-4" />
+                        {isSubeSahibi ? 'Çalışan Ekle' : 'Kullanıcı Ekle'}
+                    </Button>
+                </div>
             </div>
 
             {/* Arama yalnızca liste doluyken: tek kullanıcılı şube panelinde
@@ -426,6 +441,13 @@ export default function UsersPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <TopluKullaniciEkle
+                subeler={subeler}
+                acik={topluAcik}
+                onKapat={() => setTopluAcik(false)}
+                onBitti={loadData}
+            />
         </div>
     );
 }
