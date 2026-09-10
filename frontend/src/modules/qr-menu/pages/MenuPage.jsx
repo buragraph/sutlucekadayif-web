@@ -219,8 +219,6 @@ export default function MenuPage() {
 
     const tabRefs = useRef({});      // { katId: <button> }
     const navScrollRef = useRef(null);
-    // Şeridin uçlarında gidilecek yer var mı — okların etkin/sönük hâlini belirler.
-    const [seritUc, setSeritUc] = useState({ sol: false, sag: false });
     const navbarRef = useRef(null);
 
     useEffect(() => {
@@ -326,32 +324,6 @@ export default function MenuPage() {
         return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
     }, [searchQuery, tumUrunler]);
 
-    // Kategori şeridinin sağa devam ettiği fark edilmiyordu. Oklar bunu
-    // gösteriyor; hangi yönde gerçekten içerik olduğu buradan hesaplanıyor.
-    // (Kenar solması da denendi, oklarla birlikte fazla geldi ve kaldırıldı.)
-    useEffect(() => {
-        const bar = navScrollRef.current;
-        if (!bar) return;
-        const olc = () => setSeritUc({
-            sol: bar.scrollLeft > 2,
-            sag: bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2,
-        });
-        olc();
-        bar.addEventListener('scroll', olc, { passive: true });
-        window.addEventListener('resize', olc);
-        return () => {
-            bar.removeEventListener('scroll', olc);
-            window.removeEventListener('resize', olc);
-        };
-    }, [visibleKategoriler]);
-
-    // Oklarla kaydırma: parmakla kaydırmaya mecbur kalmamak için.
-    const seridiKaydir = (yon) => {
-        const bar = navScrollRef.current;
-        if (!bar) return;
-        bar.scrollBy({ left: yon * bar.clientWidth * 0.7, behavior: 'smooth' });
-    };
-
     // Aktif sekmeyi yatay barda ortala (sayfayı kaydırmadan)
     useEffect(() => {
         const tab = tabRefs.current[activeKat];
@@ -361,6 +333,15 @@ export default function MenuPage() {
             bar.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
         }
     }, [activeKat]);
+
+    // Oklar ŞERİDİ DEĞİL KATEGORİYİ değiştiriyor: bir öncekine/sonrakine geçer.
+    // Şerit zaten aktif sekmeyi ortalayan efektle kendiliğinden kayıyor, yani
+    // parmakla kaydırmadan da bütün kategoriler gezilebiliyor.
+    const aktifSira = visibleKategoriler.findIndex((k) => k.id === activeKat);
+    const komsuKategori = (yon) => {
+        const hedef = visibleKategoriler[aktifSira + yon];
+        if (hedef) selectKat(hedef.id);
+    };
 
     // Kategori seç → yalnızca o kategoriyi göster + menü başına kaydır (sayfa kısa kalsın)
     const selectKat = (id) => {
@@ -518,9 +499,9 @@ export default function MenuPage() {
                             <button
                                 type="button"
                                 className="pm-navok"
-                                onClick={() => seridiKaydir(-1)}
-                                disabled={!seritUc.sol}
-                                aria-label="Önceki kategoriler"
+                                onClick={() => komsuKategori(-1)}
+                                disabled={aktifSira <= 0}
+                                aria-label="Önceki kategori"
                             >
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
                             </button>
@@ -539,9 +520,9 @@ export default function MenuPage() {
                             <button
                                 type="button"
                                 className="pm-navok"
-                                onClick={() => seridiKaydir(1)}
-                                disabled={!seritUc.sag}
-                                aria-label="Sonraki kategoriler"
+                                onClick={() => komsuKategori(1)}
+                                disabled={aktifSira < 0 || aktifSira >= visibleKategoriler.length - 1}
+                                aria-label="Sonraki kategori"
                             >
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
                             </button>
