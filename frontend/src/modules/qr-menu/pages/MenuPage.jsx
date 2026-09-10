@@ -512,23 +512,21 @@ export default function MenuPage() {
                             className={`pm-navbar ${seritUc.sol ? 'pm-navbar--sol' : ''} ${seritUc.sag ? 'pm-navbar--sag' : ''}`}
                             ref={navbarRef}
                         >
-                            {/* OK DÜĞMELERİ: şerit yatay kayıyor ama kaydırmak ZORUNLU
-                                değil. Dar şeritte parmak birkaç derece dikey kayınca
-                                hareketi sayfa kapıyor ve şerit oynamıyor; okla bu
-                                bağımlılık tamamen kalkıyor. Yalnızca o yönde içerik
-                                varken çıkıyorlar, solma efektiyle aynı duruma bakıyorlar. */}
-                            {seritUc.sol && (
-                                <button type="button" className="pm-navok pm-navok--sol"
-                                    onClick={() => seridiKaydir(-1)} aria-label="Önceki kategoriler">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                                </button>
-                            )}
-                            {seritUc.sag && (
-                                <button type="button" className="pm-navok pm-navok--sag"
-                                    onClick={() => seridiKaydir(1)} aria-label="Sonraki kategoriler">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                                </button>
-                            )}
+                            {/* OK DÜĞMELERİ şeridin ÜSTÜNDE değil YANINDA duruyor:
+                                üstte dururken kenardaki sekmeyi örtüyorlardı. İkisi de
+                                her zaman çiziliyor, gidilecek yer yoksa `disabled` —
+                                görünüp kaybolsalardı şerit her seferinde enini
+                                değiştirip zıplardı. */
+                            }
+                            <button
+                                type="button"
+                                className="pm-navok"
+                                onClick={() => seridiKaydir(-1)}
+                                disabled={!seritUc.sol}
+                                aria-label="Önceki kategoriler"
+                            >
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            </button>
                             <div className="pm-navbar__scroll" ref={navScrollRef}>
                                 {visibleKategoriler.map((kat) => (
                                     <button
@@ -541,6 +539,15 @@ export default function MenuPage() {
                                     </button>
                                 ))}
                             </div>
+                            <button
+                                type="button"
+                                className="pm-navok"
+                                onClick={() => seridiKaydir(1)}
+                                disabled={!seritUc.sag}
+                                aria-label="Sonraki kategoriler"
+                            >
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                            </button>
                         </nav>
 
                         <section className="pm-section-header">

@@ -4337,8 +4337,11 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   position: sticky;
   top: 0;
   z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   background: var(--pm-bg);
-  padding: 10px 0;
+  padding: 10px 12px;
   box-shadow: 0 1px 0 var(--pm-border);
 }
 /* Kenar solması: şeridin o yönde devam ettiğini gösterir. Sınıflar JS'ten
@@ -4357,45 +4360,49 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   transition: opacity var(--pm-transition);
 }
 .pm-navbar::before {
-  left: 0;
+  left: 44px;
   background: linear-gradient(to right, var(--pm-bg) 30%, transparent);
 }
 .pm-navbar::after {
-  right: 0;
+  right: 44px;
   background: linear-gradient(to left, var(--pm-bg) 30%, transparent);
 }
 .pm-navbar--sol::before,
 .pm-navbar--sag::after { opacity: 1; }
 
-/* Şeridi kaydırmak için ok düğmeleri. Solma katmanının ÜSTÜNDE duruyorlar
-   (gradyan `pointer-events: none`, bunlar tıklanabilir). Dokunma hedefi
-   32px: daha küçüğü parmakla ıskalanıyor. */
+/* Ok düğmeleri şeridin YANINDA (flex kardeşi), üstünde değil — üstteyken
+   kenardaki sekmeyi örtüyorlardı. Aktif kategori hapıyla aynı koyu yeşil;
+   beyaz daire markanın dışında duruyordu. Gidilecek yer yokken gizlenmiyor,
+   soluyor: gizlense şerit her seferinde enini değiştirirdi. */
 .pm-navok {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 32px;
   height: 32px;
-  border: 1px solid var(--pm-border);
+  border: none;
   border-radius: 50%;
-  background: var(--pm-card, #fff);
-  color: var(--pm-dark);
+  background: var(--pm-dark);
+  color: var(--pm-cream);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(8, 69, 41, 0.22);
+  transition: opacity var(--pm-transition), transform var(--pm-transition);
 }
-.pm-navok:hover { background: var(--pm-bg); }
-.pm-navok svg { width: 16px; height: 16px; }
-.pm-navok--sol { left: 6px; }
-.pm-navok--sag { right: 6px; }
+.pm-navok svg { width: 15px; height: 15px; }
+.pm-navok:not(:disabled):hover { transform: scale(1.06); }
+.pm-navok:disabled {
+  opacity: 0.22;
+  cursor: default;
+  box-shadow: none;
+}
 .pm-navbar__scroll {
+  flex: 1;
+  min-width: 0;
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding: 0 20px;
+  padding: 0 8px;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
