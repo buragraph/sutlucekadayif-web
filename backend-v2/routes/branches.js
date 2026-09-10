@@ -5,6 +5,7 @@ import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { temizNull, veriYaDaHata, tumSatirlar } from '../utils/veri.js';
 import { deleteMenuJson, regenerateMenuJsons } from '../modules/qr-menu/services/menu-cache.js';
+import { acikKampanyalaraEkle } from '../modules/reports/services/kampanya-uyelik.js';
 
 // konum-store.js KULLANILMIYOR: il/ilçe/lat/lng artık şube satırının kolonu,
 // tek-doküman konum listesi ve transaction'ı yapısal olarak gereksiz.
@@ -252,6 +253,12 @@ router.post(
         if (konum) { data.lat = konum.lat; data.lng = konum.lng; }
 
         veriYaDaHata(await supabase.from('subeler').insert(data), 'şube eklenemedi');
+
+        // Süren bütçe kampanyalarına dahil et. Kampanyanın şube listesi
+        // açılışta donuyor; bu olmadan yeni şube o kampanyada hiç görünmüyor
+        // ve merkez "Şube Ekle" ile elle eklemek zorunda kalıyordu.
+        // Şube kaydı bu yüzden geri alınmaz — hata içeride loglanıyor.
+        await acikKampanyalaraEkle(slugVal);
 
         res.status(201).json({ slug: slugVal, ad: ad.trim() });
     })

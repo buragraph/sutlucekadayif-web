@@ -12,6 +12,7 @@ import { importMetaCsv, importGoogleCsv, importGoogleCsvBulk, importMetaCsvAutoM
 import { importFromMetaApi, previewMetaInsights, confirmMetaImport, saveMappings, loadMappings, fetchCampaigns, saveCampaignMappings, campaignBasedImport, fetchAdsets, saveAdsetMappings } from './services/meta-api.js';
 import { getGoogleAuthUrl, handleGoogleCallback, isGoogleConnected, listAccounts, fetchLocationMetrics, fetchAllLocationMetrics, saveGoogleMappings, loadGoogleMappings } from './services/google-business.js';
 import { buildReportData, invalidateReportCache } from './services/report-data.js';
+import { acikKampanyalaraEkle } from './services/kampanya-uyelik.js';
 import budgetRouter from './budget-routes.js';
 import { generateReportHtml } from './services/report-template.js';
 import {
@@ -518,7 +519,12 @@ router.post('/sube', verifyToken, requirePermission('reports.manage'), async (re
   try {
     const { kod, ad, link } = req.body;
     if (!kod) return res.status(400).json({ error: 'Şube kodu zorunludur' });
+    // Bu uç UPSERT: mevcut şubeyi de günceller. Kampanyaya ekleme yalnızca
+    // gerçekten YENİ kayıtta yapılmalı, yoksa her düzenlemede boşuna
+    // kampanya taraması olur.
+    const yeniKayit = !(await getSubeByKod(kod));
     await upsertSube(kod, ad, null, link);
+    if (yeniKayit) await acikKampanyalaraEkle(kod);
     invalidateCache('/reports');
     res.json({ success: true });
   } catch (err) {
