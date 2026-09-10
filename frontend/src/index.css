@@ -4341,6 +4341,31 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   padding: 10px 0;
   box-shadow: 0 1px 0 var(--pm-border);
 }
+/* Kenar solması: şeridin o yönde devam ettiğini gösterir. Sınıflar JS'ten
+   geliyor (bkz. MenuPage `seritUc`) — sabit gradyan sona gelindiğinde de
+   durur ve "daha var" der gibi yanıltırdı. `pointer-events: none` şart,
+   yoksa gradyan kenardaki sekmenin dokunuşunu yutar. */
+.pm-navbar::before,
+.pm-navbar::after {
+  content: '';
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  width: 44px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--pm-transition);
+}
+.pm-navbar::before {
+  left: 0;
+  background: linear-gradient(to right, var(--pm-bg) 30%, transparent);
+}
+.pm-navbar::after {
+  right: 0;
+  background: linear-gradient(to left, var(--pm-bg) 30%, transparent);
+}
+.pm-navbar--sol::before,
+.pm-navbar--sag::after { opacity: 1; }
 .pm-navbar__scroll {
   display: flex;
   gap: 8px;

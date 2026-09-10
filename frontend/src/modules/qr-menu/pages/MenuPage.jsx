@@ -219,6 +219,8 @@ export default function MenuPage() {
 
     const tabRefs = useRef({});      // { katId: <button> }
     const navScrollRef = useRef(null);
+    // Şeridin iki ucundaki solma efekti — devamı olduğunu göstermek için.
+    const [seritUc, setSeritUc] = useState({ sol: false, sag: false });
     const navbarRef = useRef(null);
 
     useEffect(() => {
@@ -323,6 +325,25 @@ export default function MenuPage() {
         if (!q) return [];
         return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
     }, [searchQuery, tumUrunler]);
+
+    // KENAR SOLMASI: kategori şeridinin sağa devam ettiği fark edilmiyordu.
+    // Efekt yalnızca o yönde GERÇEKTEN içerik varken çiziliyor; sabit bir
+    // gradyan sona gelindiğinde de durur ve yanıltıcı olurdu.
+    useEffect(() => {
+        const bar = navScrollRef.current;
+        if (!bar) return;
+        const olc = () => setSeritUc({
+            sol: bar.scrollLeft > 2,
+            sag: bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2,
+        });
+        olc();
+        bar.addEventListener('scroll', olc, { passive: true });
+        window.addEventListener('resize', olc);
+        return () => {
+            bar.removeEventListener('scroll', olc);
+            window.removeEventListener('resize', olc);
+        };
+    }, [visibleKategoriler]);
 
     // Aktif sekmeyi yatay barda ortala (sayfayı kaydırmadan)
     useEffect(() => {
@@ -480,7 +501,10 @@ export default function MenuPage() {
                 ) : (
                     /* ═══ GEZİNME MODU — yapışkan bar + TEK kategori (sayfa kısa kalır) ═══ */
                     <>
-                        <nav className="pm-navbar" ref={navbarRef}>
+                        <nav
+                            className={`pm-navbar ${seritUc.sol ? 'pm-navbar--sol' : ''} ${seritUc.sag ? 'pm-navbar--sag' : ''}`}
+                            ref={navbarRef}
+                        >
                             <div className="pm-navbar__scroll" ref={navScrollRef}>
                                 {visibleKategoriler.map((kat) => (
                                     <button
