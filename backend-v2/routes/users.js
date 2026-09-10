@@ -149,9 +149,17 @@ router.put(
             if (!data || data.sube_slug !== req.user.subeSlug || data.role !== 'calisan') {
                 return res.status(403).json({ error: 'Bu kullanıcıyı düzenleme yetkiniz yok' });
             }
-            // Sube ve rol değiştirmesine izin verme
+            // Şube ve rol değiştirmesine izin verme.
             subeSlug = undefined;
             role = undefined;
+            // E-POSTA VE PAROLA SIFIRLAMA DA KAPALI. Bu ikisi süzülmüyordu ve
+            // iki adımlık hesap devralma açıyordu: şube sahibi çalışanı için
+            // `parolaSifirla: true` gönderip hesabı "ilk giriş" durumuna
+            // düşürüyor, sonra kimliksiz POST /api/parola/belirle ile hesabı
+            // sahipleniyordu. E-postayı kendi adresiyle değiştirmek de aynı
+            // sonucu veriyordu. Parola sıfırlama artık yalnızca admin işi.
+            email = undefined;
+            parolaSifirla = undefined;
         }
 
         // Auth hesabını güncelle

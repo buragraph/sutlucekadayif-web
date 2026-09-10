@@ -117,6 +117,10 @@ router.get(
 router.get(
     '/dekont/*',
     verifyToken,
+    // İZİN HALKASI EKLENDİ: yalnızca verifyToken vardı, yani `calisan` rolü de
+    // kendi şubesinin banka dekontlarını indirebiliyordu. Kampanya kimliği
+    // tarih tabanlı (YYYY-MM-DD_YYYY-MM-DD) olduğu için tahmin edilebilir.
+    requirePermission('budget.view'),
     asyncHandler(async (req, res) => {
         const key = req.params[0] || '';
         if (!key.startsWith('dekontlar/')) {

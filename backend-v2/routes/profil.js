@@ -1,6 +1,7 @@
 import { Router } from '../shared/router.js';
 import { supabase } from '../config/supabase.js';
 import { verifyToken } from '../middleware/auth.js';
+import { ilIlceDogrula } from '../shared/iller.js';
 import { hesapAlanlari, kullaniciGetir, kullaniciGuncelle } from '../shared/kullanici-dizini.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { veriYaDaHata } from '../utils/veri.js';
@@ -89,20 +90,39 @@ router.put(
             );
         }
 
-        // Şube alanları — yalnızca bir şubeye atanmış kullanıcı
-        if (req.user.subeSlug) {
+        // ŞUBE ALANLARI ÇALIŞANA KAPALI. Bu uçta izin halkası yoktu ve şubeye
+        // atanmış HERKES (çalışan dahil) şubenin vergi/fatura/konum bilgisini
+        // yazabiliyordu — aynı alanları yazan resmî uç (PUT /api/branches/:slug)
+        // admin'e kapalıyken. Onboarding akışı da zaten yalnızca şube sahibine
+        // açık (bkz. routes/onboarding.js).
+        const subeAlaniYazabilir = req.user.role === 'admin' || req.user.role === 'sube_sahibi';
+        if (req.user.subeSlug && subeAlaniYazabilir) {
             const subeVeri = {};
             for (const k of SUBE_ALANLARI) {
                 if (req.body[k] !== undefined) subeVeri[k] = String(req.body[k]).trim();
             }
+
+            // İL/İLÇE SERBEST METİN DEĞİL. Tek denetim istemcideki açılır
+            // listeydi; sunucu her şeyi kabul ettiği için bu alanlara HTML
+            // yerleştirilip admin panelinde çalıştırılabiliyordu. Artık resmî
+            // listeye karşı doğrulanıyor ve KANONİK yazımıyla kaydediliyor.
+            if (subeVeri.il !== undefined || subeVeri.ilce !== undefined) {
+                const { data: mevcut } = await supabase
+                    .from('subeler').select('il, ilce').eq('kod', req.user.subeSlug).maybeSingle();
+                const ilAday = subeVeri.il !== undefined ? subeVeri.il : (mevcut?.il || '');
+                const ilceAday = subeVeri.ilce !== undefined ? subeVeri.ilce : (mevcut?.ilce || '');
+                const dogru = ilIlceDogrula(ilAday, ilceAday);
+                if (!dogru.gecerli) {
+                    return res.status(400).json({ error: 'Geçersiz il/ilçe.' });
+                }
+                if (subeVeri.il !== undefined) subeVeri.il = dogru.il;
+                if (subeVeri.ilce !== undefined) subeVeri.ilce = dogru.ilce;
+            }
+
             if (Object.keys(subeVeri).length > 0) {
                 // İl/ilçe değiştiyse haritadaki konumu yeniden hesapla
                 if (subeVeri.il !== undefined || subeVeri.ilce !== undefined) {
-                    const { data: cur } = await supabase
-                        .from('subeler').select('il, ilce').eq('kod', req.user.subeSlug).maybeSingle();
-                    const il = subeVeri.il !== undefined ? subeVeri.il : cur?.il;
-                    const ilce = subeVeri.ilce !== undefined ? subeVeri.ilce : cur?.ilce;
-                    const konum = await geocodeIlce(il, ilce);
+                    const konum = await geocodeIlce(subeVeri.il, subeVeri.ilce);
                     if (konum) { subeVeri.lat = konum.lat; subeVeri.lng = konum.lng; }
                 }
                 veriYaDaHata(
