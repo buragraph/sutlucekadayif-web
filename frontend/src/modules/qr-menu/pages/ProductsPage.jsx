@@ -1127,9 +1127,11 @@ export default function ProductsPage() {
                           959px yatay taşma, yani panelin tamamı sağa kayıyordu.
                           `min-w-0` rayın kendisinde vardı ama ebeveyninde yoktu;
                           zincirin bir halkası eksik olunca hiçbiri işe yaramıyor.
-                          lg altında `w-full`: arama kutusuyla aynı satırı paylaşırsa
-                          raya 57px kalıyordu (ölçüldü), kendi satırına alınıyor. */}
-                      <div className="flex w-full min-w-0 flex-wrap items-center gap-2 lg:w-auto lg:flex-1">
+                          `w-full`: kategori rayı KENDİ SATIRINDA kalıyor, arama/sıralama
+                          alt satıra iniyor. Aynı satırı paylaştıklarında ray sıkışıyordu
+                          (ölçüldü: 375px'te 57px) ve kategoriler zaten satırın en uzun
+                          öğesi — taksonomiyi bölmek yerine kontroller aşağı alındı. */}
+                      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
                         {role !== 'admin' && (
                             <div className="inline-flex items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
                                 {[
@@ -1214,7 +1216,7 @@ export default function ProductsPage() {
                         </KaydirilirRay>
                         )}
                       </div>
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex w-full flex-wrap items-center gap-2">
                             <div className="relative w-full sm:w-56">
                                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
                                 <Input
