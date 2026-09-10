@@ -26,12 +26,14 @@ function isGecerliTutar(deger, { min = 0, max = TAVAN_TUTAR } = {}) {
 }
 
 // Seçilen bakiye, kampanyanın sunduğu menü seçeneklerinden biri mi?
-function bakiyeMenudeVarMi(deger, bakiyeSecenekleri) {
+function bakiyeSecenegiBul(deger, bakiyeSecenekleri) {
   const n = Number(deger);
-  if (!Number.isFinite(n)) return false;
-  return Array.isArray(bakiyeSecenekleri) && bakiyeSecenekleri.some(
-    (o) => Math.abs(Number(o?.bakiye) - n) < BAKIYE_EPSILON
-  );
+  if (!Number.isFinite(n) || !Array.isArray(bakiyeSecenekleri)) return null;
+  return bakiyeSecenekleri.find((o) => Math.abs(Number(o?.bakiye) - n) < BAKIYE_EPSILON) || null;
+}
+
+function bakiyeMenudeVarMi(deger, bakiyeSecenekleri) {
+  return bakiyeSecenegiBul(deger, bakiyeSecenekleri) !== null;
 }
 
 const TARIH_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -938,19 +940,40 @@ router.post(
         return res.status(400).json({ error: 'Seçilen bakiye ve KDV dahil tutar geçerli, pozitif bir sayı olmalıdır.' });
       }
 
+      // BEYAN EDİLEN TUTAR SEÇENEĞE BAĞLANIR.
+      //
+      // Şube bakiyeyi menüden seçiyordu ama KDV dahil tutarı serbestçe
+      // yazabiliyordu: 50.000 TL bakiye seçip 1 TL beyan etmek mümkündü.
+      // Kural yalnızca istemcideki hesaplayıcıdaydı. Kampanya zaten her
+      // seçeneğin `kdv_dahil` değerini saklıyor (admin kampanyayı kurarken
+      // hesaplıyor), yani sunucuda uydurulan bir formül yok — beyan o
+      // değerle karşılaştırılıyor.
+      //
+      // ESKİ KAMPANYALARLA UYUM: `kdv_dahil` taşımayan seçeneklerde eski
+      // davranış korunuyor, yoksa yürüyen kampanyalar kilitlenirdi.
+      const secenek = bakiyeSecenegiBul(numBakiye, kampanya.bakiye_secenekleri);
+      const beklenenKdv = Number(secenek?.kdv_dahil);
+      if (Number.isFinite(beklenenKdv) && Math.abs(numKdvTutar - beklenenKdv) >= BAKIYE_EPSILON) {
+        return res.status(400).json({
+          error: `Seçtiğiniz bakiye için KDV dahil tutar ${beklenenKdv} olmalıdır.`,
+        });
+      }
+
       // Dekont upload
       let dekontUrl = null;
       if (req.file) {
         const ext = req.file.originalname.split('.').pop().toLowerCase();
-        const key = `dekontlar/${kampanyaId}/${subeKod}.${ext}`;
+        // ANAHTAR ARTIK DETERMİNİSTİK DEĞİL. Önceden `dekontlar/{kampanya}/{sube}.{ext}`
+        // sabitti; şube yeniden gönderim yapınca eski dekont ÜZERİNE yazılıyor ve
+        // önceki ödeme kanıtı izsiz kayboluyordu. Zaman damgası eklenince her
+        // gönderim ayrı nesne oluyor, eskisi de silinmiyor — ödeme kanıtı
+        // append-only hâle geliyor. (R2 gece yedeğine dahil değil; üzerine
+        // yazılan dosyanın geri dönüşü yoktu.)
+        const damga = new Date().toISOString().replace(/[:.]/g, '-');
+        const key = `dekontlar/${kampanyaId}/${subeKod}-${damga}.${ext}`;
         // Depolanan Content-Type saldırgan-kontrollü mimetype'tan DEĞİL, uzantıdan türetilir
         const contentType = DEKONT_CONTENT_TYPES[ext] || 'application/octet-stream';
         dekontUrl = await uploadFile(req.file.buffer, key, contentType);
-        // Yeniden gönderimde uzantı değiştiyse eski dekont R2'de öksüz kalmasın
-        if (mevcutYanit?.dekont_url) {
-          const eskiKey = urlToKey(mevcutYanit.dekont_url);
-          if (eskiKey && eskiKey !== key) await deleteFile(eskiKey).catch(() => {});
-        }
       }
 
       const yanitData = {
