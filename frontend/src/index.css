@@ -768,6 +768,19 @@
   padding: 32px 0;
 }
 
+.pm-footer__stars {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.pm-footer__star {
+  width: 22px;
+  height: 22px;
+  fill: #f5b301;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
+}
+
 .pm-footer__title {
   font-family: 'Marcellus', serif;
   font-size: 24px;
@@ -4328,15 +4341,37 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   padding: 10px 0;
   box-shadow: 0 1px 0 var(--pm-border);
 }
-.pm-navbar__scroll {
+/* İKİ SATIR SINIRI: 9-12 kategori sarılınca mobilde 4-5 satır ediyor ve
+   yapışkan bar ekranın yarısını kaplıyor. Kapalıyken iki satır görünür,
+   "Tüm kategoriler" ile açılır. max-height animasyon için sabit değer;
+   satır yüksekliği (~38px) + gap (8px) üzerinden hesaplandı. */
+.pm-navbar__liste {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  overflow-x: auto;
   padding: 0 20px;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  max-height: 84px;
+  overflow: hidden;
+  transition: max-height var(--pm-transition);
 }
-.pm-navbar__scroll::-webkit-scrollbar { display: none; }
+.pm-navbar__liste--acik {
+  max-height: 400px;
+}
+.pm-navbar__ac {
+  display: block;
+  margin: 8px auto 0;
+  padding: 4px 14px;
+  border: none;
+  background: transparent;
+  color: var(--pm-text-60);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.pm-navbar__ac:hover { color: var(--pm-dark); }
 .pm-navtab {
   flex-shrink: 0;
   padding: 9px 16px;

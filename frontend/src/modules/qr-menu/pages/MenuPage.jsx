@@ -217,9 +217,8 @@ export default function MenuPage() {
     const [bannerlar, setBannerlar] = useState([]);       // marka geneli duyuru görselleri
     const [showAlerjen, setShowAlerjen] = useState(false);
 
-    const tabRefs = useRef({});      // { katId: <button> }
-    const navScrollRef = useRef(null);
     const navbarRef = useRef(null);
+    const [katAcik, setKatAcik] = useState(false);   // kategori şeridi tamamı görünsün mü
 
     useEffect(() => {
         if (subeSlug) loadMenu();
@@ -324,19 +323,10 @@ export default function MenuPage() {
         return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
     }, [searchQuery, tumUrunler]);
 
-    // Aktif sekmeyi yatay barda ortala (sayfayı kaydırmadan)
-    useEffect(() => {
-        const tab = tabRefs.current[activeKat];
-        const bar = navScrollRef.current;
-        if (tab && bar) {
-            const target = tab.offsetLeft - bar.clientWidth / 2 + tab.clientWidth / 2;
-            bar.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
-        }
-    }, [activeKat]);
-
     // Kategori seç → yalnızca o kategoriyi göster + menü başına kaydır (sayfa kısa kalsın)
     const selectKat = (id) => {
         setActiveKat(id);
+        setKatAcik(false);
         requestAnimationFrame(() => navbarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     };
 
@@ -480,12 +470,17 @@ export default function MenuPage() {
                 ) : (
                     /* ═══ GEZİNME MODU — yapışkan bar + TEK kategori (sayfa kısa kalır) ═══ */
                     <>
+                        {/* KATEGORİLER YATAY KAYMIYOR: eskiden tek satırda kaydırılıyordu
+                            ve sağdaki kategorilerin varlığı fark edilmiyordu. Şimdi hepsi
+                            sarılarak diziliyor. Ama şube başına 9-12 kategori var; tümü
+                            açık dururken yapışkan bar mobilde ekranın yarısını yiyor.
+                            Bu yüzden iki satırla sınırlı, gerisi "Tümü" ile açılıyor ve
+                            kategori seçilince kendiliğinden toplanıyor. */}
                         <nav className="pm-navbar" ref={navbarRef}>
-                            <div className="pm-navbar__scroll" ref={navScrollRef}>
+                            <div className={`pm-navbar__liste ${katAcik ? 'pm-navbar__liste--acik' : ''}`}>
                                 {visibleKategoriler.map((kat) => (
                                     <button
                                         key={kat.id}
-                                        ref={(el) => { tabRefs.current[kat.id] = el; }}
                                         className={`pm-navtab ${activeKat === kat.id ? 'pm-navtab--active' : ''}`}
                                         onClick={() => selectKat(kat.id)}
                                     >
@@ -493,6 +488,16 @@ export default function MenuPage() {
                                     </button>
                                 ))}
                             </div>
+                            {visibleKategoriler.length > 4 && (
+                                <button
+                                    type="button"
+                                    className="pm-navbar__ac"
+                                    onClick={() => setKatAcik((v) => !v)}
+                                    aria-expanded={katAcik}
+                                >
+                                    {katAcik ? 'Daha az' : 'Tüm kategoriler'}
+                                </button>
+                            )}
                         </nav>
 
                         <section className="pm-section-header">
@@ -522,6 +527,16 @@ export default function MenuPage() {
                     Linki olmayan şubede bölüm HİÇ gösterilmez. */}
                 {sube?.degerlendirmeLink && (
                     <div className="pm-footer__review">
+                        {/* Beş yıldız başlığın ÜSTÜNDE: bölümün ne istediği okumadan
+                            anlaşılsın. Google'ın kendi renkleriyle gradient denenmedi —
+                            marka paletiyle çakışıyor ve Google onayı izlenimi veriyor. */}
+                        <div className="pm-footer__stars" aria-hidden="true">
+                            {[0, 1, 2, 3, 4].map((i) => (
+                                <svg key={i} viewBox="0 0 24 24" className="pm-footer__star">
+                                    <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.44l-5.81 3.06 1.11-6.47L2.6 9.45l6.5-.95L12 2.6z" />
+                                </svg>
+                            ))}
+                        </div>
                         <h2 className="pm-footer__title">Google'da bizi değerlendirin</h2>
                         <p className="pm-footer__desc">Yorumlarınız, hem bizi mutlu ediyor hem de yeni misafirlerimize ilham veriyor.</p>
                         <a href={sube.degerlendirmeLink} target="_blank" rel="noopener noreferrer" className="pm-footer__btn">
