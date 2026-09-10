@@ -330,10 +330,17 @@ export default function MenuPage() {
     useEffect(() => {
         const bar = navScrollRef.current;
         if (!bar) return;
-        const olc = () => setSeritUc({
-            sol: bar.scrollLeft > 2,
-            sag: bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2,
-        });
+        // DEĞER DEĞİŞMEDİYSE STATE'E DOKUNMA: her kaydırma karesinde yeni bir
+        // nesne yazmak React'e "değişti" dedirtiyor ve 57 ürünlük sayfayı
+        // saniyede onlarca kez yeniden çizdiriyordu — parmakla kaydırma
+        // takılıyordu.
+        const olc = () => {
+            const sol = bar.scrollLeft > 2;
+            const sag = bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 2;
+            setSeritUc((eskiDurum) => (
+                eskiDurum.sol === sol && eskiDurum.sag === sag ? eskiDurum : { sol, sag }
+            ));
+        };
         olc();
         bar.addEventListener('scroll', olc, { passive: true });
         window.addEventListener('resize', olc);
