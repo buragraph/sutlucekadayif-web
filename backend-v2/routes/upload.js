@@ -109,10 +109,41 @@ router.get(
     })
 );
 
+// Yükleme sırasında dosya adına eklenen zaman damgası:
+// new Date().toISOString().replace(/[:.]/g, '-') → 2026-09-10T17-14-11-314Z
+// (bkz. modules/reports/budget-routes.js, dekont yükleme).
+const DEKONT_DAMGASI = /-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z$/;
+
+/**
+ * Dekont anahtarından şube kodunu çıkarır.
+ *
+ * İKİ BİÇİM VAR: eski anahtarlar `dekontlar/{kampanya}/{subeKod}.{ext}`, yeniler
+ * `dekontlar/{kampanya}/{subeKod}-{zaman damgası}.{ext}` (damga, üzerine yazmayı
+ * bitirmek için eklendi). Bu yüzden damga varsa SÖKÜLÜR, sonra TAM eşitlik
+ * aranır.
+ *
+ * NEDEN `startsWith` DEĞİL: şube kodlarında tire var (`antalya-konyaalti`,
+ * `kocaeli-merkez`). `subeSlug + '-'` ile önek karşılaştırması yapılsaydı
+ * `antalya` şubesi `antalya-konyaalti`nin dekontunu açabilirdi.
+ *
+ * @returns {string|null} şube kodu; anahtar beklenen şekilde değilse null
+ */
+function dekontSubeKodu(key) {
+    const parcalar = key.split('/');
+    // Tam olarak üç parça: dekontlar / kampanya / dosya. Fazlası ya da `..`
+    // içeren bir yol beklenen biçim değildir.
+    if (parcalar.length !== 3) return null;
+    if (parcalar.some((p) => !p || p === '.' || p === '..')) return null;
+    const adsiz = parcalar[2].replace(/\.[^.]+$/, '');
+    const kod = adsiz.replace(DEKONT_DAMGASI, '');
+    return kod || null;
+}
+
 /**
  * GET /api/upload/dekont/*
  * Dekont (banka makbuzu) — kimlik doğrulamalı erişim. Yalnızca admin veya
- * dekontun ait olduğu şubenin sahibi görebilir. Anahtar: dekontlar/{kampanyaId}/{subeKod}.{ext}
+ * dekontun ait olduğu şubenin sahibi görebilir.
+ * Anahtar: dekontlar/{kampanyaId}/{subeKod}-{damga}.{ext}
  */
 router.get(
     '/dekont/*',
@@ -128,11 +159,15 @@ router.get(
         }
 
         // Erişim kontrolü: admin tümünü, şube sahibi yalnızca kendi şubesinin dekontunu
-        const dosya = key.split('/')[2] || '';
-        const subeKod = dosya.replace(/\.[^.]+$/, '');
+        const subeKod = dekontSubeKodu(key);
+        if (!subeKod) {
+            return res.status(400).json({ error: 'Geçersiz dekont yolu' });
+        }
         if (req.user.role !== 'admin' && req.user.subeSlug !== subeKod) {
             return res.status(403).json({ error: 'Bu dekonta erişim yetkiniz yok' });
         }
+
+        const dosya = key.split('/')[2];
 
         try {
             const result = await getFile(key);
