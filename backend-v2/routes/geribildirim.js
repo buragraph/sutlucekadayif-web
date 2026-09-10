@@ -1,5 +1,5 @@
 import { Router } from '../shared/router.js';
-import { oranSiniri } from '../shared/limit.js';
+import { oranSiniri, dbSinir, ipAnahtari } from '../shared/limit.js';
 import { supabase } from '../config/supabase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
@@ -80,6 +80,10 @@ router.post(
     '/',
     bildirimLimiter,
     asyncHandler(async (req, res) => {
+        // `bildirimLimiter` üretimde no-op (bkz. shared/limit.js) — gerçek sınır bu.
+        if (await dbSinir(ipAnahtari(req, 'geribildirim'), 10, 60)) {
+            return res.status(429).json({ error: 'Çok fazla gönderim yapıldı, biraz sonra tekrar deneyin.' });
+        }
         // Honeypot — dolu ise bot; kaydetmeden başarı taklidi et
         if (temizle(req.body.website, 200)) {
             return res.json({ success: true });
@@ -395,13 +399,20 @@ router.post(
  * HERKESE AÇIK durum sorgulama — müşteri şikayetinin nerede olduğunu görür.
  *
  * KİŞİSEL VERİ DÖNDÜRMEZ: kodu ele geçiren biri ad/telefon/e-posta ya da
- * şikayet metnini göremez, yalnızca durumu ve tarihleri görür. Kod tahmin
- * edilemez (32^6) ve sorgu oran sınırlı.
+ * şikayet metnini göremez, yalnızca durumu ve tarihleri görür.
+ *
+ * KOD UZAYI SANILDIĞINDAN KÜÇÜK: yorumda 32^6 yazıyordu ama alfabe 31 karakter
+ * (~2^29,7). Asıl sorun buydu değil: `bildirimLimiter` üretimde no-op
+ * (Workers'ta `oranSiniri` hiçbir şey yapmıyor), yani numaralandırmayı
+ * yavaşlatan bir şey YOKTU. Aşağıdaki `dbSinir` ortam bağımsız çalışıyor.
  */
 router.get(
     '/durum/:takipNo',
     bildirimLimiter,
     asyncHandler(async (req, res) => {
+        if (await dbSinir(ipAnahtari(req, 'takip'), 30, 10)) {
+            return res.status(429).json({ error: 'Çok fazla sorgu yapıldı, biraz sonra tekrar deneyin.' });
+        }
         const kod = temizle(req.params.takipNo, 20).toUpperCase();
         const { data } = await supabase.from('geri_bildirimler')
             .select('takip_no, durum, kategori, sube_ad, olusturma, guncelleme, ilk_yanit')

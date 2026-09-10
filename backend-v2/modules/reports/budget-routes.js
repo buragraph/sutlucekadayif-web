@@ -205,15 +205,21 @@ router.post(
         throw new Error(error.message);
       }
 
-      // Tavan aşımı: en eski kampanyayı sil
-      const { data: hepsi } = await supabase.from('kampanyalar').select('id, yanitlar, olusturma')
+      // Tavan aşımı: en eski kampanya kaydı düşer.
+      //
+      // DEKONTLAR ARTIK SİLİNMİYOR. Eskiden burada `deleteDekontlar` da
+      // çağrılıyordu: yani sıradan bir işlem — yeni kampanya açmak — sessizce
+      // ödeme kanıtı imha ediyordu. Altı yeni kampanya açan biri tüm dekont
+      // geçmişini silebiliyordu ve R2 gece yedeğine dahil olmadığı için geri
+      // dönüşü yoktu. Nesneler öksüz kalıyor ama duruyor; birkaç dosyanın
+      // depolama maliyeti, mali kanıtın kaybından ucuz.
+      const { data: hepsi } = await supabase.from('kampanyalar').select('id, olusturma')
         .order('olusturma', { ascending: true });
       if ((hepsi || []).length > MAX_KAMPANYA) {
         const fazla = hepsi.slice(0, hepsi.length - MAX_KAMPANYA);
         for (const eski of fazla) {
-          // R2 temizliği doküman yazımını bloklamasın
-          deleteDekontlar({ yanitlar: eski.yanitlar }).catch((e) => console.error('[Budget] Eski kampanya dekont temizliği:', e.message));
           await supabase.from('kampanyalar').delete().eq('id', eski.id);
+          console.log(`[Budget] Tavan aşımı, kampanya kaydı düştü: ${eski.id} (dekontlar R2'de korundu)`);
         }
       }
 

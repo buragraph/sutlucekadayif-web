@@ -1,5 +1,5 @@
 import { Router } from '../shared/router.js';
-import { oranSiniri } from '../shared/limit.js';
+import { oranSiniri, dbSinir, ipAnahtari } from '../shared/limit.js';
 import { supabase } from '../config/supabase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
@@ -57,6 +57,10 @@ router.post(
     '/',
     basvuruLimiter,
     asyncHandler(async (req, res) => {
+        // Middleware sınırı üretimde no-op (bkz. shared/limit.js) — gerçek sınır bu.
+        if (await dbSinir(ipAnahtari(req, 'isbasvuru'), 10, 60)) {
+            return res.status(429).json({ error: 'Çok fazla gönderim yapıldı, biraz sonra tekrar deneyin.' });
+        }
         if (temizle(req.body.website, 200)) {
             return res.json({ success: true }); // honeypot — bot
         }
