@@ -54,7 +54,11 @@ function geciciParolaUret() {
 }
 
 export default function UsersPage() {
-    const { user: currentUser, refreshClaims } = useAuth();
+    // DİKKAT: rol ve şube context'te `user`ın YANINDA duruyor, İÇİNDE değil
+    // (bkz. AuthContext#kullaniciNesnesi → {uid, email, displayName}).
+    // `currentUser.role` yazımı sessizce undefined dönüyordu; şube sahibine
+    // şube/rol kutuları görünüyor, "Toplu Ekle" düğmesi çıkıyordu.
+    const { user: currentUser, role: currentRole, subeSlug: currentSubeSlug, refreshClaims } = useAuth();
     const toast = useToast();
     const confirm = useConfirm();
     const [users, setUsers] = useState([]);
@@ -95,14 +99,18 @@ export default function UsersPage() {
 
     function openAddModal() {
         setEditingUser(null);
+        const subeSahibiMi = currentRole === 'sube_sahibi';
         setForm({
             email: '',
             // Hazır bir parola üretilir; yönetici isterse değiştirir. Boş kutu
             // bırakmak "zayıf parola yazma" davranışını davet ediyordu.
             password: geciciParolaUret(),
             displayName: '',
-            subeSlug: subeler[0]?.slug || '',
-            role: 'sube_sahibi',
+            // Şube sahibi yalnızca KENDİ şubesine ÇALIŞAN açabilir; sunucu da
+            // bunu zorluyor (routes/users.js). İstemci aynı değeri göndersin ki
+            // gönderilen ile yazılan aynı olsun.
+            subeSlug: subeSahibiMi ? (currentSubeSlug || '') : (subeler[0]?.slug || ''),
+            role: subeSahibiMi ? 'calisan' : 'sube_sahibi',
         });
         setShowModal(true);
     }
@@ -241,7 +249,7 @@ export default function UsersPage() {
         }
     };
 
-    const isSubeSahibi = currentUser?.role === 'sube_sahibi';
+    const isSubeSahibi = currentRole === 'sube_sahibi';
 
     // Türkçe karşılaştırma: 'İSTANBUL'.toLowerCase() 'i̇stanbul' üretip eşleşmeyi
     // kaçırır, o yüzden toLocaleLowerCase('tr').
