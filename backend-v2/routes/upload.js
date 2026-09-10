@@ -299,7 +299,11 @@ router.post(
 router.delete(
     '/image',
     verifyToken,
-    requirePermission('products.edit'),
+    // MEDYA İZNİ (admin), products.edit DEĞİL. Bu ucu yalnızca Medya
+    // kütüphanesi çağırıyor (PhotoLibraryPage — başarısız yüklemeyi geri
+    // alma) ve o ekran zaten admin'e özel. products.edit şube sahibinde de
+    // açık olduğu için gereğinden geniş bir kapıydı.
+    requirePermission('media.manage'),
     asyncHandler(async (req, res) => {
         const { url } = req.body;
         if (!url) return res.status(400).json({ error: 'URL gerekli' });
@@ -314,21 +318,13 @@ router.delete(
             return res.status(403).json({ error: 'Bu dosya bu işlemle silinemez' });
         }
 
-        // Admin olmayanlar (sube_sahibi) yalnızca KENDİ şubelerinin ürün
-        // görsellerini silebilir. `urunler/{uuid}.webp` key şablonu şube bilgisi
-        // taşımadığından, sahiplik çağıranın kendi şube-özel ürünlerinde bu
-        // görsele referans olup olmadığına bakılarak doğrulanır.
-        if (req.user.role !== 'admin') {
-            if (!key.startsWith('urunler/') || !req.user.subeSlug) {
-                return res.status(403).json({ error: 'Bu dosyayı silme yetkiniz yok' });
-            }
-            const { count } = await supabase
-                .from('urunler').select('*', { count: 'exact', head: true })
-                .eq('sube_kod', req.user.subeSlug).eq('gorsel', url);
-            if (!count) {
-                return res.status(403).json({ error: 'Bu dosyayı silme yetkiniz yok' });
-            }
-        }
+        // SAHİPLİK KONTROLÜ KALKTI — çünkü kanıt olarak çağıranın KENDİ
+        // yazabildiği bir alana bakıyordu: "bu URL'yi benim şubemin bir ürünü
+        // referans veriyor mu?" diye soruyordu, ama `urunler.gorsel` alanını
+        // şube sahibi PUT /api/products/:id ile serbestçe yazabiliyor. Bugün
+        // şube-özel ürün olmadığı için sömürülemiyordu, merkez ilk şube-özel
+        // ürünü açtığı gün kendiliğinden açılacaktı. Uç artık admin'e özel
+        // olduğundan bu türetmeye hiç gerek yok.
 
         await deleteFile(key);
 
