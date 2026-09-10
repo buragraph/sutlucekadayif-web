@@ -324,22 +324,26 @@ export default function MenuPage() {
         return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
     }, [searchQuery, tumUrunler]);
 
-    // AKTİF SEKMEYİ ORTALAMIYORUZ, SOL OKUN HEMEN SAĞINA HİZALIYORUZ.
-    // Ortalamak, hapların 141px'e çıktığı dar şeritte hapı okun altında
-    // bırakıyordu. Bu pay ok genişliği + kenar boşluğu kadar.
-    const OK_PAYI = 50;
+    // Aktif sekmeyi şeritte ortala.
+    //
+    // KONUMU offsetLeft İLE HESAPLAMA: `.pm-navbar` sticky olduğu için
+    // sekmelerin offsetParent'ı O; offsetLeft'e barın dolgusu ve ok
+    // düğmesinin eni de karışıyor, sekme ekran dışına kayıyordu. (Bu hata
+    // eski ortalama kodunda da vardı.) Gerçek konum iki dikdörtgenin
+    // farkından alınıyor.
+    //
+    // İlk ve son kategoride kaydırma sınırına dayanıldığı için tam ortaya
+    // gelmez; orada zaten şeridin ucu görünüyor ve ortalamak boşluk yaratırdı.
     useEffect(() => {
         const tab = tabRefs.current[activeKat];
         const bar = navScrollRef.current;
         if (!tab || !bar) return;
-        // KONUMU offsetLeft İLE HESAPLAMA: `.pm-navbar` sticky olduğu için
-        // sekmelerin offsetParent'ı O; offsetLeft'e barın dolgusu ve ok
-        // düğmesinin eni de karışıyor ve sekme ekran dışına kayıyordu.
-        // (Aynı hata eski ortalama kodunda da vardı.) Gerçek konumu iki
-        // dikdörtgenin farkından alıyoruz.
-        const fark = tab.getBoundingClientRect().left - bar.getBoundingClientRect().left;
+        const barKutu = bar.getBoundingClientRect();
+        const tabKutu = tab.getBoundingClientRect();
+        const suAnki = tabKutu.left - barKutu.left;
+        const ortaNokta = (barKutu.width - tabKutu.width) / 2;
         const enFazla = bar.scrollWidth - bar.clientWidth;
-        const hedef = Math.min(Math.max(0, bar.scrollLeft + fark - OK_PAYI), enFazla);
+        const hedef = Math.min(Math.max(0, bar.scrollLeft + suAnki - ortaNokta), enFazla);
         bar.scrollTo({ left: hedef, behavior: 'smooth' });
     }, [activeKat]);
 
