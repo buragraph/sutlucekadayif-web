@@ -3,7 +3,7 @@ import { acikSubeler, subeSilinebilirMi } from '../shared/sube.js';
 import { supabase } from '../config/supabase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
-import { temizNull, veriYaDaHata, tumSatirlar } from '../utils/veri.js';
+import { temizNull, veriYaDaHata } from '../utils/veri.js';
 import { deleteMenuJson, regenerateMenuJsons } from '../modules/qr-menu/services/menu-cache.js';
 import { acikKampanyalaraEkle } from '../modules/reports/services/kampanya-uyelik.js';
 
@@ -152,18 +152,20 @@ router.get(
     verifyToken,
     requirePermission('branches.view'),
     asyncHandler(async (req, res) => {
-        const [satirlar, subeOzelUrunler, ortakSonuc] = await Promise.all([
+        const [satirlar, menuSayilari, ortakSonuc] = await Promise.all([
             kapsamUygula(supabase.from('subeler').select('*'), req)
                 .then((r) => veriYaDaHata(r, 'şubeler okunamadı')),
-            // Şubeye özel ürün sayıları — eskiden şube başına bir count() sorgusuydu
-            // (88 şubede 88 sorgu), şimdi tek okumada.
-            tumSatirlar(() => supabase.from('urunler').select('sube_kod').not('sube_kod', 'is', null),
-                { sirala: 'id', baglam: 'şube ürünleri' }),
+            // MENÜDEKİ ürün sayısı — şubeye ÖZEL ürün sayısı DEĞİL. Eskiden
+            // `urunler.sube_kod` sayılıyordu; katalogda şubeye özel ürün hiç
+            // olmadığı için sütun 93 şubenin hepsinde 0 gösteriyordu. Gerçek
+            // sayı urun_sube üyeliklerinde (11 binden fazla satır), o yüzden
+            // toplama veritabanında yapılıyor: tek alt-istek, 93 satır.
+            supabase.rpc('sube_menu_sayilari'),
             supabase.from('urunler').select('*', { count: 'exact', head: true }).eq('tur', 'ortak'),
         ]);
 
         const sayac = {};
-        for (const u of subeOzelUrunler) sayac[u.sube_kod] = (sayac[u.sube_kod] || 0) + 1;
+        for (const r of (menuSayilari.data || [])) sayac[r.sube_kod] = Number(r.adet) || 0;
 
         // Eski yanıt Firestore doküman verisini yayıyordu: `kod` ve `olusturma`
         // alanları YOKTU (kod doküman id'siydi, olusturma hiç yazılmıyordu).

@@ -222,7 +222,7 @@ export default function BranchesPage() {
                                 <TableHead>Şube Adı</TableHead>
                                 <TableHead className="max-w-[280px]">Adres</TableHead>
                                 <TableHead>Telefon</TableHead>
-                                <TableHead>Ürün Sayısı</TableHead>
+                                <TableHead>Menüdeki Ürün</TableHead>
                                 <TableHead>Fatura</TableHead>
                                 <TableHead className="w-24">İşlemler</TableHead>
                             </TableRow>
@@ -246,7 +246,14 @@ export default function BranchesPage() {
                                         <div className="truncate" title={sube.adres || ''}>{sube.adres || '—'}</div>
                                     </TableCell>
                                     <TableCell className="text-sm text-muted-foreground">{sube.telefon || '—'}</TableCell>
-                                    <TableCell><Badge variant="secondary">{sube.urunSayisi || 0}</Badge></TableCell>
+                                    {/* Şubenin menüsünde kaç ürün satılıyor (urun_sube üyeliği).
+                                        Şubeye ÖZEL ürün sayısı DEĞİL — öyle ürün hiç yok,
+                                        sütun bu yüzden her şubede 0 gösteriyordu. */}
+                                    <TableCell>
+                                        <Badge variant={sube.urunSayisi ? 'secondary' : 'outline'}>
+                                            {sube.urunSayisi || 0}
+                                        </Badge>
+                                    </TableCell>
                                     <TableCell>
                                         {sube.vkn && sube.fatura_adresi
                                             ? <Badge variant="outline" className="text-emerald-600 border-emerald-300 bg-emerald-50">Tamam</Badge>
