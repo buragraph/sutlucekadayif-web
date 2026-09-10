@@ -4366,6 +4366,31 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
 }
 .pm-navbar--sol::before,
 .pm-navbar--sag::after { opacity: 1; }
+
+/* Şeridi kaydırmak için ok düğmeleri. Solma katmanının ÜSTÜNDE duruyorlar
+   (gradyan `pointer-events: none`, bunlar tıklanabilir). Dokunma hedefi
+   32px: daha küçüğü parmakla ıskalanıyor. */
+.pm-navok {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--pm-border);
+  border-radius: 50%;
+  background: var(--pm-card, #fff);
+  color: var(--pm-dark);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+.pm-navok:hover { background: var(--pm-bg); }
+.pm-navok svg { width: 16px; height: 16px; }
+.pm-navok--sol { left: 6px; }
+.pm-navok--sag { right: 6px; }
 .pm-navbar__scroll {
   display: flex;
   gap: 8px;
