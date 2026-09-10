@@ -105,7 +105,15 @@ router.post(
         try {
             veriYaDaHata(
                 await supabase.from('kullanici_sube').upsert(
-                    { uid: yeni.id, role, sube_slug: subeSlug || null, parola_kuruldu: parolaVerildi },
+                    {
+                        uid: yeni.id, role, sube_slug: subeSlug || null,
+                        parola_kuruldu: parolaVerildi,
+                        // PAROLAYLA AÇILAN HESAP İLK GİRİŞTE DEĞİŞTİRMEK ZORUNDA.
+                        // Merkezin belirlediği parola bir listede duruyor ve en az
+                        // bir başka kişi tarafından biliniyor; kullanıcı kendi
+                        // parolasını belirlemeden panele giremesin (bkz. 0033).
+                        parola_degistir_gerekli: parolaVerildi,
+                    },
                     { onConflict: 'uid' }
                 ),
                 'kullanıcı kaydı yazılamadı'

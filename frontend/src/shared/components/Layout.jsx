@@ -7,18 +7,31 @@ import { AppHeader } from '../../components/layout/app-header';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import OnboardingWizard from './OnboardingWizard';
+import ParolaDegistirKapisi from './ParolaDegistirKapisi';
 
 export default function Layout() {
     // İlk giriş onboarding'i — yalnızca gerçek şube sahipleri için (admin simülasyonu hariç)
     const { realRole } = useAuth();
     const [onboarding, setOnboarding] = useState(false); // false=gerekmiyor/bilinmiyor, {prefill}=göster
+    const [parolaGerekli, setParolaGerekli] = useState(false);
 
+    // DURUM HER ROL İÇİN ÇEKİLİYOR. Eskiden yalnızca şube sahibi sorgulanıyordu
+    // çünkü tek konu onboarding'di; zorunlu parola değişimi ise role bakmıyor.
+    // Uç, onboarding'e tabi olmayan roller için güvenli varsayılan döndürüyor.
     useEffect(() => {
-        if (realRole !== 'sube_sahibi') { setOnboarding(false); return; }
+        if (!realRole) return;
         let aktif = true;
         api.get('/onboarding/status')
-            .then(({ data }) => { if (aktif) setOnboarding(data.gerekli ? { prefill: data.prefill || {} } : false); })
-            .catch(() => { if (aktif) setOnboarding(false); });
+            .then(({ data }) => {
+                if (!aktif) return;
+                setParolaGerekli(data.parolaDegistirGerekli === true);
+                setOnboarding(data.gerekli ? { prefill: data.prefill || {} } : false);
+            })
+            .catch(() => {
+                if (!aktif) return;
+                setParolaGerekli(false);
+                setOnboarding(false);
+            });
         return () => { aktif = false; };
     }, [realRole]);
 
@@ -43,7 +56,12 @@ export default function Layout() {
                     </div>
                 </SidebarInset>
             </SidebarProvider>
-            {onboarding && (
+            {/* SIRA ÖNEMLİ: parola kapısı onboarding'in ÖNÜNDE. Onboarding şube
+                bilgisi topluyor; geçici parolayla girmiş biri o bilgiyi
+                yazabilmemeli. */}
+            {parolaGerekli ? (
+                <ParolaDegistirKapisi onTamam={() => setParolaGerekli(false)} />
+            ) : onboarding && (
                 <OnboardingWizard
                     prefill={onboarding.prefill}
                     onComplete={() => setOnboarding(false)}

@@ -136,4 +136,40 @@ router.put(
     })
 );
 
+/**
+ * POST /api/profil/parola
+ * Kullanıcı kendi parolasını değiştirir.
+ *
+ * NEDEN SUNUCUDA: istemci `supabase.auth.updateUser` ile de değiştirebilir,
+ * ama zorunlu değişim bayrağını (`parola_degistir_gerekli`) yalnızca sunucu
+ * düşürmeli. İstemciye bırakılsaydı bayrak parolayı hiç değiştirmeden
+ * temizlenebilir, zorunluluk da kâğıt üstünde kalırdı. Değişim ve bayrak
+ * aynı istekte, aynı yerde yapılıyor.
+ */
+const EN_AZ_PAROLA = 8;   // ProfilePage ve parola.js ile aynı kural
+
+router.post(
+    '/parola',
+    verifyToken,
+    asyncHandler(async (req, res) => {
+        const yeni = String(req.body?.yeniParola ?? '');
+        if (yeni.length < EN_AZ_PAROLA) {
+            return res.status(400).json({ error: `Parola en az ${EN_AZ_PAROLA} karakter olmalıdır.` });
+        }
+
+        await kullaniciGuncelle(req.user.uid, { password: yeni });
+
+        // Bayrak yazılamazsa hata DÖNDÜR: parola değişti ama zorunluluk
+        // sürüyorsa kullanıcı kapıda kalır; sessizce geçmek yerine görünsün.
+        veriYaDaHata(
+            await supabase.from('kullanici_sube')
+                .update({ parola_degistir_gerekli: false, parola_kuruldu: true })
+                .eq('uid', req.user.uid),
+            'parola durumu güncellenemedi'
+        );
+
+        res.json({ success: true });
+    })
+);
+
 export default router;

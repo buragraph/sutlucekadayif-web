@@ -32,13 +32,18 @@ router.get(
     '/status',
     verifyToken,
     asyncHandler(async (req, res) => {
-        // Yalnızca şubeye bağlı şube sahipleri onboarding'e tabidir
-        if (req.user.role !== 'sube_sahibi' || !req.user.subeSlug) {
-            return res.json({ gerekli: false, onboarded: true, prefill: {} });
-        }
-
+        // PAROLA DEĞİŞİMİ HER ROL İÇİN GEÇERLİ, onboarding değil. Bu uç
+        // Layout'ta zaten her açılışta çağrıldığı için bayrak buradan
+        // taşınıyor; ayrı bir istek açmaya gerek yok.
         const { data: userData } = await supabase
             .from('kullanici_sube').select('*').eq('uid', req.user.uid).maybeSingle();
+        const parolaDegistirGerekli = userData?.parola_degistir_gerekli === true;
+
+        // Yalnızca şubeye bağlı şube sahipleri onboarding'e tabidir
+        if (req.user.role !== 'sube_sahibi' || !req.user.subeSlug) {
+            return res.json({ gerekli: false, onboarded: true, prefill: {}, parolaDegistirGerekli });
+        }
+
         const onboarded = userData?.onboarded === true;
 
         let prefill = {};
@@ -57,7 +62,7 @@ router.get(
             };
         }
 
-        res.json({ gerekli: !onboarded, onboarded, prefill });
+        res.json({ gerekli: !onboarded, onboarded, prefill, parolaDegistirGerekli });
     })
 );
 
