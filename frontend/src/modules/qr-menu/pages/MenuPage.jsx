@@ -219,7 +219,7 @@ export default function MenuPage() {
 
     const tabRefs = useRef({});      // { katId: <button> }
     const navScrollRef = useRef(null);
-    // Şeridin iki ucundaki solma efekti — devamı olduğunu göstermek için.
+    // Şeridin uçlarında gidilecek yer var mı — okların etkin/sönük hâlini belirler.
     const [seritUc, setSeritUc] = useState({ sol: false, sag: false });
     const navbarRef = useRef(null);
 
@@ -326,9 +326,9 @@ export default function MenuPage() {
         return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
     }, [searchQuery, tumUrunler]);
 
-    // KENAR SOLMASI: kategori şeridinin sağa devam ettiği fark edilmiyordu.
-    // Efekt yalnızca o yönde GERÇEKTEN içerik varken çiziliyor; sabit bir
-    // gradyan sona gelindiğinde de durur ve yanıltıcı olurdu.
+    // Kategori şeridinin sağa devam ettiği fark edilmiyordu. Oklar bunu
+    // gösteriyor; hangi yönde gerçekten içerik olduğu buradan hesaplanıyor.
+    // (Kenar solması da denendi, oklarla birlikte fazla geldi ve kaldırıldı.)
     useEffect(() => {
         const bar = navScrollRef.current;
         if (!bar) return;
@@ -508,10 +508,7 @@ export default function MenuPage() {
                 ) : (
                     /* ═══ GEZİNME MODU — yapışkan bar + TEK kategori (sayfa kısa kalır) ═══ */
                     <>
-                        <nav
-                            className={`pm-navbar ${seritUc.sol ? 'pm-navbar--sol' : ''} ${seritUc.sag ? 'pm-navbar--sag' : ''}`}
-                            ref={navbarRef}
-                        >
+                        <nav className="pm-navbar" ref={navbarRef}>
                             {/* OK DÜĞMELERİ şeridin ÜSTÜNDE değil YANINDA duruyor:
                                 üstte dururken kenardaki sekmeyi örtüyorlardı. İkisi de
                                 her zaman çiziliyor, gidilecek yer yoksa `disabled` —
