@@ -13,6 +13,11 @@
 --
 -- SİLİNEN ÜRÜN SAYILMAZ: çöp kutusundaki ürün menüde görünmüyor, sayıda da
 -- görünmemeli.
+--
+-- `menude` FİLTRESİ ŞART: urun_sube satırının VARLIĞI ürünün menüde olduğu
+-- anlamına gelmiyor — satır `menude=false` ile de duruyor (şube menüsünden
+-- çıkardığında bayrak düşüyor, satır kalıyor). Filtresiz sayım 11.078 satırın
+-- 2.506'sını fazladan sayıyordu.
 create or replace function public.sube_menu_sayilari()
 returns table (sube_kod text, adet bigint)
 language sql
@@ -23,7 +28,7 @@ as $$
     select us.sube_kod, count(*)
     from public.urun_sube us
     join public.urunler u on u.id = us.urun_id
-    where u.silinme is null
+    where u.silinme is null and us.menude
     group by us.sube_kod;
 $$;
 
