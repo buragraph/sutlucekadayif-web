@@ -92,13 +92,37 @@ export default function BranchMap({ branches = [], focusIl = null, focusCoord = 
             const el = document.createElement('div');
             el.style.cssText = 'display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:9999px;background:var(--primary);color:var(--primary-foreground);font-size:11px;font-weight:700;box-shadow:0 0 0 4px color-mix(in srgb, var(--primary) 22%, transparent);cursor:pointer;';
             if (items.length > 1) el.textContent = String(items.length);
-            const baslik = items[0].ilce ? `${items[0].ilce}, ${items[0].il}` : (items[0].il || 'Şube');
-            const liste = items
-                .map((b) => `<li style="font-size:11px;color:var(--muted-foreground)"><span style="color:var(--foreground)">${b.ad}</span>${b.ilce ? ' — ' + b.ilce : ''}</li>`)
-                .join('');
-            const popup = new maplibregl.Popup({ offset: 18, closeButton: false }).setHTML(
-                `<div style="font-size:12px;font-weight:600;margin-bottom:4px">${baslik}</div><ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px">${liste}</ul>`,
-            );
+            // BALON İÇERİĞİ HTML DİZESİYLE KURULMUYOR.
+            //
+            // Eskiden `setHTML(...)` içine `ad`/`il`/`ilce` kaçışsız gömülüyordu;
+            // maplibre bu dizeyi `innerHTML` ile basıyor. `il` ve `ilce` alanlarını
+            // şubenin kendi kullanıcısı `PUT /api/profil` üzerinden serbest metin
+            // olarak yazabiliyor (o uçta izin halkası yok). Yani bir şube, admin
+            // "Genel Bakış" haritasını açtığında admin oturumunda çalışan kod
+            // yerleştirebiliyordu — panel ile QR menü aynı origin'de ve oturum
+            // jetonu localStorage'da olduğu için tam hesap ele geçirme demekti.
+            // `textContent` ile DOM kurmak bu sınıfı tamamen kapatıyor.
+            const kutu = document.createElement('div');
+            const baslikEl = document.createElement('div');
+            baslikEl.style.cssText = 'font-size:12px;font-weight:600;margin-bottom:4px';
+            baslikEl.textContent = items[0].ilce ? `${items[0].ilce}, ${items[0].il}` : (items[0].il || 'Şube');
+            kutu.appendChild(baslikEl);
+
+            const ul = document.createElement('ul');
+            ul.style.cssText = 'margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:2px';
+            for (const b of items) {
+                const li = document.createElement('li');
+                li.style.cssText = 'font-size:11px;color:var(--muted-foreground)';
+                const ad = document.createElement('span');
+                ad.style.color = 'var(--foreground)';
+                ad.textContent = b.ad;
+                li.appendChild(ad);
+                if (b.ilce) li.appendChild(document.createTextNode(` — ${b.ilce}`));
+                ul.appendChild(li);
+            }
+            kutu.appendChild(ul);
+
+            const popup = new maplibregl.Popup({ offset: 18, closeButton: false }).setDOMContent(kutu);
             const marker = new maplibregl.Marker({ element: el }).setLngLat(lngLat).setPopup(popup).addTo(map);
             markersRef.current.push(marker);
             bounds.extend(lngLat);
