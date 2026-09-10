@@ -350,14 +350,28 @@ export default function MenuPage() {
         };
     }, [visibleKategoriler]);
 
-    // Aktif sekmeyi yatay barda ortala (sayfayı kaydırmadan)
+    // AKTİF SEKMEYİ ORTALAMIYORUZ, SOLA HİZALIYORUZ.
+    //
+    // Şerit oklardan sonra ~267px kalıyor, kategori hapları ise 141px'e kadar
+    // çıkıyor. Ortalayınca iki yanda 9'ar px boşluk kalıyordu; kenar maskesi
+    // 18px olduğu için maske doğrudan aktif hapın üstüne biniyor ve komşu
+    // kategoriye geçerken hap kırpılmış görünüyordu. Sola hizalayıp maske
+    // payı kadar içeride bırakınca hap tam görünüyor, sağda da sıradaki
+    // kategoriler beliriyor.
+    const MASKE_PAYI = 22;
     useEffect(() => {
         const tab = tabRefs.current[activeKat];
         const bar = navScrollRef.current;
-        if (tab && bar) {
-            const target = tab.offsetLeft - bar.clientWidth / 2 + tab.clientWidth / 2;
-            bar.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
-        }
+        if (!tab || !bar) return;
+        // KONUMU offsetLeft İLE HESAPLAMA: `.pm-navbar` sticky olduğu için
+        // sekmelerin offsetParent'ı O; offsetLeft'e barın dolgusu ve ok
+        // düğmesinin eni de karışıyor ve sekme ekran dışına kayıyordu.
+        // (Aynı hata eski ortalama kodunda da vardı.) Gerçek konumu iki
+        // dikdörtgenin farkından alıyoruz.
+        const fark = tab.getBoundingClientRect().left - bar.getBoundingClientRect().left;
+        const enFazla = bar.scrollWidth - bar.clientWidth;
+        const hedef = Math.min(Math.max(0, bar.scrollLeft + fark - MASKE_PAYI), enFazla);
+        bar.scrollTo({ left: hedef, behavior: 'smooth' });
     }, [activeKat]);
 
     // Oklar ŞERİDİ DEĞİL KATEGORİYİ değiştiriyor: bir öncekine/sonrakine geçer.

@@ -4339,7 +4339,7 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   z-index: 30;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   background: var(--pm-bg);
   padding: 10px 12px;
   box-shadow: 0 1px 0 var(--pm-border);
@@ -4383,32 +4383,24 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
 }
 .pm-navbar__scroll::-webkit-scrollbar { display: none; }
 
-/* Kenar geçişi. Solma bir kez 44px genişlikte denendi, "fazla" geldi ve
-   kaldırıldı; kaldırınca da sekmeler okun dibinde jiletle kesilmiş gibi
-   duruyor. Bu yüzden efekt değil, yalnızca kesimi yumuşatan 18px'lik dar
-   bir geçiş. `pointer-events: none` şart, yoksa kenardaki sekmenin
-   dokunuşunu yutar. */
-.pm-navbar::before,
-.pm-navbar::after {
-  content: '';
-  position: absolute;
-  top: 10px;
-  bottom: 10px;
-  width: 18px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity var(--pm-transition);
+/* Kenar geçişi MASKEYLE. Önce üste krem gradyan seriliyordu; açık sekmede
+   sorun yoktu ama aktif kategorinin koyu yeşil hapının üstünde çamurlu,
+   keskin bir bant oluşuyordu — komşu kategoriye geçince göze çarpıyordu.
+   Maske içeriğin kendi saydamlığını azaltıyor, altındaki zemine temiz
+   biçimde sönüyor. Geçiş yalnızca o yönde kategori varken uygulanıyor;
+   iki uçta da sabit maske olsaydı ilk/son sekme boşuna soluk kalırdı. */
+.pm-navbar--sol .pm-navbar__scroll {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 18px);
+  mask-image: linear-gradient(to right, transparent 0, #000 18px);
 }
-.pm-navbar::before {
-  left: 44px;
-  background: linear-gradient(to right, var(--pm-bg), transparent);
+.pm-navbar--sag .pm-navbar__scroll {
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 18px);
+  mask-image: linear-gradient(to left, transparent 0, #000 18px);
 }
-.pm-navbar::after {
-  right: 44px;
-  background: linear-gradient(to left, var(--pm-bg), transparent);
+.pm-navbar--sol.pm-navbar--sag .pm-navbar__scroll {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
 }
-.pm-navbar--sol::before,
-.pm-navbar--sag::after { opacity: 1; }
 .pm-navtab {
   flex-shrink: 0;
   padding: 9px 16px;
