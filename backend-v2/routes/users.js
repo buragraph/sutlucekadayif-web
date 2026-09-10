@@ -34,6 +34,18 @@ router.get(
         );
         const subeMap = Object.fromEntries(satirlar.map((s) => [s.uid, s]));
 
+        // SON HAREKET: `auth.users.last_sign_in_at` yalnızca PAROLAYLA girişte
+        // güncelleniyor; panel oturumu yenileme tokeniyle haftalarca sürdüğü için
+        // o alan "paneli en son kullandığı an"ı değil "en son parola girdiği an"ı
+        // gösteriyordu. Gerçek erişim auth.sessions'ta; oraya PostgREST'ten
+        // ulaşılamadığı için kullanici_son_hareket() fonksiyonundan okunuyor
+        // (bkz. migration 0034). Fonksiyon düşerse liste yine dönsün diye
+        // hata yutuluyor, alan last_sign_in_at'e geri düşüyor.
+        const { data: hareketler } = await supabase.rpc('kullanici_son_hareket');
+        const hareketMap = Object.fromEntries(
+            (hareketler || []).map((h) => [h.uid, h.son_hareket])
+        );
+
         let users = (await tumKullanicilar()).map((user) => {
             const subeData = subeMap[user.id] || {};
             const hesap = hesapAlanlari(user);
@@ -43,7 +55,9 @@ router.get(
                 displayName: hesap.displayName,
                 disabled: hesap.disabled,
                 createdAt: hesap.createdAt,
-                lastSignIn: hesap.lastSignIn,
+                lastSignIn: hareketMap[user.id]
+                    ? new Date(hareketMap[user.id]).toUTCString()
+                    : hesap.lastSignIn,
                 subeSlug: subeData.sube_slug || null,
                 role: subeData.role || null,
                 telefon: subeData.telefon || null,

@@ -19,6 +19,19 @@ import TopluKullaniciEkle from '../components/TopluKullaniciEkle';
 //    `parola_degistir_gerekli` işaretlenir ve kişi panele girer girmez
 //    ParolaDegistirKapisi ile kendi parolasını belirlemeden ilerleyemez.
 
+// Son erişim: sunucu, kişinin panele en son eriştiği anı gönderiyor (parola
+// girişi DEĞİL, oturum hareketi — bkz. backend routes/users.js). Aynı gün içinde
+// tarih görmek bilgi vermediği için bugün/dün saat olarak yazılıyor.
+function sonErisimYazisi(deger) {
+    const t = new Date(deger);
+    const gun = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const fark = (gun(new Date()) - gun(t)) / 86400000;
+    const saat = t.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    if (fark === 0) return `Bugün ${saat}`;
+    if (fark === 1) return `Dün ${saat}`;
+    return t.toLocaleDateString('tr-TR');
+}
+
 export default function UsersPage() {
     const { user: currentUser, refreshClaims } = useAuth();
     const toast = useToast();
@@ -261,7 +274,7 @@ export default function UsersPage() {
                                 <TableHead>Telefon</TableHead>
                                 <TableHead>Şube</TableHead>
                                 <TableHead>Rol</TableHead>
-                                <TableHead>Son Giriş</TableHead>
+                                <TableHead>Son Erişim</TableHead>
                                 <TableHead className="w-24"></TableHead>
                             </TableRow>
                         </TableHeader>
@@ -284,9 +297,11 @@ export default function UsersPage() {
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-sm text-muted-foreground">
-                                        {u.lastSignIn
-                                            ? new Date(u.lastSignIn).toLocaleDateString('tr-TR')
-                                            : '—'}
+                                        {u.lastSignIn ? (
+                                            <span title={new Date(u.lastSignIn).toLocaleString('tr-TR')}>
+                                                {sonErisimYazisi(u.lastSignIn)}
+                                            </span>
+                                        ) : '—'}
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex gap-1">
