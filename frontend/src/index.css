@@ -4341,57 +4341,53 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   padding: 10px 0;
   box-shadow: 0 1px 0 var(--pm-border);
 }
-/* Kategori seçici: yapışkan bar her zaman TEK satır. Şerit denemeleri
-   (yatay kaydırma / sarmalı iki satır) için bkz. MenuPage'deki yorum. */
-.pm-katsec {
+/* MENÜ TEK SAYFA, BAŞLIKLAR YAPIŞKAN. Kategori şeridi denemeleri için
+   bkz. MenuPage'deki yorum. Her kategori başlığı kendi bölümü boyunca
+   üstte kalır, sonraki başlık gelince yukarı itilir.
+   `pm-kat` overflow YARATMAMALI: ata öğede overflow:hidden/auto olursa
+   position:sticky sessizce çalışmaz. */
+.pm-kat {
+  position: relative;
+}
+.pm-kat__baslik {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  width: calc(100% - 40px);
-  margin: 0 20px;
-  padding: 11px 16px;
-  border: 1px solid var(--pm-border);
-  border-radius: 999px;
-  background: var(--pm-card, #fff);
-  color: var(--pm-text);
-  font-family: 'Montserrat', sans-serif;
-  cursor: pointer;
-  text-align: left;
-  transition: border-color var(--pm-transition), box-shadow var(--pm-transition);
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 20px 12px;
+  background: var(--pm-bg);
+  box-shadow: 0 1px 0 var(--pm-border);
 }
-.pm-katsec:hover { border-color: var(--pm-dark); }
-.pm-katsec--acik {
-  border-color: var(--pm-dark);
-  box-shadow: 0 4px 14px rgba(8, 69, 41, 0.12);
-}
-.pm-katsec__ad {
-  flex: 1;
-  font-size: 14.5px;
-  font-weight: 700;
+.pm-kat__ad { flex: 1; min-width: 0; }
+.pm-kat__ad .pm-section-header__title {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.pm-katsec__sayi {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--pm-text-60);
-  white-space: nowrap;
-}
-.pm-katsec__ok {
-  width: 18px;
-  height: 18px;
-  color: var(--pm-dark);
+.pm-kat__atla {
   flex-shrink: 0;
-  transition: transform var(--pm-transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--pm-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--pm-dark);
+  cursor: pointer;
+  transition: background var(--pm-transition);
 }
-.pm-katsec--acik .pm-katsec__ok { transform: rotate(180deg); }
+.pm-kat__atla:hover { background: var(--pm-card, #fff); }
+.pm-kat__atla svg { width: 17px; height: 17px; }
 
-/* Perde bar'ın ALTINDA kalmalı (z-index panelden düşük) ki panel tıklanabilsin. */
 .pm-katsec__perde {
   position: fixed;
   inset: 0;
-  z-index: 1;
+  z-index: 39;
+  background: rgba(0, 0, 0, 0.18);
 }
 .pm-katsec__panel {
   position: absolute;
@@ -4422,6 +4418,14 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   text-align: left;
   cursor: pointer;
   transition: background var(--pm-transition), color var(--pm-transition);
+}
+.pm-katsec__panel--yuzen {
+  position: fixed;
+  z-index: 40;
+  top: 64px;
+  left: 16px;
+  right: 16px;
+  max-height: 70vh;
 }
 .pm-katsec__sec:hover { background: var(--pm-bg); color: var(--pm-dark); }
 .pm-katsec__sec--aktif { background: var(--pm-dark); color: var(--pm-cream); }

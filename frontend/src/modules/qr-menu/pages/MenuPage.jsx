@@ -206,7 +206,6 @@ export default function MenuPage() {
     const [urunlerByKategori, setUrunlerByKategori] = useState({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [activeKat, setActiveKat] = useState(null);   // scroll-spy: görünümdeki kategori
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedUrun, setSelectedUrun] = useState(null);
     const [showScrollTop, setShowScrollTop] = useState(false);
@@ -217,7 +216,6 @@ export default function MenuPage() {
     const [bannerlar, setBannerlar] = useState([]);       // marka geneli duyuru görselleri
     const [showAlerjen, setShowAlerjen] = useState(false);
 
-    const navbarRef = useRef(null);
     const [katAcik, setKatAcik] = useState(false);   // kategori şeridi tamamı görünsün mü
 
     useEffect(() => {
@@ -293,7 +291,6 @@ export default function MenuPage() {
             setKategoriler(data.kategoriler);
             setUrunlerByKategori(data.urunlerByKategori);
             const visible = data.kategoriler.filter(k => (data.urunlerByKategori[k.id] || []).length > 0);
-            if (visible.length > 0) setActiveKat(visible[0].id);
         } catch (err) {
             console.error('Menü yüklenemedi:', err);
             setError(err.response?.status === 404 ? 'Şube bulunamadı' : 'Menü yüklenirken hata oluştu');
@@ -323,11 +320,14 @@ export default function MenuPage() {
         return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
     }, [searchQuery, tumUrunler]);
 
-    // Kategori seç → yalnızca o kategoriyi göster + menü başına kaydır (sayfa kısa kalsın)
+    // Kategori seç → o bölüme kaydır (artık filtreleme yok, menü tek sayfa).
+    // Yapışkan başlığın altında kalmasın diye hedefi biraz yukarı alıyoruz.
     const selectKat = (id) => {
-        setActiveKat(id);
         setKatAcik(false);
-        requestAnimationFrame(() => navbarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+        const el = document.getElementById(`kat-${id}`);
+        if (!el) return;
+        const y = el.getBoundingClientRect().top + window.scrollY - 8;
+        requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'smooth' }));
     };
 
     if (loading) return <SkeletonLoading />;
@@ -364,8 +364,6 @@ export default function MenuPage() {
     }
 
     // Gezinme modunda gösterilecek tek kategori
-    const activeKatObj = visibleKategoriler.find(k => k.id === activeKat);
-    const activeProducts = urunlerByKategori[activeKat] || [];
 
     return (
         <div className="pm">
@@ -468,62 +466,65 @@ export default function MenuPage() {
                         </section>
                     </>
                 ) : (
-                    /* ═══ GEZİNME MODU — yapışkan bar + TEK kategori (sayfa kısa kalır) ═══ */
+                    /* ═══ GEZİNME MODU — MENÜNÜN TAMAMI TEK SAYFA ═══
+                       Önce tek kategori gösterilip aralarında bir şeritle
+                       geziniliyordu. Şerit üç denemede de tutmadı: yatay
+                       kaydırmada sağdaki kategoriler fark edilmiyor, sarmalı
+                       dizilimde 9-12 kategori yapışkan barı 277px'e çıkarıyordu.
+                       Artık kategoriler alt alta akıyor ve her kategorinin
+                       başlığı kendi bölümü boyunca üste yapışıyor; müşteri hiç
+                       seçim yapmadan menünün tamamını görüyor. Başlıktaki düğme
+                       uzun menüde doğrudan atlamak için. */
                     <>
-                        {/* KATEGORİ SEÇİCİ — yatay kaydırma da, sarmalı şerit de olmadı.
-                            Kaydırmada sağdaki kategorilerin varlığı fark edilmiyordu;
-                            sarınca 9-12 kategori yapışkan barı 277px'e çıkarıp ekranın
-                            üçte birini yiyordu. Bar artık HER ZAMAN tek satır: seçili
-                            kategoriyi yazar, dokununca tümü tek panelde açılır. Hiçbir
-                            kategori gizli değil ve kaydırma gerekmiyor. */}
-                        <nav className="pm-navbar" ref={navbarRef}>
-                            <button
-                                type="button"
-                                className={`pm-katsec ${katAcik ? 'pm-katsec--acik' : ''}`}
-                                onClick={() => setKatAcik((v) => !v)}
-                                aria-expanded={katAcik}
-                            >
-                                <span className="pm-katsec__ad">{activeKatObj?.ad || 'Kategoriler'}</span>
-                                <span className="pm-katsec__sayi">{visibleKategoriler.length} kategori</span>
-                                <svg className="pm-katsec__ok" viewBox="0 0 24 24" aria-hidden="true">
-                                    <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                            </button>
-
-                            {katAcik && (
-                                <>
-                                    {/* Dışarı dokununca kapansın; yoksa panel asılı kalıyor. */}
-                                    <div className="pm-katsec__perde" onClick={() => setKatAcik(false)} />
-                                    <div className="pm-katsec__panel">
-                                        {visibleKategoriler.map((kat) => (
-                                            <button
-                                                key={kat.id}
-                                                type="button"
-                                                className={`pm-katsec__sec ${activeKat === kat.id ? 'pm-katsec__sec--aktif' : ''}`}
-                                                onClick={() => selectKat(kat.id)}
-                                            >
-                                                {kat.ad}
-                                            </button>
+                        {visibleKategoriler.map((kat) => (
+                            <section key={kat.id} id={`kat-${kat.id}`} className="pm-kat">
+                                <header className="pm-kat__baslik">
+                                    <div className="pm-kat__ad">
+                                        <span className="pm-section-header__eyebrow">Kategori</span>
+                                        <h3 className="pm-section-header__title">{kat.ad}</h3>
+                                    </div>
+                                    <span className="pm-section-header__count">
+                                        {(urunlerByKategori[kat.id] || []).length} ürün
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="pm-kat__atla"
+                                        onClick={() => setKatAcik((v) => !v)}
+                                        aria-label="Kategoriler"
+                                        aria-expanded={katAcik}
+                                    >
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                                        </svg>
+                                    </button>
+                                </header>
+                                <div className="pm-grid-section">
+                                    <div className="pm-grid">
+                                        {(urunlerByKategori[kat.id] || []).map((urun, index) => (
+                                            <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
                                         ))}
                                     </div>
-                                </>
-                            )}
-                        </nav>
+                                </div>
+                            </section>
+                        ))}
 
-                        <section className="pm-section-header">
-                            <div>
-                                <span className="pm-section-header__eyebrow">Kategori</span>
-                                <h3 className="pm-section-header__title">{activeKatObj?.ad || 'Menü'}</h3>
-                            </div>
-                            <span className="pm-section-header__count">{activeProducts.length} ürün</span>
-                        </section>
-                        <section className="pm-grid-section">
-                            <div className="pm-grid">
-                                {activeProducts.map((urun, index) => (
-                                    <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
-                                ))}
-                            </div>
-                        </section>
+                        {katAcik && (
+                            <>
+                                <div className="pm-katsec__perde" onClick={() => setKatAcik(false)} />
+                                <div className="pm-katsec__panel pm-katsec__panel--yuzen">
+                                    {visibleKategoriler.map((kat) => (
+                                        <button
+                                            key={kat.id}
+                                            type="button"
+                                            className="pm-katsec__sec"
+                                            onClick={() => selectKat(kat.id)}
+                                        >
+                                            {kat.ad}
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </>
                 )}
             </main>
