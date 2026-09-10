@@ -4381,6 +4381,13 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   /* Dolgu ok genişliği kadar: uçlardaki sekme okun altında hapsolmuyor,
      aradakiler ise okun altından geçip gidiyor. */
   padding: 0 50px;
+  /* Okların altına giren sekmeler sert kesilmesin diye o bölgede sönüyorlar.
+     Solma tam dolgu kadar (50px), yani şerit başa/sona dayandığında görünen
+     sekmeler zaten dolgunun dışında kalıyor ve boşuna soluklaşmıyor.
+     Aktif sekme ortalandığı için hiçbir zaman bu bölgeye girmiyor —
+     maskenin aktif hapı kırptığı eski sürümün sorunu buydu. */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 48px, #000 calc(100% - 48px), transparent 100%);
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
