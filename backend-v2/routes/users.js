@@ -29,7 +29,7 @@ router.get(
     requirePermission('users.view'),
     asyncHandler(async (req, res) => {
         const satirlar = veriYaDaHata(
-            await supabase.from('kullanici_sube').select('uid, role, sube_slug, telefon'),
+            await supabase.from('kullanici_sube').select('uid, role, sube_slug, telefon, onboarded'),
             'kullanici_sube okunamadı'
         );
         const subeMap = Object.fromEntries(satirlar.map((s) => [s.uid, s]));
@@ -61,6 +61,9 @@ router.get(
                 subeSlug: subeData.sube_slug || null,
                 role: subeData.role || null,
                 telefon: subeData.telefon || null,
+                // Listedeki "ilk giriş formunu sıfırla" düğmesi buna bakıyor:
+                // form zaten sıfırsa düğme sönük olsun, ikinci kez basılmasın.
+                onboarded: subeData.onboarded === true,
             };
         });
 

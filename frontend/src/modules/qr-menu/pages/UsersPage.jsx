@@ -161,6 +161,7 @@ export default function UsersPage() {
         try {
             await api.post(`/onboarding/reset/${u.uid}`);
             toast.success('İlk giriş formu sıfırlandı');
+            await loadData();   // düğme anında sönsün, ikinci kez basılmasın
         } catch (err) {
             console.error('Sıfırlama hatası:', err);
             toast.error(err.response?.data?.error || 'Sıfırlama başarısız');
@@ -313,10 +314,25 @@ export default function UsersPage() {
                                                     <KeyRound className="size-3.5" />
                                                 </Button>
                                             )}
+                                            {/* Form zaten sıfırsa (kişi henüz doldurmadı) düğme
+                                                sönük: sıfırlanacak bir şey yok, tekrar basmak
+                                                yalnızca kafa karıştırırdı. */}
                                             {!isSubeSahibi && u.role === 'sube_sahibi' && (
-                                                <Button variant="ghost" size="icon" className="size-8" onClick={() => handleResetOnboarding(u)} title="İlk giriş formunu sıfırla">
-                                                    <RotateCcw className="size-3.5" />
-                                                </Button>
+                                                // Başlık sarmalayıcı span'de: devre dışı düğme
+                                                // pointer-events almadığı için kendi title'ı görünmüyor.
+                                                <span title={u.onboarded
+                                                    ? 'İlk giriş formunu sıfırla'
+                                                    : 'İlk giriş formu zaten sıfır — kullanıcı henüz doldurmadı'}>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="size-8"
+                                                        disabled={!u.onboarded}
+                                                        onClick={() => handleResetOnboarding(u)}
+                                                    >
+                                                        <RotateCcw className="size-3.5" />
+                                                    </Button>
+                                                </span>
                                             )}
                                             {u.uid !== currentUser?.uid && (
                                                 <Button variant="ghost" size="icon" className="size-8 text-destructive hover:text-destructive" onClick={() => handleDelete(u)} title="Sil">
