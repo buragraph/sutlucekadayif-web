@@ -1,0 +1,12 @@
+-- 8 Eylül 2026 etiket temizliğinin yedek tablosu düşürülüyor.
+--
+-- İçinde 100 ürünün etiketi vardı (en_cok_satan 56, en_yeni 50,
+-- en_cok_begenilen 39, ayin_favorisi 36, haftanin_tercihi 12,
+-- storyye_atmalik 9, ustanin_secimi 7, gunun_tercihi 6). Canlı `urunler`
+-- tablosunda etiketli ürün kalmamıştı, yani bu tablo o verinin tek
+-- kopyasıydı — silinmesi geri alınamaz.
+--
+-- KARAR: etiketlerin varsayılan olarak kaldırılması kalıcı bir ürün kararı
+-- (şubeler isterse kendileri ekliyor), dolayısıyla yedeğe ihtiyaç yok.
+-- Kod tabanında tabloya hiçbir referans yoktu.
+drop table if exists public._yedek_urun_etiket_20260908;
