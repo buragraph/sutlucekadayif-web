@@ -4356,58 +4356,79 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
   display: flex;
   align-items: flex-end;
   gap: 12px;
-  width: 100%;
   padding: 14px 20px 12px;
   background: var(--pm-bg);
   box-shadow: 0 1px 0 var(--pm-border);
-  /* <button> oldu (akordiyon): tarayıcı varsayılanlarını sıfırla. */
-  border: none;
-  text-align: left;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
 }
-/* Kapalıyken artık kendi bölümü yok, yapışması anlamsız — üst üste binen
-   yapışkan başlıklar yığını oluşmasın diye normal akışa dönüyor. */
-.pm-kat__baslik--kapali {
-  position: relative;
-}
-.pm-kat__ok {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  margin-bottom: 3px;
-  color: var(--pm-dark);
-  transition: transform var(--pm-transition);
-}
-.pm-kat__baslik--kapali .pm-kat__ok { transform: rotate(-90deg); }
-
-.pm-kat-arac {
-  display: flex;
-  justify-content: flex-end;
-  padding: 4px 20px 0;
-}
-.pm-kat-arac__btn {
-  border: none;
-  background: transparent;
-  color: var(--pm-text-60);
-  font-family: 'Montserrat', sans-serif;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 6px 2px;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.pm-kat-arac__btn:hover { color: var(--pm-dark); }
 .pm-kat__ad { flex: 1; min-width: 0; }
-.pm-kat__ad .pm-section-header__title { display: block; }
 .pm-kat__ad .pm-section-header__title {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.pm-kat__atla {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--pm-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--pm-dark);
+  cursor: pointer;
+  transition: background var(--pm-transition);
+}
+.pm-kat__atla:hover { background: var(--pm-card, #fff); }
+.pm-kat__atla svg { width: 17px; height: 17px; }
 
+.pm-katsec__perde {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: rgba(0, 0, 0, 0.18);
+}
+.pm-katsec__panel {
+  position: absolute;
+  z-index: 2;
+  left: 20px;
+  right: 20px;
+  top: calc(100% - 4px);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--pm-border);
+  border-radius: 18px;
+  background: var(--pm-card, #fff);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.pm-katsec__sec {
+  padding: 11px 12px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--pm-text-60);
+  font-family: 'Montserrat', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--pm-transition), color var(--pm-transition);
+}
+.pm-katsec__panel--yuzen {
+  position: fixed;
+  z-index: 40;
+  top: 64px;
+  left: 16px;
+  right: 16px;
+  max-height: 70vh;
+}
+.pm-katsec__sec:hover { background: var(--pm-bg); color: var(--pm-dark); }
+.pm-katsec__sec--aktif { background: var(--pm-dark); color: var(--pm-cream); }
 
 
 /* ── Kategori bölümleri (scroll-spy hedefleri) ── */

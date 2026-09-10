@@ -216,7 +216,7 @@ export default function MenuPage() {
     const [bannerlar, setBannerlar] = useState([]);       // marka geneli duyuru görselleri
     const [showAlerjen, setShowAlerjen] = useState(false);
 
-    const [kapaliKatlar, setKapaliKatlar] = useState(() => new Set());   // akordiyonda kapalı kategoriler
+    const [katAcik, setKatAcik] = useState(false);   // kategori şeridi tamamı görünsün mü
 
     useEffect(() => {
         if (subeSlug) loadMenu();
@@ -290,6 +290,7 @@ export default function MenuPage() {
             setSube(data.sube);
             setKategoriler(data.kategoriler);
             setUrunlerByKategori(data.urunlerByKategori);
+            const visible = data.kategoriler.filter(k => (data.urunlerByKategori[k.id] || []).length > 0);
         } catch (err) {
             console.error('Menü yüklenemedi:', err);
             setError(err.response?.status === 404 ? 'Şube bulunamadı' : 'Menü yüklenirken hata oluştu');
@@ -319,24 +320,14 @@ export default function MenuPage() {
         return tumUrunler.filter(u => u.ad.toLowerCase().includes(q) || u.aciklama?.toLowerCase().includes(q));
     }, [searchQuery, tumUrunler]);
 
-    // Akordiyon: kategoriyi aç/kapa.
-    //
-    // KAYDIRMA TELAFİSİ: kapatılan bölümün başlığı üste YAPIŞIK durumdaysa,
-    // altındaki ürünler kalkınca sayfa yukarı zıplar ve kullanıcı nerede
-    // olduğunu kaybeder. Başlığın kapamadan önceki ekran konumunu ölçüp
-    // sonra aynı yere geri getiriyoruz.
-    const katToggle = (id) => {
-        const oncekiUst = document.getElementById(`kat-${id}`)?.querySelector('.pm-kat__baslik')?.getBoundingClientRect().top ?? null;
-        setKapaliKatlar((eski) => {
-            const yeni = new Set(eski);
-            if (yeni.has(id)) yeni.delete(id); else yeni.add(id);
-            return yeni;
-        });
-        if (oncekiUst === null) return;
-        requestAnimationFrame(() => {
-            const sonrakiUst = document.getElementById(`kat-${id}`)?.querySelector('.pm-kat__baslik')?.getBoundingClientRect().top;
-            if (sonrakiUst != null) window.scrollBy(0, sonrakiUst - oncekiUst);
-        });
+    // Kategori seç → o bölüme kaydır (artık filtreleme yok, menü tek sayfa).
+    // Yapışkan başlığın altında kalmasın diye hedefi biraz yukarı alıyoruz.
+    const selectKat = (id) => {
+        setKatAcik(false);
+        const el = document.getElementById(`kat-${id}`);
+        if (!el) return;
+        const y = el.getBoundingClientRect().top + window.scrollY - 8;
+        requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'smooth' }));
     };
 
     if (loading) return <SkeletonLoading />;
@@ -475,65 +466,65 @@ export default function MenuPage() {
                         </section>
                     </>
                 ) : (
-                    /* ═══ GEZİNME MODU — TEK SAYFA + AKORDİYON ═══
-                       Kategori şeridi üç denemede de tutmadı (yatay kaydırmada
-                       sağdakiler fark edilmiyor, sarmalı dizilimde 9-12 kategori
-                       yapışkan barı 277px'e çıkarıyor, tek satırlık seçici de
-                       beğenilmedi). Artık filtreleme yok: kategoriler alt alta
-                       akıyor, başlıkları kendi bölümleri boyunca üste yapışıyor
-                       ve başlığa dokununca bölüm katlanıyor. Varsayılan AÇIK —
-                       müşteri hiçbir şeye dokunmadan menünün tamamını görüyor;
-                       katlama, ilgilenmediği bölümü geçmek isteyen için. */
+                    /* ═══ GEZİNME MODU — MENÜNÜN TAMAMI TEK SAYFA ═══
+                       Önce tek kategori gösterilip aralarında bir şeritle
+                       geziniliyordu. Şerit üç denemede de tutmadı: yatay
+                       kaydırmada sağdaki kategoriler fark edilmiyor, sarmalı
+                       dizilimde 9-12 kategori yapışkan barı 277px'e çıkarıyordu.
+                       Artık kategoriler alt alta akıyor ve her kategorinin
+                       başlığı kendi bölümü boyunca üste yapışıyor; müşteri hiç
+                       seçim yapmadan menünün tamamını görüyor. Başlıktaki düğme
+                       uzun menüde doğrudan atlamak için. */
                     <>
-                        <div className="pm-kat-arac">
-                            <button
-                                type="button"
-                                className="pm-kat-arac__btn"
-                                onClick={() => setKapaliKatlar(
-                                    kapaliKatlar.size === visibleKategoriler.length
-                                        ? new Set()
-                                        : new Set(visibleKategoriler.map((k) => k.id))
-                                )}
-                            >
-                                {kapaliKatlar.size === visibleKategoriler.length ? 'Tümünü aç' : 'Tümünü kapat'}
-                            </button>
-                        </div>
-
-                        {visibleKategoriler.map((kat) => {
-                            const urunler = urunlerByKategori[kat.id] || [];
-                            const kapali = kapaliKatlar.has(kat.id);
-                            return (
-                                <section key={kat.id} id={`kat-${kat.id}`} className="pm-kat">
+                        {visibleKategoriler.map((kat) => (
+                            <section key={kat.id} id={`kat-${kat.id}`} className="pm-kat">
+                                <header className="pm-kat__baslik">
+                                    <div className="pm-kat__ad">
+                                        <span className="pm-section-header__eyebrow">Kategori</span>
+                                        <h3 className="pm-section-header__title">{kat.ad}</h3>
+                                    </div>
+                                    <span className="pm-section-header__count">
+                                        {(urunlerByKategori[kat.id] || []).length} ürün
+                                    </span>
                                     <button
                                         type="button"
-                                        className={`pm-kat__baslik ${kapali ? 'pm-kat__baslik--kapali' : ''}`}
-                                        onClick={() => katToggle(kat.id)}
-                                        aria-expanded={!kapali}
-                                        aria-controls={`kat-icerik-${kat.id}`}
+                                        className="pm-kat__atla"
+                                        onClick={() => setKatAcik((v) => !v)}
+                                        aria-label="Kategoriler"
+                                        aria-expanded={katAcik}
                                     >
-                                        {/* "KATEGORİ" üst etiketi kalktı: tek bölüm başlığında
-                                            anlamlıydı, dokuz başlık alt alta dizilince tekrardan
-                                            ibaret kalıyordu. */}
-                                        <span className="pm-kat__ad">
-                                            <span className="pm-section-header__title">{kat.ad}</span>
-                                        </span>
-                                        <span className="pm-section-header__count">{urunler.length} ürün</span>
-                                        <svg className="pm-kat__ok" viewBox="0 0 24 24" aria-hidden="true">
-                                            <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                                         </svg>
                                     </button>
-                                    {!kapali && (
-                                        <div className="pm-grid-section" id={`kat-icerik-${kat.id}`}>
-                                            <div className="pm-grid">
-                                                {urunler.map((urun, index) => (
-                                                    <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </section>
-                            );
-                        })}
+                                </header>
+                                <div className="pm-grid-section">
+                                    <div className="pm-grid">
+                                        {(urunlerByKategori[kat.id] || []).map((urun, index) => (
+                                            <ProductCard key={urun.id} urun={urun} index={index} onClick={() => setSelectedUrun(urun)} />
+                                        ))}
+                                    </div>
+                                </div>
+                            </section>
+                        ))}
+
+                        {katAcik && (
+                            <>
+                                <div className="pm-katsec__perde" onClick={() => setKatAcik(false)} />
+                                <div className="pm-katsec__panel pm-katsec__panel--yuzen">
+                                    {visibleKategoriler.map((kat) => (
+                                        <button
+                                            key={kat.id}
+                                            type="button"
+                                            className="pm-katsec__sec"
+                                            onClick={() => selectKat(kat.id)}
+                                        >
+                                            {kat.ad}
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </>
                 )}
             </main>
