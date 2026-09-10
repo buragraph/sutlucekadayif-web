@@ -474,7 +474,12 @@ export default function CategoriesPage() {
                             </label>
 
                         </div>
-                        <DialogFooter className="px-5 py-3 border-t">
+                        {/* m-0 ŞART: DialogFooter varsayılanı `-mx-4 -mb-4` taşıyor — kendi
+                            dolgusu olan DialogContent'e yaslanmak için. Bu diyalog `p-0`
+                            kullanıyor, dolayısıyla negatif kenar boşluğu içeriği kutunun
+                            16px dışına taşırıyor ve diyalogda hem yatay hem dikey kaydırma
+                            çubuğu beliriyordu (ölçüldü: 431/447 ve 343/359). */}
+                        <DialogFooter className="m-0 px-5 py-3 border-t">
                             <Button type="button" variant="outline" size="sm" onClick={closeModal}>İptal</Button>
                             <Button type="submit" size="sm" disabled={saving}>{saving ? 'Kaydediliyor...' : editing ? 'Güncelle' : 'Oluştur'}</Button>
                         </DialogFooter>
@@ -506,7 +511,7 @@ export default function CategoriesPage() {
                                     ))}
                                 </select>
                             </div>
-                            <DialogFooter className="p-0 pt-1">
+                            <DialogFooter className="m-0 p-0 pt-1">
                                 <Button type="button" variant="outline" size="sm" onClick={() => setReplaceState(null)}>İptal</Button>
                                 <Button type="button" variant="destructive" size="sm" onClick={handleReplaceAndDelete}>Taşı ve Sil</Button>
                             </DialogFooter>
