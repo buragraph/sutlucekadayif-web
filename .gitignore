@@ -41,3 +41,10 @@ graphify-out/
 
 # SAST tarama çıktıları (utkusen/sast-skills)
 sast/
+
+# Geçici parola listeleri — akademi/şube sahibi geçiş betikleri üretiyor
+# (bkz. backend-v2/scripts/gecis/*.mjs). Dosyalar 0600 izniyle yazılıyor ama
+# hiçbir şey git'e girmesini engellemiyordu; 76+ hesabın geçici parolası
+# tek bir dikkatsiz `git add -A` ile geçmişe düşerdi.
+*-parolalar.tsv
+*.tsv
