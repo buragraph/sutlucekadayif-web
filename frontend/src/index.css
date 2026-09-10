@@ -4349,38 +4349,57 @@ textarea.pm-form__input { resize: vertical; min-height: 90px; }
 .pm-kat {
   position: relative;
 }
+/* KATEGORİ BANDI. Düz metin başlık, dokuz bölüm alt alta dizilince menüyü
+   "düz yazı" gibi gösteriyordu; bölümler birbirinden ayrışmıyordu. Başlık
+   artık markanın koyu yeşiliyle dolu bir bant: yapıştığında da nerede
+   olduğun net, ürün ızgarasından da keskin biçimde ayrılıyor. */
 .pm-kat__baslik {
   position: sticky;
-  top: 0;
+  top: 8px;
   z-index: 20;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 12px;
-  padding: 14px 20px 12px;
-  background: var(--pm-bg);
-  box-shadow: 0 1px 0 var(--pm-border);
+  margin: 22px 20px 14px;
+  padding: 13px 18px;
+  border-radius: 14px;
+  background: var(--pm-dark);
+  color: var(--pm-cream);
+  box-shadow: 0 6px 18px rgba(8, 69, 41, 0.22);
 }
 .pm-kat__ad { flex: 1; min-width: 0; }
 .pm-kat__ad .pm-section-header__title {
+  display: block;
+  margin: 0;
+  color: var(--pm-cream);
+  font-size: 21px;
+  line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Sayaç bandın içinde: krem üzerinde %60 opaklık okunur kalıyor. */
+.pm-kat__baslik .pm-section-header__count {
+  flex-shrink: 0;
+  color: rgba(245, 240, 230, 0.72);
+  font-size: 12px;
+  font-weight: 600;
 }
 .pm-kat__atla {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--pm-border);
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(245, 240, 230, 0.28);
   border-radius: 10px;
   background: transparent;
-  color: var(--pm-dark);
+  color: var(--pm-cream);
   cursor: pointer;
   transition: background var(--pm-transition);
 }
-.pm-kat__atla:hover { background: var(--pm-card, #fff); }
+.pm-kat__atla:hover { background: rgba(245, 240, 230, 0.14); }
 .pm-kat__atla svg { width: 17px; height: 17px; }
 
 .pm-katsec__perde {
