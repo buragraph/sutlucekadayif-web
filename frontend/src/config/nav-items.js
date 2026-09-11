@@ -1,6 +1,5 @@
 import {
     LayoutDashboard,
-    QrCode,
     Users,
     Building2,
     UtensilsCrossed,
@@ -59,13 +58,19 @@ export function getNavGroups(can, role) {
                         : []),
                 ] : []),
                 // Merkezde taksonomi bir bütün: menü günlüğü ve kategoriler de
-                // aynı başlığın altında, o yüzden grup korunuyor.
+                // aynı başlığın altında, o yüzden grup korunuyor. Başlık "QR Menü"
+                // değil "Ürünler": merkez de orayı ürün yönetimi olarak görüyor,
+                // QR yalnızca müşterinin gördüğü yüz.
+                //
+                // İLK MADDE "TÜM ÜRÜNLER": grup başlığıyla aynı adı taşısaydı
+                // ("Ürünler > Ürünler") kendini tekrar ederdi. Grup başlığı
+                // gezinmiyor, yalnızca açılıyor — listeye giden madde bu.
                 ...(can('products.view') && role === 'admin' ? [{
-                    title: 'QR Menü',
+                    title: 'Ürünler',
                     url: '/admin/qr-menu',
-                    icon: QrCode,
+                    icon: UtensilsCrossed,
                     subItems: [
-                        { title: 'Ürünler', url: '/admin/qr-menu', icon: UtensilsCrossed, end: true },
+                        { title: 'Tüm Ürünler', url: '/admin/qr-menu', icon: UtensilsCrossed, end: true },
                         ...(can('categories.create')
                             ? [{ title: 'Kategoriler', url: '/admin/qr-menu/kategoriler', icon: FolderOpen }]
                             : []),
