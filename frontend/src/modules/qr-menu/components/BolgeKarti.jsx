@@ -59,8 +59,10 @@ export default function BolgeKarti({ subeSlug, dikey = false }) {
     const yasVar = d.nufus != null;
 
     if (dikey) {
+        // h-full YOK: sütunun boyuna göre gerilince NÜFUS ile kaynak satırı
+        // arasında kocaman bir boşluk kalıyordu. Kart içeriği kadar yer kaplasın.
         return (
-            <Card className="flex h-full flex-col rounded-3xl">
+            <Card className="flex flex-col rounded-2xl">
                 <CardHeader className="pb-3">
                     <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Bölgeniz
@@ -104,7 +106,7 @@ export default function BolgeKarti({ subeSlug, dikey = false }) {
                         yayınından DEĞİL, açık veri derlemesinden geliyor (bkz.
                         migration 0038) — "TÜİK" yazmak doğrulanmamış bir iddia
                         olurdu. Resmî ADNKS tablosu geldiğinde bu satır düzelecek. */}
-                    <p className="mt-auto text-[11px] leading-snug text-muted-foreground">
+                    <p className="mt-1 border-t pt-3 text-[11px] leading-snug text-muted-foreground">
                         Sosyo-ekonomik sıra: Sanayi ve Teknoloji Bakanlığı, İlçe SEGE-{d.kaynak_yili}
                         {yasVar ? <><br />Nüfus: açık veri derlemesi</> : null}
                     </p>

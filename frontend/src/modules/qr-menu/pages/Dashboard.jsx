@@ -4,7 +4,7 @@ import api from '../../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 import { Building2, UserCircle, QrCode, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight, Map as MapIcon,
-    UtensilsCrossed, Megaphone, GraduationCap, MessageSquare } from 'lucide-react';
+    UtensilsCrossed, Megaphone, GraduationCap, MessageSquare, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { parcaYukle } from '../../../shared/utils/parca-yukle';
 import DuyuruKartlari from '../components/DuyuruKartlari';
@@ -121,6 +121,106 @@ export default function Dashboard() {
         // subeSlug bağımlılığı: kullanıcının şubesi değişince harita konumları tazelensin
     }, [haritaGoster, subeSlug]);
 
+    // ── Şube sahibi panosu ──
+    //
+    // NEDEN AYRI: iki rolün ihtiyacı farklı. Şube tek bir dükkânın günlük
+    // işine bakıyor (bu dönem ne oldu, bekleyen ne var, merkez ne dedi);
+    // merkez ağ geneline bakıyor. Tek bir düzeni iki role birden uydurmaya
+    // çalışmak panoyu her şeyin alt alta dizildiği uzun bir listeye
+    // çeviriyordu.
+    if (role === 'sube_sahibi') {
+        const konum = kendiSube?.il
+            ? `${kendiSube.il}${kendiSube.ilce ? ' · ' + kendiSube.ilce : ''}`
+            : null;
+
+        return (
+            <div className="flex flex-col gap-5">
+                {/* KARŞILAMA ŞERİDİ: eskiden hem "Genel Bakış" başlığı hem de
+                    haritanın üstünde "Merhaba, X" vardı — iki ayrı karşılama.
+                    Tek satırda toplandı; QR menü bağlantısı da buraya alındı,
+                    şubenin en sık açtığı şey o. */}
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                        <h1 className="text-3xl font-light leading-tight tracking-tight text-foreground"
+                            style={{ fontFamily: 'Marcellus, serif' }}>
+                            Merhaba, <span className="font-bold text-[#084529] dark:text-[#d8c7a3]">
+                                {kendiSube?.ad || subeSlug || 'Şube Yetkilisi'}
+                            </span> 👋
+                        </h1>
+                        <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+                            <span>{bugun}</span>
+                            {konum && <><span aria-hidden="true">·</span><span>{konum}</span></>}
+                        </p>
+                    </div>
+                    <a
+                        href={subeSlug ? `/${subeSlug}` : '/'}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="group inline-flex items-center gap-2 rounded-full border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                    >
+                        <QrCode className="size-4 text-[#084529] dark:text-[#d8c7a3]" />
+                        QR menünüzü açın
+                        <ArrowUpRight className="size-3.5 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                    </a>
+                </div>
+
+                <SubeMetrikleri subeSlug={subeSlug} />
+
+                {/* İKİ SÜTUN: solda günlük iş (bekleyen şikayet, merkez
+                    duyuruları), sağda şubenin sabit bilgisi (konum, bölge).
+                    Hepsi tam genişlikte alt alta dizilince ekran pano değil
+                    akış gibi duruyordu. */}
+                <div className="grid gap-4 lg:grid-cols-3">
+                    <div className="flex flex-col gap-4 lg:col-span-2">
+                        <SikayetUyarisi />
+                        <DuyuruKartlari />
+                    </div>
+
+                    <div className="flex flex-col gap-4">
+                        {/* Harita KÜÇÜLDÜ: tek şube için 380px'lik bir Türkiye
+                            haritası taşıdığı bilgiye göre çok yer kaplıyordu.
+                            Artık şubenin nerede olduğunu gösteren küçük bir
+                            kart. */}
+                        {haritaGoster && (
+                            <div className="relative h-[190px] overflow-hidden rounded-2xl border">
+                                <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-muted-foreground">Harita yükleniyor…</div>}>
+                                    <BranchMap
+                                        branches={haritaSubeler}
+                                        focusIl={kendiSube?.il || null}
+                                        focusCoord={Number.isFinite(kendiSube?.lat) && Number.isFinite(kendiSube?.lng)
+                                            ? [kendiSube.lng, kendiSube.lat]
+                                            : null}
+                                        className="absolute inset-0 h-full w-full"
+                                        showFooter={false}
+                                    />
+                                </Suspense>
+                            </div>
+                        )}
+                        <BolgeKarti subeSlug={subeSlug} dikey />
+                    </div>
+                </div>
+
+                {/* HIZLI EYLEMLER KOMPAKT: altı kartın her birinde iki satırlık
+                    açıklama vardı ve ekranın alt yarısını dolduruyordu.
+                    Açıklama ipucuna alındı; kart tek satır. */}
+                <div className="space-y-3">
+                    <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Hızlı Eylemler
+                    </h2>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {SUBE_EYLEMLER.map((e) => (
+                            <KisaEylem
+                                key={e.baslik}
+                                {...e}
+                                dis={e.dis ? (subeSlug ? `/${subeSlug}` : '/') : undefined}
+                            />
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col gap-6">
             {/* Sayfa Başlığı — referans "Store Overview" stili */}
@@ -129,71 +229,42 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground">{bugun}</p>
             </div>
 
-            {/* SAYILAR EN ÜSTTE: şube panele "bu dönem ne oldu" sorusuyla
-                giriyor. Harita kimliğini gösteriyor ama iş bilgisi taşımıyordu;
-                pano rakamla açılıp bağlamla (harita, bölge) devam ediyor.
-                Yalnızca şube sahibinde — merkezin panosu ağ geneline bakıyor,
-                tek şubenin dönem sayısı orada anlamsız olurdu. */}
-            {role === 'sube_sahibi' && <SubeMetrikleri subeSlug={subeSlug} />}
-
             {/* Bekleyen şikayet uyarısı — ince bir şerit; bekleyen yoksa hiç çizmiyor. */}
             <SikayetUyarisi />
 
-            {/* harita + bölge paneli.
-                Şube sahibinde harita 2 sütun, TÜİK/SEGE verisi yanında 1 sütun.
-                Eskiden bölge bilgisi sayfanın altında dört kartlık ayrı bir
-                şerittı; şube konumuyla ilgili olduğu için haritanın yanı doğru
-                yeri. Admin'de bölge paneli yok (tek ilçe bilgisi ağ genelinde
-                anlamsız), harita tam genişlik. */}
-            <div className={role === 'sube_sahibi' ? 'grid gap-4 lg:grid-cols-3' : ''}>
+            <div>
                 {haritaGoster ? (
-                    <div className={`relative ${role === 'sube_sahibi' ? 'h-[380px] lg:col-span-2' : 'h-[440px]'} overflow-hidden rounded-3xl border`}>
+                    <div className="relative h-[440px] overflow-hidden rounded-3xl border">
                         <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Harita yükleniyor…</div>}>
                             <BranchMap
                                 branches={haritaSubeler}
-                                focusIl={role === 'sube_sahibi' ? (kendiSube?.il || null) : null}
-                                focusCoord={role === 'sube_sahibi' && Number.isFinite(kendiSube?.lat) && Number.isFinite(kendiSube?.lng)
-                                    ? [kendiSube.lng, kendiSube.lat]
-                                    : null}
+                                focusIl={null}
+                                focusCoord={null}
                                 className="absolute inset-0 h-full w-full"
                                 showFooter={false}
                             />
                         </Suspense>
 
-                        {/* Selamlama overlay — haritanın üstünde */}
                         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-background/95 via-background/70 to-transparent p-5 md:p-7">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                                {role === 'admin' ? 'Şube Ağı' : 'Şubeniz'}
-                            </p>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Şube Ağı</p>
                             <h2 className="mt-1 text-2xl font-light leading-tight tracking-tight text-foreground md:text-3xl" style={{ fontFamily: 'Marcellus, serif' }}>
-                                Merhaba, <span className="font-bold text-[#084529] dark:text-[#d8c7a3]">{role === 'admin' ? 'Yönetici' : (kendiSube?.ad || subeSlug || 'Şube Yetkilisi')}</span> 👋
+                                Merhaba, <span className="font-bold text-[#084529] dark:text-[#d8c7a3]">Yönetici</span> 👋
                             </h2>
                             <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border bg-background/85 px-3 py-1 text-xs font-medium text-foreground backdrop-blur">
                                 <MapIcon className="size-3.5 text-[#084529] dark:text-[#d8c7a3]" />
-                                {role === 'admin'
-                                    ? `${ilSayisi} il · ${subeSayisi} şube`
-                                    : (kendiSube?.il
-                                        ? `${kendiSube.il}${kendiSube.ilce ? ' · ' + kendiSube.ilce : ''}`
-                                        : 'Konum atanmadı')}
+                                {ilSayisi} il · {subeSayisi} şube
                             </span>
                         </div>
                     </div>
                 ) : (
-                    <div className="rounded-3xl border bg-gradient-to-br from-[#084529] via-[#05321d] to-[#021b0f] p-6 text-[#F6F1E7] md:p-8 lg:col-span-2">
+                    <div className="rounded-3xl border bg-gradient-to-br from-[#084529] via-[#05321d] to-[#021b0f] p-6 text-[#F6F1E7] md:p-8">
                         <h2 className="text-3xl font-light leading-tight tracking-tight" style={{ fontFamily: 'Marcellus, serif' }}>
-                            Merhaba, <span className="font-bold text-[#d8c7a3]">{subeSlug || 'Şube Yetkilisi'}</span> 👋
+                            Merhaba, <span className="font-bold text-[#d8c7a3]">Yönetici</span> 👋
                         </h2>
                     </div>
                 )}
-
-                {role === 'sube_sahibi' && <BolgeKarti subeSlug={subeSlug} dikey />}
             </div>
 
-            {/* HARCAMA ÖZETİ GRAFİĞİ KALDIRILDI: dönemsel harcama zaten Reklam
-                bölümünün konusu; panoda ayrıca durması hem tekrar hem de şube
-                sahibinin ilk ekranını para konuşan bir grafikle açıyordu.
-                (Grafiğin kendisi duruyor — HarcamaGrafik bileşeni Reklam
-                sayfasında kullanılıyor.) */}
             <DuyuruKartlari />
 
             {/* ── Alt bölüm ROLE GÖRE ──
@@ -204,8 +275,7 @@ export default function Dashboard() {
                 eylemler de yanlıştı — "Medya Galerisi" şubeye kapalı bir sayfaya,
                 "Kategorileri düzenleyin, ürün ekleyin" ise şubenin yetkisi
                 olmayan işlere götürüyordu. */}
-            {role === 'admin' && (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <OzetKart
                         etiket="Kapsam"
                         baslik={kendiSube?.ad || (subeSlug ? subeSlug : 'Tüm Şubeler')}
@@ -234,23 +304,14 @@ export default function Dashboard() {
                             <ArrowUpRight className="size-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                         </a>
                     </OzetKart>
-                </div>
-            )}
+            </div>
 
             <div className="space-y-3">
                 <h3 className="px-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                     Hızlı Eylemler
                 </h3>
-                {/* Sütun sayısı öğe sayısına göre: şubede 6 kart (3+3),
-                    merkezde 4 kart tek sırada. Tek başına sarkan kart kalmasın. */}
-                <div className={`grid gap-4 sm:grid-cols-2 ${role === 'admin' ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
-                    {(role === 'admin' ? ADMIN_EYLEMLER : SUBE_EYLEMLER).map((e) => (
-                        <EylemKarti
-                            key={e.baslik}
-                            {...e}
-                            dis={e.dis ? (subeSlug ? `/${subeSlug}` : '/') : undefined}
-                        />
-                    ))}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {ADMIN_EYLEMLER.map((e) => <EylemKarti key={e.baslik} {...e} />)}
                 </div>
             </div>
         </div>
@@ -312,4 +373,30 @@ function EylemKarti(props) {
     return dis
         ? <a href={dis} target="_blank" rel="noreferrer" className="group">{govde}</a>
         : <Link to={yol} className="group">{govde}</Link>;
+}
+
+/**
+ * Kompakt hızlı eylem — tek satır, ikon + başlık.
+ *
+ * Uzun sürüm (EylemKarti) merkezde kalıyor: orada dört kart var ve açıklama
+ * metni ekranı doldurmuyor. Şubede altı kart × iki satır açıklama panonun alt
+ * yarısını yutuyordu; açıklama başlık ipucuna (title) alındı.
+ */
+function KisaEylem(props) {
+    const { baslik, metin, yol, dis } = props;
+    const govde = (
+        <div title={metin}
+             className="group flex items-center gap-3 rounded-xl border bg-card px-3.5 py-3 transition-colors hover:border-[#084529]/30 hover:bg-muted/40">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#084529]/10 text-[#084529] dark:bg-[#d8c7a3]/10 dark:text-[#d8c7a3]">
+                <props.Ikon className="size-4" />
+            </div>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{baslik}</span>
+            {dis
+                ? <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" />
+                : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />}
+        </div>
+    );
+    return dis
+        ? <a href={dis} target="_blank" rel="noreferrer">{govde}</a>
+        : <Link to={yol}>{govde}</Link>;
 }
