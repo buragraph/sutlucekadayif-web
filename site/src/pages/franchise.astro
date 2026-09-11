@@ -1,19 +1,13 @@
 ---
 import Layout from '../layouts/Layout.astro';
 
-// 81 il — İl seçimi dropdown'u için
-const iller = [
-  'Adana','Adıyaman','Afyonkarahisar','Ağrı','Amasya','Ankara','Antalya','Artvin',
-  'Aydın','Balıkesir','Bilecik','Bingöl','Bitlis','Bolu','Burdur','Bursa','Çanakkale',
-  'Çankırı','Çorum','Denizli','Diyarbakır','Edirne','Elazığ','Erzincan','Erzurum',
-  'Eskişehir','Gaziantep','Giresun','Gümüşhane','Hakkâri','Hatay','Isparta','Mersin',
-  'İstanbul','İzmir','Kars','Kastamonu','Kayseri','Kırklareli','Kırşehir','Kocaeli',
-  'Konya','Kütahya','Malatya','Manisa','Kahramanmaraş','Mardin','Muğla','Muş',
-  'Nevşehir','Niğde','Ordu','Rize','Sakarya','Samsun','Siirt','Sinop','Sivas',
-  'Tekirdağ','Tokat','Trabzon','Tunceli','Şanlıurfa','Uşak','Van','Yozgat','Zonguldak',
-  'Aksaray','Bayburt','Karaman','Kırıkkale','Batman','Şırnak','Bartın','Ardahan',
-  'Iğdır','Yalova','Karabük','Kilis','Osmaniye','Düzce',
-];
+// İl/ilçe listesi TEK KAYNAKTAN: panel ve sunucu da aynı adları kullanıyor
+// (frontend/src/data + backend-v2/shared/iller.js). Burada el yazması bir dizi
+// vardı ve "Hakkâri" yazıyordu; diğer iki taraf "Hakkari" kullanıyor. Merkez o
+// ili başvuruya kapatsa listeden DÜŞMEZDİ, çünkü adlar tutmuyordu.
+import ilIlceData from '../data/tr-iller-ilceler.json';
+
+const iller = Object.keys(ilIlceData).sort((a, b) => a.localeCompare(b, 'tr'));
 ---
 
 <Layout title="Franchise | Sütlüce Kadayıf">
@@ -70,8 +64,14 @@ const iller = [
         </div>
         <div>
           <label for="ilce" class="mb-1.5 block text-sm font-medium text-ink">İlçe</label>
-          <input id="ilce" name="ilce" type="text"
-            class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand" />
+          <!-- İLE BAĞLI AÇILIR LİSTE: eskiden serbest metindi ve "kadıköy",
+               "Kadikoy", "K.köy" gibi her yazım kaydediliyordu; başvurulardan
+               bölge dökümü çıkarmak imkânsızdı. Seçenekler il seçilince
+               dolduruluyor (bkz. aşağıdaki script). -->
+          <select id="ilce" name="ilce" disabled
+            class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand disabled:bg-ink/5 disabled:text-ink/40">
+            <option value="" selected>Önce il seçin</option>
+          </select>
         </div>
       </div>
 
@@ -95,6 +95,10 @@ const iller = [
   </section>
 </Layout>
 
+<!-- İlçe listesi sayfaya gömülüyor: 973 ilçe ~12 KB, ayrı bir istek atmaya
+     değmez ve form ilk açılışta anında çalışır. -->
+<script type="application/json" id="ilce-verisi" set:html={JSON.stringify(ilIlceData)}></script>
+
 <script>
   // Franchise başvurusu → CMS backend'i (POST /api/basvurular). Başvuru CMS'te
   // "Franchise Başvuruları" ekranına düşer.
@@ -106,6 +110,31 @@ const iller = [
     || 'https://sutlucekadayif-api.dijitalreklam.workers.dev/api';
 
   const form = document.getElementById('franchise-form') as HTMLFormElement | null;
+  const ilSecim = document.getElementById('il') as HTMLSelectElement | null;
+  const ilceSecim = document.getElementById('ilce') as HTMLSelectElement | null;
+
+  // İl değişince ilçe listesi yeniden kuruluyor; il seçilmeden ilçe kapalı.
+  const ilceVerisi: Record<string, string[]> = (() => {
+    try { return JSON.parse(document.getElementById('ilce-verisi')?.textContent || '{}'); }
+    catch { return {}; }
+  })();
+
+  ilSecim?.addEventListener('change', () => {
+    if (!ilceSecim) return;
+    const ilceler = ilceVerisi[ilSecim.value] || [];
+    ilceSecim.innerHTML = '';
+    const ilk = document.createElement('option');
+    ilk.value = '';
+    ilk.textContent = ilceler.length ? 'Seçiniz' : 'Önce il seçin';
+    ilceSecim.appendChild(ilk);
+    for (const ilce of ilceler) {
+      const o = document.createElement('option');
+      o.value = ilce;
+      o.textContent = ilce;
+      ilceSecim.appendChild(o);
+    }
+    ilceSecim.disabled = ilceler.length === 0;
+  });
 
   // Kapalı iller açılır listeden çıkarılıyor. Site statik olduğu için liste
   // derleme anında değil, sayfa açılışında okunuyor — merkez panelden bir ili
