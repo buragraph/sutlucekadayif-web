@@ -16,6 +16,10 @@
  * kâğıdı 480px'te kalıyor — o boru hattı değişmedi.
  */
 export const BELGE_GENISLIGI = 794;
+// 96dpi'de A4 boyu (297mm). Belge en az bir tam sayfa: kısa duyuruda alt bant
+// sayfanın dibine oturuyor, çıktı "yarım kâğıt" gibi durmuyor. Uzun duyuruda
+// belge büyüyor, PDF tarafı bu boyda sayfalara bölüyor.
+export const BELGE_YUKSEKLIGI = 1123;
 
 const kacis = (v) => String(v ?? '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -87,7 +91,8 @@ export function duyuruBelgeHtml(duyuru, { kok = window.location.origin } = {}) {
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; }
   body { font-family: Inter, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
-  .report { width: ${BELGE_GENISLIGI}px; background: #fff; color: #1a1a1a;
+  .report { width: ${BELGE_GENISLIGI}px; min-height: ${BELGE_YUKSEKLIGI}px;
+            background: #fff; color: #1a1a1a;
             display: flex; flex-direction: column; }
   .d-govde { padding: 46px 62px 34px; flex: 1; }
   .d-ust { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }

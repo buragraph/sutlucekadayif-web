@@ -252,13 +252,50 @@ async function gorseleCevir(html, genislik) {
 }
 
 /**
+ * Uzun görüntüyü sayfa boyunda dilimler.
+ *
+ * NEDEN DİLİMLEME: tek uzun sayfa ekranda sorun değil ama yazdırılınca kâğıda
+ * sığmıyor — duyuru çıktısında "PDF yarım iniyor" şikâyeti buydu: belge tek
+ * parça 595×1007pt bir sayfaydı, A4 (595×842pt) yazıcıda altı kesiliyordu.
+ *
+ * Son dilim beyazla tamamlanır: yarım boy bir kapanış sayfası "eksik basılmış"
+ * gibi duruyordu.
+ */
+function dilimle(png, tamEn, tamBoy, dilimBoy) {
+    return new Promise((resolve, reject) => {
+        const g = new Image();
+        g.onload = () => {
+            try {
+                const parcalar = [];
+                for (let ust = 0; ust < tamBoy; ust += dilimBoy) {
+                    const tuval = document.createElement('canvas');
+                    tuval.width = tamEn;
+                    tuval.height = dilimBoy;
+                    const ctx = tuval.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, tamEn, dilimBoy);
+                    ctx.drawImage(g, 0, -ust);
+                    parcalar.push(tuval.toDataURL('image/png'));
+                }
+                resolve(parcalar);
+            } catch (e) { reject(e); }
+        };
+        g.onerror = () => reject(new Error('Görüntü dilimlenemedi'));
+        g.src = png;
+    });
+}
+
+/**
  * HTML belgeyi PDF olarak indirir — yazdırma penceresi AÇILMAZ.
  * @param {string} html — /reports/preview çıktısı, bütçe ya da duyuru şablonu
  * @param {string} dosyaAdi — uzantısız ad (ör. "rapor-amasya-2026-06-23")
- * @param {{genislik?:number}} [secenek] — kâğıt eni (CSS px); varsayılan rapor kâğıdı
- * @returns {Promise<{yukseklik:number, boyut:number}>} doğrulama için
+ * @param {{genislik?:number, sayfaYuksekligi?:number}} [secenek]
+ *        `genislik` kâğıt eni (CSS px); `sayfaYuksekligi` verilirse belge o boyda
+ *        SAYFALARA bölünür (ör. A4 için 1123px). Verilmezse eskisi gibi tek
+ *        sayfa üretilir — rapor ve bütçe çıktıları bu yolda kalıyor.
+ * @returns {Promise<{yukseklik:number, boyut:number, sayfa:number}>}
  */
-export async function raporPdfIndir(html, dosyaAdi = 'rapor', { genislik = GENISLIK } = {}) {
+export async function raporPdfIndir(html, dosyaAdi = 'rapor', { genislik = GENISLIK, sayfaYuksekligi = 0 } = {}) {
     const { png, yukseklik, teshis, jsPDF } = await gorseleCevir(html, genislik);
 
     // Birim `pt`: jsPDF'in `px` birimi 1px = 1,333pt sayıyor (480px → 640pt),
@@ -266,6 +303,24 @@ export async function raporPdfIndir(html, dosyaAdi = 'rapor', { genislik = GENIS
     // 1px = 0,75pt → 480×1509px = 360×1131,75pt. Eski sunucu çıktısının
     // MediaBox'ı da bu ölçekteydi (480×1506px = 360×1129,5pt).
     const g = genislik * PT;
+
+    if (sayfaYuksekligi > 0) {
+        const dilimler = await dilimle(png, genislik * OLCEK, yukseklik * OLCEK, sayfaYuksekligi * OLCEK);
+        const sy = sayfaYuksekligi * PT;
+        const pdf = new jsPDF({ unit: 'pt', format: [g, sy], orientation: 'portrait', compress: true });
+        dilimler.forEach((d, i) => {
+            if (i > 0) pdf.addPage([g, sy], 'portrait');
+            pdf.addImage(d, 'PNG', 0, 0, g, sy, undefined, 'FAST');
+        });
+        pdf.setProperties({
+            title: dosyaAdiTemizle(dosyaAdi),
+            creator: `Sutluce Panel ${SURUM}`,
+            subject: JSON.stringify({ ...teshis, sayfa: dilimler.length }),
+        });
+        pdf.save(`${dosyaAdiTemizle(dosyaAdi)}.pdf`);
+        return { yukseklik, boyut: pdf.output('blob').size, sayfa: dilimler.length };
+    }
+
     const y = yukseklik * PT;
     const pdf = new jsPDF({ unit: 'pt', format: [g, y], orientation: 'portrait', compress: true });
     pdf.addImage(png, 'PNG', 0, 0, g, y, undefined, 'FAST');
@@ -278,7 +333,7 @@ export async function raporPdfIndir(html, dosyaAdi = 'rapor', { genislik = GENIS
 
     const ad = `${dosyaAdiTemizle(dosyaAdi)}.pdf`;
     pdf.save(ad);
-    return { yukseklik, boyut: pdf.output('blob').size };
+    return { yukseklik, boyut: pdf.output('blob').size, sayfa: 1 };
 }
 
 /**

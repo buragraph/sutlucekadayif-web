@@ -13,7 +13,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
-import { duyuruBelgeHtml, duyuruDosyaAdi, BELGE_GENISLIGI } from '../utils/duyuru-belge';
+import { duyuruBelgeHtml, duyuruDosyaAdi, BELGE_GENISLIGI, BELGE_YUKSEKLIGI } from '../utils/duyuru-belge';
 import { parcaYukle } from '../../../shared/utils/parca-yukle';
 
 /**
@@ -490,8 +490,14 @@ function DuyuruOnizleme({ duyuru }) {
             // parça sunucudan kalkıyor (bkz. shared/utils/parca-yukle.js).
             const { raporPdfIndir, raporPngIndir } = await parcaYukle(
                 () => import('../../reports/utils/pdf-yazdir'), 'PDF modülü');
-            if (bicim === 'pdf') await raporPdfIndir(html, ad, secenek);
-            else await raporPngIndir(html, ad, secenek);
+            // PDF A4 SAYFALARA BÖLÜNÜR: tek uzun sayfa ekranda sorun değil ama
+            // yazdırılınca kâğıda sığmıyordu. PNG bölünmez — tek görsel olarak
+            // paylaşılıyor, zaten kaydırarak okunuyor.
+            if (bicim === 'pdf') {
+                await raporPdfIndir(html, ad, { ...secenek, sayfaYuksekligi: BELGE_YUKSEKLIGI });
+            } else {
+                await raporPngIndir(html, ad, secenek);
+            }
         } catch (err) {
             console.error('Duyuru çıktısı:', err);
             toast.error('Çıktı üretilemedi');
@@ -500,7 +506,7 @@ function DuyuruOnizleme({ duyuru }) {
     }
 
     // A4 oranını koru: ölçeklenen çerçevenin kapladığı yükseklik.
-    const YUKSEKLIK = 1123;   // 96dpi'de A4 boyu
+    const YUKSEKLIK = BELGE_YUKSEKLIGI;
 
     return (
         <div className="flex min-w-0 flex-col gap-2">
