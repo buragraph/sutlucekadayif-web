@@ -66,7 +66,7 @@ function cerceveKur(html, genislik = GENISLIK) {
                 let fontCss = '';
                 try { fontCss = await fontCssUret(); } catch (e) { console.warn('[PDF] yazı tipi gömülemedi:', e.message); }
                 bel.head.insertAdjacentHTML('beforeend',
-                    `<style id="pdf-font">${fontCss}</style><style id="pdf-duzeltme">${DUZELTME_CSS}</style>`);
+                    `<style id="pdf-font">${fontCss}</style><style id="pdf-duzeltme">${duzeltmeCss(genislik)}</style>`);
                 cerceve.dataset.fontGomuldu = fontCss ? '1' : '0';
                 // Çerçeveyi içeriği kapsayacak kadar büyüt — çubuk hiç oluşmasın.
                 cerceve.style.height = `${Math.max(200, bel.documentElement.scrollHeight)}px`;
@@ -134,11 +134,14 @@ async function fontCssUret() {
  *
  * Ölçüldü: arkadaşın PDF'inde içerik 463px, doğrusunda 480px.
  */
-const DUZELTME_CSS = `
+// GENİŞLİK PARAMETRE: rapor kâğıdı 480px ama aynı boru hattı A4 belgeler için
+// de kullanılıyor (duyuru anteti, 794px). Sabit kalsaydı A4 belge de 480px'e
+// sıkışırdı — ölçüldü, "Belge genişliği 480px (beklenen 794px)" hatası buydu.
+const duzeltmeCss = (genislik) => `
     html { scrollbar-width: none !important; }
     html::-webkit-scrollbar { display: none !important; width: 0 !important; }
     body { display: block !important; overflow: hidden !important; }
-    .report { flex: 0 0 auto !important; width: ${GENISLIK}px !important; margin: 0 auto !important; }
+    .report { flex: 0 0 auto !important; width: ${genislik}px !important; margin: 0 auto !important; }
 
     /* Tek satır olması TASARIM GEREĞİ olan sabit etiketler satır kırmaya kapatılır.
        Bunlar şablonda sabit metinler (şube adı veya kullanıcı girdisi değil) ve
@@ -182,13 +185,16 @@ function dosyaAdiTemizle(ad) {
 }
 
 /**
- * HTML raporu PDF olarak indirir — yazdırma penceresi AÇILMAZ.
- * @param {string} html — /reports/preview çıktısı ya da bütçe çıktısı şablonu
- * @param {string} dosyaAdi — uzantısız ad (ör. "rapor-amasya-2026-06-23")
- * @returns {Promise<{yukseklik:number, boyut:number}>} doğrulama için
+ * HTML'i gizli çerçevede serip PNG'ye çevirir — PDF ve PNG çıktılarının ortak adımı.
+ *
+ * GENİŞLİK PARAMETRE: rapor kâğıdı 480px, ama aynı boru hattı A4 belgeler için
+ * de kullanılıyor (ör. duyuru antetli çıktısı, 794px = 96dpi'de A4 eni).
+ * Varsayılan değişmedi; rapor tarafı hiçbir şey fark etmiyor.
+ *
+ * @returns {Promise<{png:string, yukseklik:number, genislik:number, teshis:object}>}
  */
-export async function raporPdfIndir(html, dosyaAdi = 'rapor') {
-    const cerceve = await cerceveKur(html);
+async function gorseleCevir(html, genislik) {
+    const cerceve = await cerceveKur(html, genislik);
     try {
         const bel = cerceve.contentDocument;
         const yukseklik = yukseklikOlc(bel);
@@ -196,11 +202,11 @@ export async function raporPdfIndir(html, dosyaAdi = 'rapor') {
         // Çerçeve içeriği tam kapsamalı; kısa kalırsa görüntünün altı boş çıkar.
         cerceve.style.height = `${yukseklik}px`;
 
-        // Güvenlik ağı: rapor 480px'e oturmadıysa çizim de kayar — sessizce
-        // yanlış PDF üretmektense hata ver.
+        // Güvenlik ağı: kâğıt beklenen genişliğe oturmadıysa çizim de kayar —
+        // sessizce yanlış çıktı üretmektense hata ver.
         const rapor = bel.querySelector('.report');
-        if (rapor && Math.abs(rapor.offsetWidth - GENISLIK) > 1) {
-            throw new Error(`Rapor genişliği ${rapor.offsetWidth}px (beklenen ${GENISLIK}px) — PDF üretilmedi.`);
+        if (rapor && Math.abs(rapor.offsetWidth - genislik) > 1) {
+            throw new Error(`Belge genişliği ${rapor.offsetWidth}px (beklenen ${genislik}px) — çıktı üretilmedi.`);
         }
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
@@ -218,7 +224,7 @@ export async function raporPdfIndir(html, dosyaAdi = 'rapor') {
         const hedef = bel.querySelector('.report') || bel.body;
         const png = await domToPng(hedef, {
             scale: OLCEK,
-            width: GENISLIK,
+            width: genislik,
             height: yukseklik,
             backgroundColor: '#ffffff',
         });
@@ -239,25 +245,56 @@ export async function raporPdfIndir(html, dosyaAdi = 'rapor') {
         };
         console.info('[PDF teşhis]', teshis);
 
-        // Birim `pt`: jsPDF'in `px` birimi 1px = 1,333pt sayıyor (480px → 640pt),
-        // yani CSS pikseli değil. Dönüşümü kendimiz yapıyoruz: 96dpi'de
-        // 1px = 0,75pt → 480×1509px = 360×1131,75pt. Eski sunucu çıktısının
-        // MediaBox'ı da bu ölçekteydi (480×1506px = 360×1129,5pt).
-        const g = GENISLIK * PT;
-        const y = yukseklik * PT;
-        const pdf = new jsPDF({ unit: 'pt', format: [g, y], orientation: 'portrait', compress: true });
-        pdf.addImage(png, 'PNG', 0, 0, g, y, undefined, 'FAST');
-
-        pdf.setProperties({
-            title: dosyaAdiTemizle(dosyaAdi),
-            creator: `Sutluce Panel ${SURUM}`,
-            subject: JSON.stringify(teshis),
-        });
-
-        const ad = `${dosyaAdiTemizle(dosyaAdi)}.pdf`;
-        pdf.save(ad);
-        return { yukseklik, boyut: pdf.output('blob').size };
+        return { png, yukseklik, genislik, teshis, jsPDF };
     } finally {
         cerceveyiKaldir(cerceve);
     }
+}
+
+/**
+ * HTML belgeyi PDF olarak indirir — yazdırma penceresi AÇILMAZ.
+ * @param {string} html — /reports/preview çıktısı, bütçe ya da duyuru şablonu
+ * @param {string} dosyaAdi — uzantısız ad (ör. "rapor-amasya-2026-06-23")
+ * @param {{genislik?:number}} [secenek] — kâğıt eni (CSS px); varsayılan rapor kâğıdı
+ * @returns {Promise<{yukseklik:number, boyut:number}>} doğrulama için
+ */
+export async function raporPdfIndir(html, dosyaAdi = 'rapor', { genislik = GENISLIK } = {}) {
+    const { png, yukseklik, teshis, jsPDF } = await gorseleCevir(html, genislik);
+
+    // Birim `pt`: jsPDF'in `px` birimi 1px = 1,333pt sayıyor (480px → 640pt),
+    // yani CSS pikseli değil. Dönüşümü kendimiz yapıyoruz: 96dpi'de
+    // 1px = 0,75pt → 480×1509px = 360×1131,75pt. Eski sunucu çıktısının
+    // MediaBox'ı da bu ölçekteydi (480×1506px = 360×1129,5pt).
+    const g = genislik * PT;
+    const y = yukseklik * PT;
+    const pdf = new jsPDF({ unit: 'pt', format: [g, y], orientation: 'portrait', compress: true });
+    pdf.addImage(png, 'PNG', 0, 0, g, y, undefined, 'FAST');
+
+    pdf.setProperties({
+        title: dosyaAdiTemizle(dosyaAdi),
+        creator: `Sutluce Panel ${SURUM}`,
+        subject: JSON.stringify(teshis),
+    });
+
+    const ad = `${dosyaAdiTemizle(dosyaAdi)}.pdf`;
+    pdf.save(ad);
+    return { yukseklik, boyut: pdf.output('blob').size };
+}
+
+/**
+ * Aynı belgeyi PNG olarak indirir.
+ *
+ * NEDEN AYRI ÇIKTI: duyuru çoğu zaman WhatsApp grubuna düşüyor; orada PDF
+ * eklenti olarak açılıyor, PNG ise önizlemede okunuyor. Üretim yolu PDF ile
+ * birebir aynı (aynı çerçeve, aynı 2x ölçek), yalnızca sarmalama yok.
+ */
+export async function raporPngIndir(html, dosyaAdi = 'belge', { genislik = GENISLIK } = {}) {
+    const { png, yukseklik } = await gorseleCevir(html, genislik);
+    const a = document.createElement('a');
+    a.href = png;
+    a.download = `${dosyaAdiTemizle(dosyaAdi)}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    return { yukseklik };
 }

@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { toast } from 'sonner';
-import { Megaphone, Plus, Pencil, Trash2, Eye, EyeOff, Store, Check, ChevronsUpDown, Users } from 'lucide-react';
+import { Megaphone, Plus, Pencil, Trash2, Eye, EyeOff, Store, Check, ChevronsUpDown, Users, FileDown, ImageDown } from 'lucide-react';
 import api from '../../../services/api';
 import { useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,8 @@ import { Spinner } from '@/components/ui/spinner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
+import { duyuruBelgeHtml, duyuruDosyaAdi, BELGE_GENISLIGI } from '../utils/duyuru-belge';
+import { parcaYukle } from '../../../shared/utils/parca-yukle';
 
 /**
  * Duyurular — merkez yazar, şube sahibi kendi dashboard'unda görür.
@@ -271,11 +273,15 @@ export default function DuyurularPage() {
             </Dialog>
 
             <Dialog open={!!form} onOpenChange={(a) => !a && setForm(null)}>
-                <DialogContent className="max-w-lg [&>*]:min-w-0">
+                <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl [&>*]:min-w-0">
                     <DialogHeader>
                         <DialogTitle>{duzenlenen ? 'Duyuruyu Düzenle' : 'Yeni Duyuru'}</DialogTitle>
                     </DialogHeader>
 
+                    {/* Form solda, antetli belgenin ÖNİZLEMESİ sağda. Duyuru
+                        şubelere hem panelden hem PDF/PNG olarak gidiyor; nasıl
+                        görüneceğini indirmeden görmek gerekiyordu. */}
+                    <div className="grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
                     {form && (
                         <div className="flex flex-col gap-4">
                             <div className="flex flex-col gap-1.5">
@@ -408,6 +414,12 @@ export default function DuyurularPage() {
                         </div>
                     )}
 
+                    {/* Belgedeki tarih: duyuru yayına girecekse o gün, yoksa
+                        bugün. Düzenlemede de aynı mantık — çıktı "bu duyuru ne
+                        zaman geçerli" sorusunu cevaplamalı. */}
+                    {form && <DuyuruOnizleme duyuru={{ ...form, tarih: form.baslangic || undefined }} />}
+                    </div>
+
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setForm(null)}>İptal</Button>
                         <Button onClick={kaydet} disabled={kaydediliyor}>
@@ -416,6 +428,123 @@ export default function DuyurularPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+        </div>
+    );
+}
+
+/**
+ * Antetli belgenin canlı önizlemesi + tek tıkla PDF/PNG indirme.
+ *
+ * IFRAME + SRCDOC: belge kendi CSS'iyle yaşasın (panelin Tailwind'i sızmasın)
+ * ve yazarın metni panele `innerHTML` olarak basılmasın. Çerçeve A4 eninde
+ * (794px) kurulur, sonra kaba sığdırma için `transform: scale` ile küçültülür —
+ * genişliği daraltmak yerine ölçekliyoruz ki önizleme, çıktının BİREBİR küçük
+ * hâli olsun; satır sonları kaymasın.
+ *
+ * İNDİRME AYNI DİZEYİ KULLANIR (bkz. utils/duyuru-belge.js): ekranda görünen
+ * ile inen dosya aynı HTML'den üretiliyor.
+ */
+function DuyuruOnizleme({ duyuru }) {
+    const [indiriliyor, setIndiriliyor] = useState(null);   // 'pdf' | 'png' | null
+    const sarmalRef = useRef(null);
+    const cerceveRef = useRef(null);
+    const [olcek, setOlcek] = useState(1);
+
+    const html = useMemo(() => duyuruBelgeHtml(duyuru), [duyuru]);
+
+    // BELGE ÇERÇEVEYE ELLE YAZILIYOR, `srcDoc` İLE DEĞİL: srcdoc ilk
+    // gezinmeden sonra güncellenince Chrome çerçeveyi güvenilir biçimde
+    // yeniden yüklemiyor — ölçüldü, başlık değişikliği geçiyor ama sonraki
+    // gövde değişiklikleri ekrana hiç gelmiyordu (srcdoc doğru, DOM eski).
+    // Aynı nedenle her tuşta yazmamak için küçük bir gecikme var.
+    useEffect(() => {
+        const zaman = setTimeout(() => {
+            const bel = cerceveRef.current?.contentDocument;
+            if (!bel) return;
+            bel.open();
+            bel.write(html);
+            bel.close();
+        }, 200);
+        return () => clearTimeout(zaman);
+    }, [html]);
+
+    // Kullanılabilir genişliğe göre ölçek. ResizeObserver: pencere boyutu ve
+    // düzen (lg kırılımı) değişince önizleme de küçülüp büyüsün.
+    useEffect(() => {
+        const el = sarmalRef.current;
+        if (!el) return;
+        const guncelle = () => setOlcek(Math.min(1, el.clientWidth / BELGE_GENISLIGI));
+        guncelle();
+        const ro = new ResizeObserver(guncelle);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
+    async function indir(bicim) {
+        setIndiriliyor(bicim);
+        try {
+            const ad = duyuruDosyaAdi(duyuru);
+            const secenek = { genislik: BELGE_GENISLIGI };
+            // PDF modülü jspdf + modern-screenshot çekiyor; ana pakete girmesin.
+            // parcaYukle: yeni sürüm yayınlanınca eski sekmenin istediği hash'li
+            // parça sunucudan kalkıyor (bkz. shared/utils/parca-yukle.js).
+            const { raporPdfIndir, raporPngIndir } = await parcaYukle(
+                () => import('../../reports/utils/pdf-yazdir'), 'PDF modülü');
+            if (bicim === 'pdf') await raporPdfIndir(html, ad, secenek);
+            else await raporPngIndir(html, ad, secenek);
+        } catch (err) {
+            console.error('Duyuru çıktısı:', err);
+            toast.error('Çıktı üretilemedi');
+        }
+        setIndiriliyor(null);
+    }
+
+    // A4 oranını koru: ölçeklenen çerçevenin kapladığı yükseklik.
+    const YUKSEKLIK = 1123;   // 96dpi'de A4 boyu
+
+    return (
+        <div className="flex min-w-0 flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Önizleme</Label>
+                <div className="flex gap-2">
+                    <Button size="sm" variant="outline" disabled={!!indiriliyor}
+                            onClick={() => indir('pdf')}>
+                        <FileDown className="size-3.5" />
+                        {indiriliyor === 'pdf' ? 'Hazırlanıyor…' : 'PDF'}
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={!!indiriliyor}
+                            onClick={() => indir('png')}>
+                        <ImageDown className="size-3.5" />
+                        {indiriliyor === 'png' ? 'Hazırlanıyor…' : 'PNG'}
+                    </Button>
+                </div>
+            </div>
+
+            <div ref={sarmalRef} className="overflow-hidden rounded-lg border bg-muted/30">
+                <div style={{ height: YUKSEKLIK * olcek }}>
+                    <iframe
+                        ref={cerceveRef}
+                        title="Duyuru önizleme"
+                        // `allow-same-origin` VAR ama `allow-scripts` YOK: ikisi
+                        // birlikte verilseydi sanal alanın anlamı kalmazdı. Tek
+                        // başına same-origin iki şeyi açıyor — antet görselinin
+                        // yüklenmesi ve belgeyi buradan YAZABİLMEK; script yine
+                        // çalışmıyor, yani yazarın metnine gömülü etiket etkisiz.
+                        sandbox="allow-same-origin"
+                        scrolling="no"
+                        style={{
+                            width: BELGE_GENISLIGI,
+                            height: YUKSEKLIK,
+                            border: 0,
+                            transform: `scale(${olcek})`,
+                            transformOrigin: 'top left',
+                        }}
+                    />
+                </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+                Çıktı A4 enindedir; PDF ve PNG bu görüntünün birebir aynısıdır.
+            </p>
         </div>
     );
 }
