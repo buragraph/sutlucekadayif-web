@@ -90,8 +90,32 @@ const iller = Object.keys(ilIlceData).sort((a, b) => a.localeCompare(b, 'tr'));
         Başvuruyu Gönder
       </button>
 
+      <!-- HATA mesajı formun içinde kalıyor: kişi neyi düzelteceğini görmeli,
+           alanlar gözünün önünde dursun. -->
       <p id="form-durum" class="mt-4 hidden text-center text-sm"></p>
     </form>
+
+    <!-- BAŞARI EKRANI FORMUN YERİNE GEÇER: gönderim bittiğinde formun altında
+         tek satırlık bir yazı kalıyordu, sayfanın dibinde gözden kaçıyor ve
+         boşalmış form "gitmedi mi?" izlenimi veriyordu. Artık form gizlenip
+         yerine aynı boyutta bir onay kutusu geliyor. -->
+    <div id="form-basarili" class="hidden rounded-3xl border border-brand/20 bg-white/70 p-10 text-center md:p-14">
+      <div class="mx-auto flex size-16 items-center justify-center rounded-full bg-brand/10">
+        <svg class="size-8 text-brand" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+      </div>
+      <h2 class="mt-6 font-serif text-2xl text-ink md:text-3xl">Başvurunuz alındı</h2>
+      <p class="mx-auto mt-3 max-w-md text-ink/70">
+        Teşekkürler! Başvurunuzu aldık. Ekibimiz en kısa sürede sizinle
+        iletişime geçecek.
+      </p>
+      <button type="button" id="yeni-basvuru"
+        class="mt-8 rounded-full border border-ink/15 px-6 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-ink/5">
+        Yeni başvuru gönder
+      </button>
+    </div>
   </section>
 </Layout>
 
@@ -155,6 +179,13 @@ const iller = Object.keys(ilIlceData).sort((a, b) => a.localeCompare(b, 'tr'));
   })();
   const durum = document.getElementById('form-durum');
   const buton = form?.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+  const basariKutusu = document.getElementById('form-basarili');
+
+  document.getElementById('yeni-basvuru')?.addEventListener('click', () => {
+    basariKutusu?.classList.add('hidden');
+    form?.classList.remove('hidden');
+    form?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 
   function mesajGoster(metin: string, tur: 'basari' | 'hata') {
     if (!durum) return;
@@ -196,7 +227,18 @@ const iller = Object.keys(ilIlceData).sort((a, b) => a.localeCompare(b, 'tr'));
       });
       if (!res.ok) throw new Error('Başvuru gönderilemedi');
       form.reset();
-      mesajGoster('Teşekkürler! Başvurunuz alındı, en kısa sürede sizinle iletişime geçeceğiz. 💚', 'basari');
+      // İlçe listesi il'e bağlı; sıfırlanınca seçenekler de başa dönmeli.
+      if (ilceSecim) {
+        ilceSecim.innerHTML = '<option value="">Önce il seçin</option>';
+        ilceSecim.disabled = true;
+      }
+      durum?.classList.add('hidden');
+      form.classList.add('hidden');
+      basariKutusu?.classList.remove('hidden');
+      // Onay kutusu ekranın dışında kalabilir (uzun form, aşağı kaydırılmış
+      // sayfa) — görünür alana getiriliyor.
+      basariKutusu?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
     } catch (err) {
       mesajGoster('Bir sorun oluştu, lütfen daha sonra tekrar deneyin veya bizimle iletişime geçin.', 'hata');
     } finally {

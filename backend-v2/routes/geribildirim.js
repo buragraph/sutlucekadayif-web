@@ -264,6 +264,32 @@ router.patch(
         if (req.body.not !== undefined) {
             guncelleme.admin_notu = temizle(req.body.not, LIMITLER.mesaj);
         }
+        // ŞUBE ATAMASI YALNIZCA MERKEZ. Dış kaynaklı (Şikayetvar) şikayetler
+        // masaya elle ekleniyor ve şubesi o an bilinmeyebiliyor; şubesi boş
+        // kalan kayıt HİÇBİR şube sahibine görünmüyor (liste sorgusu
+        // `sube_slug` eşitliğiyle süzüyor, null eşleşmez). Sonradan atama yolu
+        // olmadığı için o kayıtlar ilgili şubeye hiç ulaşamıyordu.
+        //
+        // Şube sahibine kapalı: kendi hakkındaki şikayeti başka şubenin üstüne
+        // atabilirdi.
+        if (req.body.subeSlug !== undefined) {
+            if (req.user.role !== 'admin') {
+                return res.status(403).json({ error: 'Şube ataması yalnızca merkez tarafından yapılabilir.' });
+            }
+            const slug = temizle(req.body.subeSlug, 60);
+            if (!slug) {
+                guncelleme.sube_slug = null;
+                guncelleme.sube_ad = null;
+            } else {
+                const { data: sube } = await supabase
+                    .from('subeler').select('kod, ad').eq('kod', slug).maybeSingle();
+                if (!sube) return res.status(404).json({ error: 'Şube bulunamadı.' });
+                guncelleme.sube_slug = sube.kod;
+                // Şube adı kayda da yazılıyor (eski API şekli) — sonradan şube
+                // adı değişirse kayıt o günkü adı korusun.
+                guncelleme.sube_ad = sube.ad;
+            }
+        }
         if (Object.keys(guncelleme).length === 0) {
             return res.status(400).json({ error: 'Güncellenecek alan yok.' });
         }

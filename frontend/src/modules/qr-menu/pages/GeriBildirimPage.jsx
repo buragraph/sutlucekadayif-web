@@ -121,6 +121,7 @@ export default function GeriBildirimPage() {
     const [saving, setSaving] = useState(false);
     const [ekleAcik, setEkleAcik] = useState(false);
     const [subeEkleAcik, setSubeEkleAcik] = useState(false);
+    const [subeler, setSubeler] = useState([]);
 
     const isAdmin = role === 'admin';
     const silebilir = can('geribildirim.delete');
@@ -139,6 +140,13 @@ export default function GeriBildirimPage() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => { load(); }, [tip]);
+    // Şube listesi yalnızca merkeze gerekli: kaydın şubesini değiştirebilen o.
+    useEffect(() => {
+        if (!isAdmin) return;
+        api.get('/menu/subeler')
+            .then(({ data }) => setSubeler(data.subeler || []))
+            .catch(() => setSubeler([]));
+    }, [isAdmin]);
     // Süzgeç ya da arama değişince 7. sayfada boş liste görünmesin.
     useEffect(() => { setSayfa(1); }, [arama, filtre, kaynakFiltre, tip]);
 
@@ -177,6 +185,26 @@ export default function GeriBildirimPage() {
             toast.error('Durum güncellenemedi');
             setBildirimler(onceki);
             setSayac(hesaplaSayac(onceki));
+        }
+    }
+
+    // Dış kaynaklı şikayetler masaya elle ekleniyor ve şubesi o an
+    // bilinmeyebiliyor. Şubesi boş kayıt HİÇBİR şube sahibine görünmüyor
+    // (liste `sube_slug` eşitliğiyle süzülüyor); atama yolu olmadan o kayıt
+    // ilgili şubeye hiç ulaşamıyordu.
+    async function subeAta(id, slug) {
+        const onceki = bildirimler;
+        const sube = subeler.find((x) => x.slug === slug);
+        const yenile = (b) => ({ ...b, subeSlug: slug || null, subeAd: sube?.ad || null });
+        setBildirimler(bildirimler.map((b) => (b.id === id ? yenile(b) : b)));
+        setSecili((x) => (x && x.id === id ? yenile(x) : x));
+        try {
+            await api.patch(`/geribildirim/${id}`, { subeSlug: slug || '' });
+            toast.success(sube ? `${sube.ad} şubesine atandı` : 'Şube ataması kaldırıldı');
+        } catch (err) {
+            console.error(err);
+            toast.error(err.response?.data?.error || 'Şube atanamadı');
+            setBildirimler(onceki);
         }
     }
 
@@ -652,6 +680,28 @@ export default function GeriBildirimPage() {
                                     <p className="mb-1 text-xs font-medium text-muted-foreground">Müşterinin mesajı</p>
                                     <p className="whitespace-pre-wrap">{secili.mesaj}</p>
                                 </div>
+
+                                {/* ŞUBE ATAMASI — yalnızca merkez. Şikayetvar
+                                    kayıtlarının bir kısmı şubesiz ekleniyor ve
+                                    şubesiz kayıt hiçbir şube sahibine düşmüyor. */}
+                                {isAdmin && !subeSekmesi && (
+                                    <div>
+                                        <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                                            Şube
+                                            {!secili.subeSlug && (
+                                                <span className="ml-1.5 font-normal text-amber-600 dark:text-amber-500">
+                                                    — atanmadı, şube sahibi bu şikayeti görmüyor
+                                                </span>
+                                            )}
+                                        </label>
+                                        <SubeSecici
+                                            subeler={subeler}
+                                            deger={secili.subeSlug || ''}
+                                            yerTutucu="Şube seçin"
+                                            onSec={(slug) => subeAta(secili.id, slug)}
+                                        />
+                                    </div>
+                                )}
 
                                 <div>
                                     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Durum</label>
