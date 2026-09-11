@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FileText, Download, ExternalLink, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileText, ExternalLink, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { proxyR2Url } from '../../../utils/imageProxy';
 import { parcaYukle } from '../../../shared/utils/parca-yukle';
 import { Spinner } from '@/components/ui/spinner';
@@ -117,21 +117,10 @@ export default function PdfViewer({ url, title, onSayfa }) {
                         PDF Doküman{toplam > 0 ? ` · ${toplam} sayfa` : ''}
                     </div>
                 </div>
-                <a
-                    href={proxied}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-lg border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-                >
-                    <ExternalLink className="size-3.5" /> Yeni Sekme
-                </a>
-                <a
-                    href={proxied}
-                    download
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#084529] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#063a22]"
-                >
-                    <Download className="size-3.5" /> İndir
-                </a>
+                {/* "Yeni Sekme" ve "İndir" KALDIRILDI: eğitim dokümanı panelde
+                    okunsun diye duruyor — dışarı çıkarılıp paylaşılması istenmiyor.
+                    Aşağıdaki hata durumundaki "yeni sekmede aç" bağlantısı KALDI:
+                    belge burada çizilemediğinde tek çıkış yolu o. */}
             </div>
 
             {/* Gövde */}
