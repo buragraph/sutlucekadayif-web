@@ -99,11 +99,14 @@ export default function BolgeKarti({ subeSlug, dikey = false }) {
                         </div>
                     )}
 
-                    {/* Kaynak EKRANDA: şube sahibi "bu sayı nereden geliyor"
-                        diye sormasın, tahmin sanmasın. */}
+                    {/* KAYNAK EKRANDA VE DOĞRU: şube sahibi "bu sayı nereden
+                        geliyor" diye sormasın, tahmin sanmasın. Nüfus resmî TÜİK
+                        yayınından DEĞİL, açık veri derlemesinden geliyor (bkz.
+                        migration 0038) — "TÜİK" yazmak doğrulanmamış bir iddia
+                        olurdu. Resmî ADNKS tablosu geldiğinde bu satır düzelecek. */}
                     <p className="mt-auto text-[11px] leading-snug text-muted-foreground">
-                        Sanayi ve Teknoloji Bakanlığı, İlçe SEGE-{d.kaynak_yili}
-                        {yasVar ? ' · TÜİK ilçe nüfusu' : ''}
+                        Sosyo-ekonomik sıra: Sanayi ve Teknoloji Bakanlığı, İlçe SEGE-{d.kaynak_yili}
+                        {yasVar ? <><br />Nüfus: açık veri derlemesi</> : null}
                     </p>
                 </CardContent>
             </Card>

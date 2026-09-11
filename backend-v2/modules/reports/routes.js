@@ -485,29 +485,39 @@ router.get('/sube/:kod/ozet-kartlar', verifyToken, requirePermission('reports.vi
     const { kod } = req.params;
     if (!ensureBranchAccess(req, res, kod)) return;
 
+    // İKİ DÖNEM ÇEKİLİYOR: kartta "geçen döneme göre" değişim gösteriliyor.
+    // Tek başına "3.195 görüntülenme" iyi mi kötü mü belli değil; şube o sayıyı
+    // ancak bir öncekiyle kıyaslayınca okuyabiliyor.
     const bugun = new Date().toISOString().slice(0, 10);
-    const { data, error } = await supabase
+    const { data: satirlar, error } = await supabase
       .from('donemler')
       .select('baslangic, bitis, erisim, gosterim, tiklama, google_yol_tarifi, google_harita, google_arama, google_menu_tiklama, harcama')
       .eq('sube_kod', kod)
       .lt('bitis', bugun)
       .order('bitis', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(2);
     if (error) throw new Error(error.message);
+    const data = satirlar?.[0];
     if (!data) return res.json({ donem: null, kartlar: null });
+    const onceki = satirlar[1] || null;
 
     const sayi = (v) => (v == null ? null : Number(v));
+    const kartlar = (d) => (d ? {
+      erisim: sayi(d.erisim),
+      gosterim: sayi(d.gosterim),
+      yolTarifi: sayi(d.google_yol_tarifi),
+      haritaGoruntulenme: sayi(d.google_harita),
+      googleMenuTiklama: sayi(d.google_menu_tiklama),
+      harcama: sayi(d.harcama),
+    } : null);
+
     res.json({
       donem: { baslangic: data.baslangic, bitis: data.bitis },
-      kartlar: {
-        erisim: sayi(data.erisim),
-        gosterim: sayi(data.gosterim),
-        yolTarifi: sayi(data.google_yol_tarifi),
-        haritaGoruntulenme: sayi(data.google_harita),
-        googleMenuTiklama: sayi(data.google_menu_tiklama),
-        harcama: sayi(data.harcama),
-      },
+      kartlar: kartlar(data),
+      // Önceki dönem yoksa (şubenin ilk dönemi) null döner; ekran değişim
+      // rozetini o zaman hiç çizmiyor.
+      oncekiDonem: onceki ? { baslangic: onceki.baslangic, bitis: onceki.bitis } : null,
+      oncekiKartlar: kartlar(onceki),
     });
   } catch (err) {
     console.error('[Reports]', err);
