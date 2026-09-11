@@ -11,6 +11,28 @@ const router = Router();
 const KATEGORILER = ['urun_kalitesi', 'servis', 'temizlik', 'fiyat', 'diger'];
 const DURUMLAR = ['yeni', 'inceleniyor', 'cozuldu', 'kapatildi'];
 
+// ─────────────── Şube → merkez şikayetleri ───────────────
+//
+// AYNI TABLO, TEK AYRAÇ: `tip`. İki kayıt türü de şube, konu, durum akışı,
+// dahili not ve mesaj geçmişi istiyor; ayrı tablo bu altyapıyı ikizlerdi
+// (bkz. migration 0037).
+//
+// YÖN FARKI kuralları belirliyor: müşteri şikayeti şube HAKKINDA (dışarıdan
+// gelir, şube de üstünde çalışır), şube şikayeti şubeDEN merkeze (şube açar,
+// yalnızca merkez ilerletir).
+const TIPLER = ['musteri', 'sube'];
+
+// "cozuldu" yerine "donut_saglandi": merkez cevap verdi ama iş bitmemiş
+// olabilir; bitiş ayrı adım (kapatildi).
+const SUBE_DURUMLAR = ['yeni', 'inceleniyor', 'donut_saglandi', 'kapatildi'];
+
+// Müşteri kategorileri (temizlik, servis) şube→merkez akışına uymuyor.
+const SUBE_KATEGORILER = [
+    'tedarik', 'urun_kalitesi', 'fiyat_listesi', 'sistem', 'egitim', 'muhasebe', 'diger',
+];
+
+const durumListesi = (tip) => (tip === 'sube' ? SUBE_DURUMLAR : DURUMLAR);
+
 const LIMITLER = { ad: 80, soyad: 80, email: 120, telefon: 30, mesaj: 3000, olayTarihi: 30 };
 
 const KAYNAKLAR = ['qr', 'sikayetvar', 'elle'];
@@ -49,6 +71,7 @@ async function gecmiseYaz(req, bildirimId, kayit) {
 /** Satır → eski API şekli */
 const yanit = (b) => temizNull({
     id: b.id,
+    tip: b.tip || 'musteri',
     subeSlug: b.sube_slug, subeAd: b.sube_ad, kategori: b.kategori,
     ad: b.ad, soyad: b.soyad, email: b.email, telefon: b.telefon,
     mesaj: b.mesaj, olayTarihi: b.olay_tarihi, kvkkOnay: b.kvkk_onay,
@@ -178,10 +201,16 @@ router.get(
         // `.limit(5000)` YETMİYORDU: PostgREST'in satır tavanı 1000 ve fazlasını
         // SESSİZCE kırpıyor — kayıt sayısı bini geçtiği gün hata da uyarı da
         // olmadan şikayetler listeden düşerdi. tumSatirlar sayfa sayfa çekiyor.
+        // TİP SÜZGECİ: ekran iki sekme (müşteri / şube), her sekme kendi
+        // kayıtlarını istiyor. Varsayılan 'musteri' — parametresiz eski
+        // çağrılar aynı listeyi görmeye devam etsin.
+        const tip = TIPLER.includes(req.query?.tip) ? req.query.tip : 'musteri';
+
         const satirlar = await tumSatirlar(
             () => {
-                const s = supabase.from('geri_bildirimler').select('*');
-                return req.user.role === 'admin' ? s : s.eq('sube_slug', req.user.subeSlug);
+                let s = supabase.from('geri_bildirimler').select('*').eq('tip', tip);
+                if (req.user.role !== 'admin') s = s.eq('sube_slug', req.user.subeSlug);
+                return s;
             },
             { sirala: 'id', baglam: 'geri bildirimler' }
         );
@@ -190,12 +219,12 @@ router.get(
         satirlar.sort((a, b) => String(b.olusturma || '').localeCompare(String(a.olusturma || '')));
         const bildirimler = satirlar.map(yanit);
 
-        const sayac = DURUMLAR.reduce((acc, d) => ({ ...acc, [d]: 0 }), {});
+        const sayac = durumListesi(tip).reduce((acc, d) => ({ ...acc, [d]: 0 }), {});
         for (const b of bildirimler) {
             if (b.durum in sayac) sayac[b.durum] += 1;
         }
 
-        res.json({ bildirimler, sayac, toplam: bildirimler.length });
+        res.json({ tip, bildirimler, sayac, toplam: bildirimler.length });
     })
 );
 
@@ -209,7 +238,7 @@ router.patch(
     requirePermission('geribildirim.manage'),
     asyncHandler(async (req, res) => {
         const { data: mevcut } = await supabase
-            .from('geri_bildirimler').select('id, sube_slug, durum').eq('id', req.params.id).maybeSingle();
+            .from('geri_bildirimler').select('id, sube_slug, durum, tip').eq('id', req.params.id).maybeSingle();
         if (!mevcut) {
             return res.status(404).json({ error: 'Kayıt bulunamadı.' });
         }
@@ -218,9 +247,16 @@ router.patch(
             return res.status(403).json({ error: 'Bu kayıt sizin şubenize ait değil.' });
         }
 
+        const kayitTipi = mevcut.tip || 'musteri';
         const guncelleme = {};
         if (req.body.durum !== undefined) {
-            if (!DURUMLAR.includes(req.body.durum)) {
+            // ŞUBE ŞİKAYETİNİ YALNIZCA MERKEZ İLERLETİR. Aksi hâlde şube kendi
+            // talebini "dönüt sağlandı" işaretleyebilir ve merkezin gelen
+            // kutusundan düşürebilirdi — akışın anlamı kalmazdı.
+            if (kayitTipi === 'sube' && req.user.role !== 'admin') {
+                return res.status(403).json({ error: 'Şube şikayetinin durumunu yalnızca merkez değiştirebilir.' });
+            }
+            if (!durumListesi(kayitTipi).includes(req.body.durum)) {
                 return res.status(400).json({ error: 'Geçersiz durum.' });
             }
             guncelleme.durum = req.body.durum;
@@ -302,24 +338,33 @@ router.post(
     requirePermission('geribildirim.manage'),
     asyncHandler(async (req, res) => {
         const tur = temizle(req.body?.tur, 20);
-        if (!['not', 'musteri'].includes(tur)) {
-            return res.status(400).json({ error: 'Geçersiz mesaj türü.' });
-        }
         const metin = temizle(req.body?.metin, LIMITLER.mesaj);
         if (!metin) return res.status(400).json({ error: 'Mesaj boş olamaz.' });
 
         const { data: kayit } = await supabase.from('geri_bildirimler')
-            .select('id, sube_slug, ilk_yanit').eq('id', req.params.id).maybeSingle();
+            .select('id, sube_slug, ilk_yanit, tip').eq('id', req.params.id).maybeSingle();
         if (!kayit) return res.status(404).json({ error: 'Kayıt bulunamadı.' });
         if (req.user.role !== 'admin' && kayit.sube_slug !== req.user.subeSlug) {
             return res.status(403).json({ error: 'Bu kayıt sizin şubenize ait değil.' });
         }
 
+        // DIŞ DÖNÜŞÜN ADI TİPE GÖRE: müşteri şikayetinde 'musteri' (müşteriyi
+        // aradık), şube şikayetinde 'donut' (merkez şubeye cevap verdi).
+        // Geçmiş satırı ekranda bu ada göre etiketleniyor, karıştırılmamalı.
+        const disDonus = kayit.tip === 'sube' ? 'donut' : 'musteri';
+        if (!['not', disDonus].includes(tur)) {
+            return res.status(400).json({ error: 'Geçersiz mesaj türü.' });
+        }
+        // Merkezin dönüşünü şube kendi adına yazamaz; dahili not serbest.
+        if (tur === 'donut' && req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Merkez dönüşünü yalnızca merkez yazabilir.' });
+        }
+
         await gecmiseYaz(req, req.params.id, { tur, metin });
 
-        // İlk MÜŞTERİ dönüşü SLA ölçüsü; dahili not saati durdurmaz.
+        // İlk DIŞ dönüş SLA ölçüsü; dahili not saati durdurmaz.
         const guncelleme = { guncelleme: new Date().toISOString() };
-        if (tur === 'musteri' && !kayit.ilk_yanit) guncelleme.ilk_yanit = guncelleme.guncelleme;
+        if (tur === disDonus && !kayit.ilk_yanit) guncelleme.ilk_yanit = guncelleme.guncelleme;
         veriYaDaHata(
             await supabase.from('geri_bildirimler').update(guncelleme).eq('id', req.params.id),
             'kayıt güncellenemedi'
@@ -389,6 +434,70 @@ router.post(
             }
             throw new Error(error.message);
         }
+
+        res.status(201).json({ success: true, id });
+    })
+);
+
+/**
+ * POST /api/geribildirim/sube
+ * Şubeden MERKEZE şikayet/talep. Aynı tabloya `tip='sube'` ile yazar.
+ *
+ * ŞUBE TOKEN'DAN GELİR: gövdedeki `subeSlug` yalnızca admin için anlamlı
+ * (merkez bir şube adına kayıt açabilsin). Şube sahibinde her zaman kendi
+ * şubesi kullanılır — başka şube adına talep açılamaz.
+ *
+ * KİŞİ ALANLARI YOK: gönderen zaten kimliği doğrulanmış kullanıcı; adı ve
+ * e-postası mesaj geçmişinden (geri_bildirim_mesajlari.kullanici_eposta) ve
+ * şube kaydından okunuyor. Müşteri şikayetindeki ad/telefon/KVKK alanlarını
+ * burada doldurmak yanıltıcı olurdu.
+ *
+ * TAKİP KODU YOK: kodun tek amacı kimliksiz müşterinin durum sorgulaması;
+ * şube zaten panelden kendi kaydını görüyor.
+ */
+router.post(
+    '/sube',
+    verifyToken,
+    requirePermission('subeSikayet.create'),
+    asyncHandler(async (req, res) => {
+        const subeSlug = req.user.role === 'admin'
+            ? temizle(req.body?.subeSlug, 60)
+            : req.user.subeSlug;
+        if (!subeSlug) {
+            return res.status(400).json({ error: 'Şube belirtilmedi.' });
+        }
+
+        const kategori = temizle(req.body?.kategori, 40);
+        if (!SUBE_KATEGORILER.includes(kategori)) {
+            return res.status(400).json({ error: 'Geçersiz konu.' });
+        }
+        const mesaj = temizle(req.body?.mesaj, LIMITLER.mesaj);
+        if (!mesaj) return res.status(400).json({ error: 'Şikayet metni zorunlu.' });
+
+        const { data: sube } = await supabase
+            .from('subeler').select('ad').eq('kod', subeSlug).maybeSingle();
+        if (!sube) return res.status(404).json({ error: 'Şube bulunamadı.' });
+
+        const id = yeniId();
+        veriYaDaHata(
+            await supabase.from('geri_bildirimler').insert({
+                id,
+                tip: 'sube',
+                sube_slug: subeSlug,
+                sube_ad: sube.ad,
+                kategori,
+                // Gönderen, kaydı açan panel kullanıcısı.
+                ad: temizle(req.body?.ad, LIMITLER.ad) || null,
+                email: req.user.email || null,
+                mesaj,
+                kvkk_onay: false,
+                durum: 'yeni',
+                admin_notu: '',
+                kaynak: 'elle',
+                olusturma: new Date().toISOString(),
+            }),
+            'şube şikayeti kaydedilemedi'
+        );
 
         res.status(201).json({ success: true, id });
     })

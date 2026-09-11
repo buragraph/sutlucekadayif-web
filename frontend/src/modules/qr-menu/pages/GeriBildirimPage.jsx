@@ -15,24 +15,55 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import SubeSecici from '../components/SubeSecici';
 
 // Backend'deki DURUMLAR / KATEGORILER ile birebir (routes/geribildirim.js)
-const DURUM = {
-    yeni: { label: 'Yeni', cls: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300' },
-    inceleniyor: { label: 'İnceleniyor', cls: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300' },
-    cozuldu: { label: 'Çözüldü', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300' },
-    kapatildi: { label: 'Kapatıldı', cls: 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300' },
+//
+// MASA İKİ YÖNLÜ: 'musteri' = şube HAKKINDA dışarıdan gelen şikayet,
+// 'sube' = şubeDEN merkeze iletilen şikayet/talep. Yön farklı olduğu için
+// durum ve konu listeleri de farklı; ikisi de tip'e göre seçiliyor.
+const YENI_RENK = 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300';
+const INCELEME_RENK = 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300';
+const BITTI_RENK = 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300';
+const KAPALI_RENK = 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300';
+
+const DURUMLAR = {
+    musteri: {
+        yeni: { label: 'Yeni', cls: YENI_RENK },
+        inceleniyor: { label: 'İnceleniyor', cls: INCELEME_RENK },
+        cozuldu: { label: 'Çözüldü', cls: BITTI_RENK },
+        kapatildi: { label: 'Kapatıldı', cls: KAPALI_RENK },
+    },
+    sube: {
+        yeni: { label: 'Yeni', cls: YENI_RENK },
+        inceleniyor: { label: 'Merkez inceliyor', cls: INCELEME_RENK },
+        // "Çözüldü" değil: merkez cevap verdi ama iş bitmemiş olabilir,
+        // bitiş ayrı adım.
+        donut_saglandi: { label: 'Dönüt sağlandı', cls: BITTI_RENK },
+        kapatildi: { label: 'Kapatıldı', cls: KAPALI_RENK },
+    },
 };
-const DURUM_KEYS = Object.keys(DURUM);
 // Kapanmamış kayıtlar — yaşlanma yalnızca bunlarda anlamlı.
 const ACIK_DURUMLAR = ['yeni', 'inceleniyor'];
 
-const KATEGORI = {
-    urun_kalitesi: 'Ürün kalitesi',
-    servis: 'Servis / ilgi',
-    temizlik: 'Temizlik / hijyen',
-    fiyat: 'Fiyat / ödeme',
-    diger: 'Diğer',
+const KATEGORILER = {
+    musteri: {
+        urun_kalitesi: 'Ürün kalitesi',
+        servis: 'Servis / ilgi',
+        temizlik: 'Temizlik / hijyen',
+        fiyat: 'Fiyat / ödeme',
+        diger: 'Diğer',
+    },
+    // Müşteri konuları (temizlik, servis) şube→merkez akışına uymuyor.
+    sube: {
+        tedarik: 'Tedarik / sevkiyat',
+        urun_kalitesi: 'Ürün kalitesi',
+        fiyat_listesi: 'Fiyat listesi',
+        sistem: 'Panel / sistem',
+        egitim: 'Eğitim',
+        muhasebe: 'Muhasebe / ödeme',
+        diger: 'Diğer',
+    },
 };
 
 /**
@@ -77,6 +108,7 @@ export default function GeriBildirimPage() {
     const [bildirimler, setBildirimler] = useState([]);
     const [sayac, setSayac] = useState({});
     const [loading, setLoading] = useState(true);
+    const [tip, setTip] = useState('musteri');       // musteri | sube
     const [filtre, setFiltre] = useState('hepsi');   // hepsi | <durum> | geciken
     const [kaynakFiltre, setKaynakFiltre] = useState('hepsi');
     const [arama, setArama] = useState('');
@@ -88,20 +120,32 @@ export default function GeriBildirimPage() {
     const [mesaj, setMesaj] = useState('');
     const [saving, setSaving] = useState(false);
     const [ekleAcik, setEkleAcik] = useState(false);
+    const [subeEkleAcik, setSubeEkleAcik] = useState(false);
 
     const isAdmin = role === 'admin';
     const silebilir = can('geribildirim.delete');
     const ekleyebilir = can('geribildirim.create');
+    const subeSikayetiAcabilir = can('subeSikayet.create');
+
+    const subeSekmesi = tip === 'sube';
+    const DURUM = DURUMLAR[tip];
+    const DURUM_KEYS = Object.keys(DURUM);
+    const KATEGORI = KATEGORILER[tip];
+    // Şube şikayetinde dış dönüş MERKEZDEN ŞUBEYE; müşteri şikayetinde
+    // müşteriye. Sunucu da bu ayrımı yapıyor (routes/geribildirim.js).
+    const disDonusTuru = subeSekmesi ? 'donut' : 'musteri';
+    // Şube kendi talebinin durumunu ilerletemez — o merkezin işi.
+    const durumDegistirebilir = !subeSekmesi || isAdmin;
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    useEffect(() => { load(); }, []);
+    useEffect(() => { load(); }, [tip]);
     // Süzgeç ya da arama değişince 7. sayfada boş liste görünmesin.
-    useEffect(() => { setSayfa(1); }, [arama, filtre, kaynakFiltre]);
+    useEffect(() => { setSayfa(1); }, [arama, filtre, kaynakFiltre, tip]);
 
     async function load() {
         setLoading(true);
         try {
-            const { data } = await api.get('/geribildirim');
+            const { data } = await api.get('/geribildirim', { params: { tip } });
             setBildirimler(data.bildirimler || []);
             setSayac(data.sayac || {});
         } catch (err) {
@@ -156,7 +200,7 @@ export default function GeriBildirimPage() {
             setMesaj('');
             await gecmisYukle(secili.id);
             // İlk müşteri dönüşü SLA saatini durdurur; listedeki rozet hemen düzelsin.
-            if (mesajTur === 'musteri') {
+            if (mesajTur === disDonusTuru) {
                 const damga = new Date().toISOString();
                 setBildirimler((list) => list.map((b) =>
                     (b.id === secili.id && !b.ilkYanit ? { ...b, ilkYanit: damga } : b)));
@@ -170,8 +214,13 @@ export default function GeriBildirimPage() {
     }
 
     async function sil(b) {
+        // Şube şikayetinde ad/soyad alanları boş — onay metni "undefined
+        // undefined adlı kişinin" diye çıkmasın.
+        const kim = [b.ad, b.soyad].filter(Boolean).join(' ').trim();
         const ok = await confirm(
-            `${b.ad} ${b.soyad} adlı kişinin geri bildirimi kalıcı olarak silinecek. Bu işlem geri alınamaz.`
+            kim
+                ? `${kim} adlı kişinin geri bildirimi kalıcı olarak silinecek. Bu işlem geri alınamaz.`
+                : `${b.subeAd || b.subeSlug || 'Bu'} kaydı kalıcı olarak silinecek. Bu işlem geri alınamaz.`
         );
         if (!ok) return;
         try {
@@ -185,6 +234,16 @@ export default function GeriBildirimPage() {
             console.error(err);
             toast.error('Silinemedi');
         }
+    }
+
+    // Sekme değişince durum çipi ve kaynak süzgeci karşı tarafta geçersiz
+    // kalıyor (ör. "cozuldu" şube sekmesinde yok) — liste boş görünürdü.
+    function sekmeSec(yeni) {
+        if (yeni === tip) return;
+        setTip(yeni);
+        setFiltre('hepsi');
+        setKaynakFiltre('hepsi');
+        setSecili(null);
     }
 
     function detayAc(b) {
@@ -255,16 +314,48 @@ export default function GeriBildirimPage() {
                 <div>
                     <h1 className="text-3xl leading-none tracking-tight">Şikayet & Geri Bildirim</h1>
                     <p className="mt-1.5 text-sm text-muted-foreground">
-                        {isAdmin
-                            ? 'QR menüsü, Şikayetvar ve elle eklenen müşteri şikayetleri tek yerde'
-                            : 'Şubenize gelen müşteri bildirimleri'}
+                        {subeSekmesi
+                            ? (isAdmin
+                                ? 'Şubelerin merkeze ilettiği şikayet ve talepler'
+                                : 'Merkeze ilettiğiniz şikayet ve talepler')
+                            : (isAdmin
+                                ? 'QR menüsü, Şikayetvar ve elle eklenen müşteri şikayetleri tek yerde'
+                                : 'Şubenize gelen müşteri bildirimleri')}
                     </p>
                 </div>
-                {ekleyebilir && (
-                    <Button variant="outline" onClick={() => setEkleAcik(true)}>
-                        <Plus className="size-4" /> Şikayet Ekle
-                    </Button>
-                )}
+                {/* Ekleme düğmesi SEKMEYE GÖRE: müşteri masasında merkez dış
+                    kaynaklı şikayeti elle ekler; şube masasında şube merkeze
+                    kendi talebini iletir. İki farklı yön, iki farklı uç. */}
+                {subeSekmesi
+                    ? subeSikayetiAcabilir && (
+                        <Button onClick={() => setSubeEkleAcik(true)}>
+                            <Plus className="size-4" /> Merkeze İlet
+                        </Button>
+                    )
+                    : ekleyebilir && (
+                        <Button variant="outline" onClick={() => setEkleAcik(true)}>
+                            <Plus className="size-4" /> Şikayet Ekle
+                        </Button>
+                    )}
+            </div>
+
+            {/* İki yönlü masa: müşteri → şube ve şube → merkez. */}
+            <div className="inline-flex items-center gap-1 rounded-lg bg-muted p-1 text-muted-foreground">
+                {[
+                    { key: 'musteri', ad: 'Müşteri Şikayetleri' },
+                    { key: 'sube', ad: 'Şube Şikayetleri' },
+                ].map((t) => (
+                    <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => sekmeSec(t.key)}
+                        className={`rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                            tip === t.key ? 'bg-background text-foreground shadow-sm' : 'hover:text-foreground'
+                        }`}
+                    >
+                        {t.ad}
+                    </button>
+                ))}
             </div>
 
             {/* SLA şeridi — "kaç şikayet açık, ne kadar sürede dönüyoruz".
@@ -304,6 +395,9 @@ export default function GeriBildirimPage() {
                         </button>
                     )}
                 </div>
+                {/* Kaynak (QR / Şikayetvar / telefon) yalnızca müşteri
+                    şikayetinde anlamlı; şube talebi tek kanaldan geliyor. */}
+                {!subeSekmesi && (
                 <Select value={kaynakFiltre} onValueChange={(v) => setKaynakFiltre(v)}>
                     <SelectTrigger className="h-9 w-auto min-w-[10rem] text-sm">
                         <span className="flex items-center gap-1.5 truncate">
@@ -323,6 +417,7 @@ export default function GeriBildirimPage() {
                         ))}
                     </SelectContent>
                 </Select>
+                )}
 
                 <FilterChip active={filtre === 'hepsi'} onClick={() => setFiltre('hepsi')}>
                     Tümü <span className="opacity-60">({aranan.length})</span>
@@ -443,7 +538,8 @@ export default function GeriBildirimPage() {
                                         )}
                                     </TableCell>
                                     <TableCell className="align-top" onClick={(e) => e.stopPropagation()}>
-                                        <Select value={b.durum} onValueChange={(v) => durumGuncelle(b.id, v)}>
+                                        <Select value={b.durum} disabled={!durumDegistirebilir}
+                                                onValueChange={(v) => durumGuncelle(b.id, v)}>
                                             <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
                                             <SelectContent>
                                                 {DURUM_KEYS.map((k) => (
@@ -559,7 +655,8 @@ export default function GeriBildirimPage() {
 
                                 <div>
                                     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Durum</label>
-                                    <Select value={secili.durum} onValueChange={(v) => durumGuncelle(secili.id, v)}>
+                                    <Select value={secili.durum} disabled={!durumDegistirebilir}
+                                            onValueChange={(v) => durumGuncelle(secili.id, v)}>
                                         <SelectTrigger className="h-9 w-full"><SelectValue /></SelectTrigger>
                                         <SelectContent>
                                             {DURUM_KEYS.map((k) => (
@@ -583,7 +680,7 @@ export default function GeriBildirimPage() {
                                         </p>
                                     ) : (
                                         <ol className="space-y-2">
-                                            {gecmis.map((g) => <GecmisSatiri key={g.id} g={g} />)}
+                                            {gecmis.map((g) => <GecmisSatiri key={g.id} g={g} durumlar={DURUM} />)}
                                         </ol>
                                     )}
                                 </div>
@@ -592,7 +689,14 @@ export default function GeriBildirimPage() {
                                     <div className="flex flex-wrap gap-1.5">
                                         {[
                                             { key: 'not', ad: 'Dahili not', ipucu: 'Yalnızca ekip görür' },
-                                            { key: 'musteri', ad: 'Müşteriye dönüş', ipucu: 'Aradık / yazdık — SLA saatini durdurur' },
+                                            // Dış dönüşü yalnızca merkez yazabilir (sunucu da
+                                            // engelliyor): şube kendi talebine "merkez cevap
+                                            // verdi" diyemez.
+                                            ...(subeSekmesi && !isAdmin ? [] : [{
+                                                key: disDonusTuru,
+                                                ad: subeSekmesi ? 'Şubeye dönüş' : 'Müşteriye dönüş',
+                                                ipucu: 'Aradık / yazdık — SLA saatini durdurur',
+                                            }]),
                                         ].map((t) => (
                                             <button key={t.key} type="button" title={t.ipucu}
                                                 onClick={() => setMesajTur(t.key)}
@@ -605,15 +709,18 @@ export default function GeriBildirimPage() {
                                     </div>
                                     <Textarea
                                         rows={3} value={mesaj} onChange={(e) => setMesaj(e.target.value)}
-                                        placeholder={mesajTur === 'musteri'
-                                            ? 'Müşteriyle ne konuşuldu? (ör. arandı, özür dilendi, ikram teklif edildi)'
-                                            : 'Ekip içi not — müşteri görmez'}
+                                        placeholder={mesajTur === disDonusTuru
+                                            ? (subeSekmesi
+                                                ? 'Şubeye ne iletildi? (ör. arandı, sevkiyat planı paylaşıldı)'
+                                                : 'Müşteriyle ne konuşuldu? (ör. arandı, özür dilendi, ikram teklif edildi)')
+                                            : 'Ekip içi not — karşı taraf görmez'}
                                     />
                                     {/* E-posta gönderme altyapısı YOK: bu kayıt müşteriye
                                         otomatik iletilmiyor, yapılan aramanın izidir. */}
-                                    {mesajTur === 'musteri' && (
+                                    {mesajTur === disDonusTuru && (
                                         <p className="text-[11px] text-muted-foreground">
-                                            Bu kayıt müşteriye otomatik gönderilmez; yaptığınız aramanın/yazışmanın izidir.
+                                            Bu kayıt karşı tarafa otomatik gönderilmez; yaptığınız
+                                            aramanın/yazışmanın izidir.
                                         </p>
                                     )}
                                     <Button size="sm" onClick={mesajGonder} disabled={saving || !mesaj.trim()}>
@@ -637,15 +744,25 @@ export default function GeriBildirimPage() {
                     onEklendi={() => { setEkleAcik(false); load(); }}
                 />
             )}
+
+            {subeSikayetiAcabilir && (
+                <SubeSikayetDialog
+                    acik={subeEkleAcik}
+                    isAdmin={isAdmin}
+                    onKapat={() => setSubeEkleAcik(false)}
+                    onEklendi={() => { setSubeEkleAcik(false); load(); }}
+                />
+            )}
         </div>
     );
 }
 
 /** Akıştaki tek satır — türüne göre ikon ve metin. */
-function GecmisSatiri({ g }) {
+function GecmisSatiri({ g, durumlar }) {
     const TUR = {
         not: { Ikon: MessageSquare, cls: 'text-muted-foreground', ad: 'Dahili not' },
         musteri: { Ikon: PhoneCall, cls: 'text-emerald-600 dark:text-emerald-400', ad: 'Müşteriye dönüş' },
+        donut: { Ikon: PhoneCall, cls: 'text-emerald-600 dark:text-emerald-400', ad: 'Merkezden dönüş' },
         durum: { Ikon: ArrowRight, cls: 'text-blue-600 dark:text-blue-400', ad: 'Durum' },
     }[g.tur] || { Ikon: MessageSquare, cls: '', ad: g.tur };
     const { Ikon } = TUR;
@@ -660,7 +777,7 @@ function GecmisSatiri({ g }) {
                 </div>
                 {g.tur === 'durum' ? (
                     <p className="mt-0.5 text-sm">
-                        {DURUM[g.eskiDurum]?.label ?? g.eskiDurum} → <strong>{DURUM[g.yeniDurum]?.label ?? g.yeniDurum}</strong>
+                        {durumlar[g.eskiDurum]?.label ?? g.eskiDurum} → <strong>{durumlar[g.yeniDurum]?.label ?? g.yeniDurum}</strong>
                     </p>
                 ) : (
                     <p className="mt-0.5 whitespace-pre-wrap text-sm">{g.metin}</p>
@@ -732,7 +849,7 @@ function SikayetEkleDialog({ acik, onKapat, onEklendi }) {
                             <Select value={form.kategori} onValueChange={(v) => setForm({ ...form, kategori: v })}>
                                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                    {Object.entries(KATEGORI).map(([k, ad]) => (
+                                    {Object.entries(KATEGORILER.musteri).map(([k, ad]) => (
                                         <SelectItem key={k} value={k}>{ad}</SelectItem>
                                     ))}
                                 </SelectContent>
@@ -814,5 +931,102 @@ function FilterChip({ active, onClick, children, tehlike = false }) {
         >
             {children}
         </button>
+    );
+}
+
+/**
+ * Şubenin MERKEZE ilettiği şikayet/talep.
+ *
+ * MÜŞTERİ FORMUNDAN AYRI: burada ad/telefon/KVKK alanı yok — gönderen zaten
+ * giriş yapmış kullanıcı, kimliği token'dan biliniyor. Şube de seçtirilmiyor;
+ * sunucu şubeyi token'dan alıyor (admin bir şube adına açarsa gövdeden).
+ */
+function SubeSikayetDialog({ acik, isAdmin, onKapat, onEklendi }) {
+    const toast = useToast();
+    const [subeler, setSubeler] = useState([]);
+    const [form, setForm] = useState({ kategori: 'tedarik', mesaj: '', subeSlug: '' });
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        // Şube listesi yalnızca merkez bir şube adına kayıt açarken gerekli.
+        if (!acik || !isAdmin) return;
+        api.get('/menu/subeler')
+            .then(({ data }) => setSubeler(data.subeler || []))
+            .catch(() => setSubeler([]));
+    }, [acik, isAdmin]);
+
+    async function kaydet() {
+        if (!form.mesaj.trim()) return;
+        setSaving(true);
+        try {
+            await api.post('/geribildirim/sube', {
+                kategori: form.kategori,
+                mesaj: form.mesaj.trim(),
+                ...(isAdmin && form.subeSlug ? { subeSlug: form.subeSlug } : {}),
+            });
+            setForm({ kategori: 'tedarik', mesaj: '', subeSlug: '' });
+            toast.success('Merkeze iletildi');
+            onEklendi();
+        } catch (err) {
+            console.error(err);
+            toast.error(err.response?.data?.error || 'İletilemedi');
+        }
+        setSaving(false);
+    }
+
+    return (
+        <Dialog open={acik} onOpenChange={(a) => !a && onKapat()}>
+            <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle>Merkeze ilet</DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                    {isAdmin && (
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-muted-foreground">Şube</label>
+                            <SubeSecici
+                                subeler={subeler}
+                                deger={form.subeSlug}
+                                yerTutucu="Şube seçin"
+                                onSec={(slug) => setForm({ ...form, subeSlug: slug })}
+                            />
+                        </div>
+                    )}
+
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">Konu</label>
+                        <Select value={form.kategori} onValueChange={(v) => setForm({ ...form, kategori: v })}>
+                            <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {Object.entries(KATEGORILER.sube).map(([k, ad]) => (
+                                    <SelectItem key={k} value={k}>{ad}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">Şikayet / talep</label>
+                        <Textarea
+                            rows={6}
+                            value={form.mesaj}
+                            onChange={(e) => setForm({ ...form, mesaj: e.target.value })}
+                            placeholder="Ne oldu, ne bekliyorsunuz? Tarih ve sipariş/sevkiyat numarası varsa yazın."
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                            Merkez inceledikçe durumu buradan takip edebilirsiniz.
+                        </p>
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={onKapat}>Vazgeç</Button>
+                    <Button onClick={kaydet} disabled={saving || !form.mesaj.trim() || (isAdmin && !form.subeSlug)}>
+                        {saving ? 'Gönderiliyor...' : 'Gönder'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }

@@ -95,6 +95,10 @@ const PERMISSIONS = {
     // Dış kaynaktan (Şikayetvar, telefon) gelen şikayeti masaya elle eklemek —
     // şube kendi hakkında kayıt açamaz.
     'geribildirim.create': ['admin'],
+    // ŞUBE → MERKEZ yönü. `geribildirim.create` şubenin KENDİ HAKKINDA kayıt
+    // açmasını engellemek için admin'e kapalı; bu ayrı anahtar ise şubenin
+    // MERKEZE şikayet/talep iletmesi. Yön farklı olduğu için izin de ayrı.
+    'subeSikayet.create': ['admin', 'sube_sahibi'],
 
     // ── İş Başvuruları (QR menüsü) ──
     // Başvuru hem ilgili şubeye hem merkeze düşer: şube sahibi kendi şubesine
