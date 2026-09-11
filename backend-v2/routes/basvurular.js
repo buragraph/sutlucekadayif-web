@@ -38,6 +38,63 @@ const basvuruLimiter = oranSiniri({
     validate: { xForwardedForHeader: false, trustProxy: false },
 });
 
+// ── Franchise form ayarları ──
+//
+// NEDEN SUNUCUDA: tanıtım sitesi STATİK (Astro). Formu değiştirmek için yeniden
+// derleyip yayınlamak gerekiyordu; merkez "il seçimini şimdilik kaldır" dediğinde
+// bu bir yayın işi oluyordu. Ayar veritabanında, site sayfa açılışında okuyor.
+//
+// OKUMA UCU KİMLİKSİZ: formu dolduran ziyaretçi giriş yapmış değil. Dönen tek
+// şey formun hangi alanları göstereceği — hassas bilgi yok.
+const FORM_AYAR_ANAHTARI = 'franchise_form';
+const VARSAYILAN_FORM_AYARI = { ilSecimi: true };
+
+async function formAyariOku() {
+    try {
+        const { data } = await supabase
+            .from('ayarlar').select('deger').eq('anahtar', FORM_AYAR_ANAHTARI).maybeSingle();
+        return { ...VARSAYILAN_FORM_AYARI, ...(data?.deger || {}) };
+    } catch (err) {
+        // Ayar okunamazsa form ÇALIŞMAYA DEVAM ETSİN: varsayılan (il sorulur)
+        // en az sürprizli davranış.
+        console.error('[basvuru] form ayarı okunamadı:', err.message);
+        return { ...VARSAYILAN_FORM_AYARI };
+    }
+}
+
+/**
+ * GET /api/basvurular/form-ayarlari
+ * HERKESE AÇIK — tanıtım sitesindeki form bunu okuyup alanlarını kuruyor.
+ * NOT: '/:id' kalıbından ÖNCE tanımlı olmalı, yoksa id sanılır.
+ */
+router.get(
+    '/form-ayarlari',
+    asyncHandler(async (req, res) => {
+        res.json(await formAyariOku());
+    })
+);
+
+/**
+ * PUT /api/basvurular/form-ayarlari
+ * Merkez formun alanlarını açıp kapatır.
+ */
+router.put(
+    '/form-ayarlari',
+    verifyToken,
+    requirePermission('basvurular.manage'),
+    asyncHandler(async (req, res) => {
+        const ayar = { ilSecimi: req.body?.ilSecimi !== false };
+        veriYaDaHata(
+            await supabase.from('ayarlar').upsert(
+                { anahtar: FORM_AYAR_ANAHTARI, deger: ayar, guncelleme: new Date().toISOString() },
+                { onConflict: 'anahtar' }
+            ),
+            'form ayarı yazılamadı'
+        );
+        res.json(ayar);
+    })
+);
+
 /**
  * POST /api/basvurular
  * Pazarlama sitesindeki franchise formundan gelen başvuruyu kaydeder.
@@ -66,9 +123,14 @@ router.post(
             mesaj: temizle(req.body.mesaj, LIMITLER.mesaj),
         };
 
-        // Zorunlu alanlar
+        // Zorunlu alanlar. İL AYARA BAĞLI: merkez il seçimini kapattıysa form
+        // o alanı hiç göstermiyor, sunucunun da istememesi gerekiyor — yoksa
+        // her başvuru 400 ile geri dönerdi.
+        const formAyari = await formAyariOku();
+        const zorunlu = ['ad', 'soyad', 'email', 'telefon'];
+        if (formAyari.ilSecimi) zorunlu.push('il');
         const eksik = [];
-        for (const k of ['ad', 'soyad', 'email', 'telefon', 'il']) {
+        for (const k of zorunlu) {
             if (!veri[k]) eksik.push(k);
         }
         if (eksik.length > 0) {

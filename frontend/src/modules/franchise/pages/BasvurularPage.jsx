@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../../services/api';
-import { Mail, Phone, MapPin, Trash2, Inbox } from 'lucide-react';
+import { Mail, Phone, MapPin, Trash2, Inbox, Settings2 } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 // Durum meta — etiket + rozet rengi (permissions/route ile aynı anahtarlar)
 const DURUM = {
@@ -126,6 +128,7 @@ export default function BasvurularPage() {
                         Siteden gelen franchise talepleri
                     </p>
                 </div>
+                <FormAyarlari />
             </div>
 
             {/* Durum filtre çipleri */}
@@ -303,5 +306,69 @@ function FilterChip({ active, onClick, children }) {
         >
             {children}
         </button>
+    );
+}
+
+/**
+ * Tanıtım sitesindeki franchise formunun alan ayarı.
+ *
+ * NEDEN PANELDE: site STATİK (Astro). Formdan il/ilçe alanını kaldırmak için
+ * kodu değiştirip yeniden yayınlamak gerekiyordu. Ayar artık veritabanında;
+ * site sayfa açılışında okuyor, anahtarı çevirmek yayın işi olmaktan çıktı.
+ *
+ * SUNUCU DA AYNI AYARI OKUYOR: alan gizlenince `il` zorunluluğu da kalkıyor,
+ * yoksa gönderilen her başvuru "zorunlu alan eksik" ile geri dönerdi.
+ */
+function FormAyarlari() {
+    const toast = useToast();
+    const [ayar, setAyar] = useState(null);
+    const [kaydediliyor, setKaydediliyor] = useState(false);
+
+    useEffect(() => {
+        let iptal = false;
+        api.get('/basvurular/form-ayarlari')
+            .then(({ data }) => { if (!iptal) setAyar(data); })
+            .catch(() => { if (!iptal) setAyar({ ilSecimi: true }); });
+        return () => { iptal = true; };
+    }, []);
+
+    async function degistir(acik) {
+        const onceki = ayar;
+        setAyar({ ...ayar, ilSecimi: acik });   // iyimser: anahtar anında düşsün
+        setKaydediliyor(true);
+        try {
+            await api.put('/basvurular/form-ayarlari', { ilSecimi: acik });
+            toast.success(acik ? 'İl seçimi formda gösterilecek' : 'İl seçimi formdan kaldırıldı');
+        } catch (err) {
+            console.error(err);
+            setAyar(onceki);
+            toast.error('Ayar kaydedilemedi');
+        }
+        setKaydediliyor(false);
+    }
+
+    if (!ayar) return null;
+
+    return (
+        <div className="flex items-start gap-3 rounded-xl border bg-card px-4 py-3">
+            <Settings2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-3">
+                    <Label htmlFor="il-secimi" className="cursor-pointer text-sm font-medium">
+                        Formda il / ilçe sorulsun
+                    </Label>
+                    <Switch
+                        id="il-secimi"
+                        checked={ayar.ilSecimi !== false}
+                        disabled={kaydediliyor}
+                        onCheckedChange={degistir}
+                    />
+                </div>
+                <p className="max-w-[22rem] text-xs text-muted-foreground">
+                    Kapatırsanız sitedeki başvuru formunda il ve ilçe alanları görünmez.
+                    Değişiklik anında geçerli olur, site yeniden yayınlanmaz.
+                </p>
+            </div>
+        </div>
     );
 }
