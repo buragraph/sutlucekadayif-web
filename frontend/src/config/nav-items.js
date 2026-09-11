@@ -43,7 +43,24 @@ export function getNavGroups(can, role) {
                 // gizleniyordu. `products.view` çalışanda yok, ama "Ürünler"
                 // maddesi de koşulsuz olduğu için çalışan grubu görüp tıklıyor
                 // ve yetki uyarısına düşüyordu.
-                ...(can('products.view') ? [{
+                // ŞUBEDE GRUP YOK, DÜZ MADDELER. "QR Menü" merkezin dili:
+                // ürünü bir QR menü sistemi olarak görüyor. Şube sahibi için orası
+                // sadece "ürünlerim" — üstelik grubun altında yalnızca üç madde
+                // kalıyor ve ilki yine "Ürünler" olduğu için başlık maddeyi
+                // tekrarlıyordu. Düz liste hem adı doğru koyuyor hem tek tıkla
+                // açıyor (grup başlığı gezinmez, yalnızca açılır).
+                ...(can('products.view') && role !== 'admin' ? [
+                    { title: 'Ürünler', url: '/admin/qr-menu', icon: UtensilsCrossed, end: true },
+                    ...(can('urunTalep.view')
+                        ? [{ title: 'Ürün Talepleri', url: '/admin/qr-menu/talepler', icon: Inbox }]
+                        : []),
+                    ...(can('isbasvuru.view')
+                        ? [{ title: 'İş Başvuruları', url: '/admin/is-basvurulari', icon: BriefcaseBusiness }]
+                        : []),
+                ] : []),
+                // Merkezde taksonomi bir bütün: menü günlüğü ve kategoriler de
+                // aynı başlığın altında, o yüzden grup korunuyor.
+                ...(can('products.view') && role === 'admin' ? [{
                     title: 'QR Menü',
                     url: '/admin/qr-menu',
                     icon: QrCode,
@@ -56,9 +73,7 @@ export function getNavGroups(can, role) {
                             ? [{ title: 'Ürün Talepleri', url: '/admin/qr-menu/talepler', icon: Inbox }]
                             : []),
                         // Şube menülerindeki değişikliklerin günlüğü — yalnızca merkez.
-                        ...(role === 'admin'
-                            ? [{ title: 'Menü Günlüğü', url: '/admin/qr-menu/menu-gunlugu', icon: History }]
-                            : []),
+                        { title: 'Menü Günlüğü', url: '/admin/qr-menu/menu-gunlugu', icon: History },
                         ...(can('isbasvuru.view')
                             ? [{ title: 'İş Başvuruları', url: '/admin/is-basvurulari', icon: BriefcaseBusiness }]
                             : []),
