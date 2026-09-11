@@ -171,9 +171,14 @@ export default function Dashboard() {
                     Hepsi tam genişlikte alt alta dizilince ekran pano değil
                     akış gibi duruyordu. */}
                 <div className="grid gap-4 lg:grid-cols-3">
+                    {/* Duyurular sütunun KALAN BOYUNU dolduruyor: sağdaki
+                        harita+bölge yığını genelde daha uzun, duyurular kısa
+                        kalınca solda boşluk açılıyordu. */}
                     <div className="flex flex-col gap-4 lg:col-span-2">
                         <SikayetUyarisi />
-                        <DuyuruKartlari />
+                        <div className="flex-1">
+                            <DuyuruKartlari blok />
+                        </div>
                     </div>
 
                     <div className="flex flex-col gap-4">

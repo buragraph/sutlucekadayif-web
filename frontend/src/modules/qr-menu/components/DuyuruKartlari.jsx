@@ -12,8 +12,12 @@ import api from '../../../services/api';
  * tamamen kaybolsaydı şube bir daha ulaşamazdı ("hani şu kampanya yazısı?").
  * Okunanlar altta tek satırlık bir açılır bölümde duruyor.
  *
- * Hiç duyuru yoksa bileşen HİÇBİR ŞEY çizmez — boş bir "duyuru yok" kartı
- * dashboard'da yer kaplardı ve şube her gün onu görürdü.
+ * BOŞKEN DAVRANIŞ ÇAĞIRANA BAĞLI (`blok`):
+ *   - varsayılan: hiç duyuru yoksa hiçbir şey çizilmez. Serbest akışta duran
+ *     bir "duyuru yok" kartı boşuna yer kaplardı.
+ *   - `blok`: panoda duyurulara ayrılmış sabit bir sütun var; orada bileşen
+ *     kaybolunca sütunun yarısı boş kalıyor ve düzen bozuluyordu. O yüzden
+ *     çerçeve her hâlükârda çiziliyor, içi boşsa boş duruyor.
  */
 const STIL = {
     onemli: {
@@ -39,7 +43,7 @@ const tarihYaz = (d) => {
     } catch { return ''; }
 };
 
-export default function DuyuruKartlari() {
+export default function DuyuruKartlari({ blok = false }) {
     const [duyurular, setDuyurular] = useState([]);
     const [acik, setAcik] = useState({});
     const [okunanlarAcik, setOkunanlarAcik] = useState(false);
@@ -67,7 +71,7 @@ export default function DuyuruKartlari() {
         setBekleyen(null);
     }
 
-    if (duyurular.length === 0) return null;
+    if (duyurular.length === 0 && !blok) return null;
 
     const okunmamis = duyurular.filter((d) => !d.okundu);
     const okunmus = duyurular.filter((d) => d.okundu);
@@ -122,7 +126,7 @@ export default function DuyuruKartlari() {
     };
 
     return (
-        <div className="flex flex-col gap-3">
+        <div className={`flex flex-col gap-3 ${blok ? 'h-full rounded-2xl border bg-card p-4' : ''}`}>
             <div className="flex items-center gap-2">
                 <Megaphone className="size-4 text-muted-foreground" />
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
@@ -134,6 +138,16 @@ export default function DuyuruKartlari() {
                     </span>
                 )}
             </div>
+
+            {duyurular.length === 0 && (
+                <div className="flex flex-1 flex-col items-center justify-center gap-2 py-10 text-center">
+                    <Megaphone className="size-7 text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground">Şu an bekleyen duyuru yok</p>
+                    <p className="max-w-xs text-xs text-muted-foreground/80">
+                        Merkez bir duyuru yayınladığında burada görünür.
+                    </p>
+                </div>
+            )}
 
             {okunmamis.map((d) => <Kart key={d.id} d={d} />)}
 
