@@ -161,78 +161,83 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground">{bugun}</p>
             </div>
 
-            {/* Harita + Grafik — şube sahibinde dengeli yan yana (lg), admin'de tam genişlik */}
-            <div className={grafikAlani ? 'grid gap-4 lg:grid-cols-2' : ''}>
-            {haritaGoster ? (
-                <div className={`relative ${grafikAlani ? 'h-[400px]' : 'h-[440px]'} overflow-hidden rounded-3xl border`}>
-                    <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Harita yükleniyor…</div>}>
-                        <BranchMap
-                            branches={haritaSubeler}
-                            focusIl={role === 'sube_sahibi' ? (kendiSube?.il || null) : null}
-                            focusCoord={role === 'sube_sahibi' && Number.isFinite(kendiSube?.lat) && Number.isFinite(kendiSube?.lng)
-                                ? [kendiSube.lng, kendiSube.lat]
-                                : null}
-                            className="absolute inset-0 h-full w-full"
-                            showFooter={false}
-                        />
-                    </Suspense>
+            {/* ÜST SATIR: harita + bölge paneli.
+                Şube sahibinde harita 2 sütun, TÜİK/SEGE verisi yanında 1 sütun.
+                Eskiden bölge bilgisi sayfanın altında dört kartlık ayrı bir
+                şerittı; şube konumuyla ilgili olduğu için haritanın yanı doğru
+                yeri. Admin'de bölge paneli yok (tek ilçe bilgisi ağ genelinde
+                anlamsız), harita tam genişlik. */}
+            <div className={role === 'sube_sahibi' ? 'grid gap-4 lg:grid-cols-3' : ''}>
+                {haritaGoster ? (
+                    <div className={`relative ${role === 'sube_sahibi' ? 'h-[380px] lg:col-span-2' : 'h-[440px]'} overflow-hidden rounded-3xl border`}>
+                        <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">Harita yükleniyor…</div>}>
+                            <BranchMap
+                                branches={haritaSubeler}
+                                focusIl={role === 'sube_sahibi' ? (kendiSube?.il || null) : null}
+                                focusCoord={role === 'sube_sahibi' && Number.isFinite(kendiSube?.lat) && Number.isFinite(kendiSube?.lng)
+                                    ? [kendiSube.lng, kendiSube.lat]
+                                    : null}
+                                className="absolute inset-0 h-full w-full"
+                                showFooter={false}
+                            />
+                        </Suspense>
 
-                    {/* Selamlama overlay — haritanın üstünde */}
-                    <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-background/95 via-background/70 to-transparent p-5 md:p-7">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                            {role === 'admin' ? 'Şube Ağı' : 'Şubeniz'}
-                        </p>
-                        <h2 className="mt-1 text-2xl font-light leading-tight tracking-tight text-foreground md:text-3xl" style={{ fontFamily: 'Marcellus, serif' }}>
-                            Merhaba, <span className="font-bold text-[#084529] dark:text-[#d8c7a3]">{role === 'admin' ? 'Yönetici' : (kendiSube?.ad || subeSlug || 'Şube Yetkilisi')}</span> 👋
-                        </h2>
-                        <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border bg-background/85 px-3 py-1 text-xs font-medium text-foreground backdrop-blur">
-                            <MapIcon className="size-3.5 text-[#084529] dark:text-[#d8c7a3]" />
-                            {role === 'admin'
-                                ? `${ilSayisi} il · ${subeSayisi} şube`
-                                : (kendiSube?.il
-                                    ? `${kendiSube.il}${kendiSube.ilce ? ' · ' + kendiSube.ilce : ''}`
-                                    : 'Konum atanmadı')}
-                        </span>
+                        {/* Selamlama overlay — haritanın üstünde */}
+                        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-background/95 via-background/70 to-transparent p-5 md:p-7">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                {role === 'admin' ? 'Şube Ağı' : 'Şubeniz'}
+                            </p>
+                            <h2 className="mt-1 text-2xl font-light leading-tight tracking-tight text-foreground md:text-3xl" style={{ fontFamily: 'Marcellus, serif' }}>
+                                Merhaba, <span className="font-bold text-[#084529] dark:text-[#d8c7a3]">{role === 'admin' ? 'Yönetici' : (kendiSube?.ad || subeSlug || 'Şube Yetkilisi')}</span> 👋
+                            </h2>
+                            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border bg-background/85 px-3 py-1 text-xs font-medium text-foreground backdrop-blur">
+                                <MapIcon className="size-3.5 text-[#084529] dark:text-[#d8c7a3]" />
+                                {role === 'admin'
+                                    ? `${ilSayisi} il · ${subeSayisi} şube`
+                                    : (kendiSube?.il
+                                        ? `${kendiSube.il}${kendiSube.ilce ? ' · ' + kendiSube.ilce : ''}`
+                                        : 'Konum atanmadı')}
+                            </span>
+                        </div>
                     </div>
-                </div>
-            ) : (
-                <div className="rounded-3xl border bg-gradient-to-br from-[#084529] via-[#05321d] to-[#021b0f] p-6 text-[#F6F1E7] md:p-8">
-                    <h2 className="text-3xl font-light leading-tight tracking-tight" style={{ fontFamily: 'Marcellus, serif' }}>
-                        Merhaba, <span className="font-bold text-[#d8c7a3]">{subeSlug || 'Şube Yetkilisi'}</span> 👋
-                    </h2>
-                </div>
-            )}
-
-            {/* Geçmiş dönem harcama grafiği — harita ile yan yana (ekstra read yok).
-                Yüklenirken/lazy chunk gelene kadar iskelet → sıçrama olmaz. */}
-            {grafikAlani && (
-                harcamaDonemler.length > 0 ? (
-                    <Suspense fallback={<GrafikIskelet />}>
-                        <HarcamaGrafik className="h-full" donemler={harcamaDonemler} />
-                    </Suspense>
                 ) : (
-                    <GrafikIskelet />
-                )
-            )}
-            </div>{/* harita+grafik grid */}
+                    <div className="rounded-3xl border bg-gradient-to-br from-[#084529] via-[#05321d] to-[#021b0f] p-6 text-[#F6F1E7] md:p-8 lg:col-span-2">
+                        <h2 className="text-3xl font-light leading-tight tracking-tight" style={{ fontFamily: 'Marcellus, serif' }}>
+                            Merhaba, <span className="font-bold text-[#d8c7a3]">{subeSlug || 'Şube Yetkilisi'}</span> 👋
+                        </h2>
+                    </div>
+                )}
 
-            {/* Merkez duyuruları — haritanın hemen altında, metriklerin üstünde:
-                şube giriş yapınca ilk okuyacağı şey burası. Duyuru yoksa
-                bileşen hiç çizmiyor, boşluk kalmıyor. */}
-            <DuyuruKartlari />
+                {role === 'sube_sahibi' && <BolgeKarti subeSlug={subeSlug} dikey />}
+            </div>
 
-            {/* Bekleyen şikayet uyarısı — duyuruların hemen altında. Şikayet
-                masası sessizdi: kayıt düşüyordu ama kimse haberdar olmuyordu.
-                Bekleyen yoksa bileşen hiç çizmiyor. */}
+            {/* Bekleyen şikayet uyarısı — ince bir şerit; bekleyen yoksa hiç çizmiyor. */}
             <SikayetUyarisi />
 
-            {/* Rapor sayıları — yalnızca şube sahibinde. Admin'in dashboard'u
-                şube ağı geneline bakıyor, tek şubenin dönem sayısı orada
-                anlamsız olurdu. */}
+            {/* Son dönem rapor sayıları — yalnızca şube sahibinde. Admin'in
+                dashboard'u şube ağı geneline bakıyor. */}
             {role === 'sube_sahibi' && <SubeMetrikleri subeSlug={subeSlug} />}
 
-            {/* Şubenin bulunduğu ilçenin profili — SEGE-2022. */}
-            {role === 'sube_sahibi' && <BolgeKarti subeSlug={subeSlug} />}
+            {/* ALT SATIR: harcama grafiği + merkez duyuruları yan yana.
+                Duyurular eskiden sayfa boyunca uzanan serbest bir listeydi;
+                grafikle aynı satırda bir sütun olunca ekran gerçekten pano gibi
+                duruyor. İkisi de içerik yoksa hiç çizilmiyor. */}
+            {grafikAlani ? (
+                <div className="grid gap-4 lg:grid-cols-3">
+                    <div className="lg:col-span-2">
+                        {harcamaDonemler.length > 0 ? (
+                            <Suspense fallback={<GrafikIskelet />}>
+                                <HarcamaGrafik className="h-full" donemler={harcamaDonemler} />
+                            </Suspense>
+                        ) : (
+                            <GrafikIskelet />
+                        )}
+                    </div>
+                    <DuyuruKartlari />
+                </div>
+            ) : (
+                <DuyuruKartlari />
+            )}
 
             {/* ── Alt bölüm ROLE GÖRE ──
                 Şube sahibinde eski "Aktif Şube / Yönetim Rolü / Müşteri Arayüzü"

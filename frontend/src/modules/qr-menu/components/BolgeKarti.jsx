@@ -25,7 +25,11 @@ const KADEME_ETIKET = {
 
 const sayiYaz = (v) => new Intl.NumberFormat('tr-TR').format(v ?? 0);
 
-export default function BolgeKarti({ subeSlug }) {
+/**
+ * `dikey`: haritanın yanında duran tek sütunluk biçim. Dashboard'da harita
+ * 2 sütun, bölge paneli 1 sütun — dört kartlık yatay şerit oraya sığmıyordu.
+ */
+export default function BolgeKarti({ subeSlug, dikey = false }) {
     const [veri, setVeri] = useState(null);
 
     useEffect(() => {
@@ -53,6 +57,58 @@ export default function BolgeKarti({ subeSlug }) {
     const kademe = KADEME_ETIKET[d.sege_kademe] || null;
     // Yaş/eğitim TÜİK verisi yüklenince dolacak; o ana kadar yalnızca SEGE var.
     const yasVar = d.nufus != null;
+
+    if (dikey) {
+        return (
+            <Card className="flex h-full flex-col rounded-3xl">
+                <CardHeader className="pb-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Bölgeniz
+                    </p>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
+                        <MapPin className="size-3.5 text-[#084529] dark:text-[#d8c7a3]" />
+                        {veri.il} · {veri.ilce}
+                    </p>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col gap-4">
+                    <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            Sosyo-ekonomik sıra
+                        </p>
+                        <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-foreground">
+                            {sayiYaz(d.sege_sira)}
+                            <span className="text-base font-normal text-muted-foreground">
+                                {' '}/ {sayiYaz(veri.toplamIlce)}
+                            </span>
+                        </p>
+                        {kademe && (
+                            <p className={`mt-1 text-xs font-medium ${kademe.renk}`}>
+                                {kademe.ad} — {kademe.not}
+                            </p>
+                        )}
+                    </div>
+
+                    {yasVar && (
+                        <div className="border-t pt-3">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                Nüfus
+                            </p>
+                            <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-foreground">
+                                {sayiYaz(d.nufus)}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Kaynak EKRANDA: şube sahibi "bu sayı nereden geliyor"
+                        diye sormasın, tahmin sanmasın. */}
+                    <p className="mt-auto text-[11px] leading-snug text-muted-foreground">
+                        Sanayi ve Teknoloji Bakanlığı, İlçe SEGE-{d.kaynak_yili}
+                        {yasVar ? ' · TÜİK ilçe nüfusu' : ''}
+                    </p>
+                </CardContent>
+            </Card>
+        );
+    }
 
     return (
         <div className="flex flex-col gap-2">
