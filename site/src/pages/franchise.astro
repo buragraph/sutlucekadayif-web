@@ -57,10 +57,10 @@ const iller = [
           <input id="telefon" name="telefon" type="tel" required
             class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand" />
         </div>
-        <!-- İL/İLÇE MERKEZ AYARINA BAĞLI: panelden kapatılınca bu iki alan
-             gizlenir ve `required` kalkar (bkz. aşağıdaki script). Sunucu da
-             aynı ayarı okuyup il'i zorunlu tutmaktan vazgeçiyor. -->
-        <div id="alan-il">
+        <!-- AÇILIR LİSTE MERKEZ AYARINA GÖRE SÜZÜLÜYOR: başvuruya kapatılan
+             iller (ör. doygun bölgeler) seçeneklerden çıkarılır. Bkz. aşağıdaki
+             script; sunucu da aynı listeyi okuyup kapalı ili reddediyor. -->
+        <div>
           <label for="il" class="mb-1.5 block text-sm font-medium text-ink">İl</label>
           <select id="il" name="il" required
             class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand">
@@ -68,7 +68,7 @@ const iller = [
             {iller.map((il) => <option value={il}>{il}</option>)}
           </select>
         </div>
-        <div id="alan-ilce">
+        <div>
           <label for="ilce" class="mb-1.5 block text-sm font-medium text-ink">İlçe</label>
           <input id="ilce" name="ilce" type="text"
             class="w-full rounded-xl border border-ink/15 bg-white px-4 py-2.5 outline-none focus:border-brand" />
@@ -107,23 +107,22 @@ const iller = [
 
   const form = document.getElementById('franchise-form') as HTMLFormElement | null;
 
-  // Form alanları merkez ayarına göre kuruluyor. Site statik olduğu için ayar
-  // derleme anında değil, sayfa açılışında okunuyor — merkez panelden kapatınca
-  // yeniden yayın gerekmiyor.
+  // Kapalı iller açılır listeden çıkarılıyor. Site statik olduğu için liste
+  // derleme anında değil, sayfa açılışında okunuyor — merkez panelden bir ili
+  // kapattığında sitenin yeniden yayınlanması gerekmiyor.
   (async () => {
     try {
       const r = await fetch(`${API_BASE}/basvurular/form-ayarlari`);
       if (!r.ok) return;
       const ayar = await r.json();
-      if (ayar?.ilSecimi === false) {
-        for (const kimlik of ['alan-il', 'alan-ilce']) {
-          document.getElementById(kimlik)?.classList.add('hidden');
-        }
-        // `required` KALKMALI: gizli ama zorunlu bir alan formu sessizce
-        // göndermez hâle getirir ve tarayıcı hatayı gösteremez.
-        document.getElementById('il')?.removeAttribute('required');
+      const kapali = new Set(Array.isArray(ayar?.kapaliIller) ? ayar.kapaliIller : []);
+      if (kapali.size === 0) return;
+      const secim = document.getElementById('il') as HTMLSelectElement | null;
+      if (!secim) return;
+      for (const secenek of [...secim.options]) {
+        if (secenek.value && kapali.has(secenek.value)) secenek.remove();
       }
-    } catch { /* ayar okunamazsa form varsayılan hâliyle çalışsın */ }
+    } catch { /* ayar okunamazsa tam liste gösterilsin */ }
   })();
   const durum = document.getElementById('form-durum');
   const buton = form?.querySelector('button[type="submit"]') as HTMLButtonElement | null;

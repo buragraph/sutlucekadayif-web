@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../../services/api';
-import { Mail, Phone, MapPin, Trash2, Inbox, Settings2 } from 'lucide-react';
+import { Mail, Phone, MapPin, Trash2, Inbox, Settings2, Search, X } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,8 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import ilIlceData from '../../../data/tr-iller-ilceler.json';
 
 // Durum meta — etiket + rozet rengi (permissions/route ile aynı anahtarlar)
 const DURUM = {
@@ -310,65 +311,136 @@ function FilterChip({ active, onClick, children }) {
 }
 
 /**
- * Tanıtım sitesindeki franchise formunun alan ayarı.
+ * Hangi illerin franchise başvurusuna açık olduğu.
  *
- * NEDEN PANELDE: site STATİK (Astro). Formdan il/ilçe alanını kaldırmak için
- * kodu değiştirip yeniden yayınlamak gerekiyordu. Ayar artık veritabanında;
- * site sayfa açılışında okuyor, anahtarı çevirmek yayın işi olmaktan çıktı.
+ * NEDEN PANELDE: tanıtım sitesi STATİK (Astro). Doygun bir bölgeyi — ör.
+ * İstanbul — açılır listeden çıkarmak kodu değiştirip yeniden yayınlamak
+ * demekti. Ayar artık veritabanında; site sayfa açılışında okuyup listeyi
+ * süzüyor, bir ili kapatmak yayın işi olmaktan çıktı.
  *
- * SUNUCU DA AYNI AYARI OKUYOR: alan gizlenince `il` zorunluluğu da kalkıyor,
- * yoksa gönderilen her başvuru "zorunlu alan eksik" ile geri dönerdi.
+ * KAPALI LİSTE TUTULUYOR, AÇIK LİSTE DEĞİL: 81 il varsayılan olarak açık,
+ * merkez yalnızca kapattığını işaretliyor. Açık liste tutulsaydı bir kez eksik
+ * yazıldığında iller sessizce kapanırdı.
+ *
+ * SUNUCU DA AYNI LİSTEYİ OKUYOR: kapalı ilden gelen başvuru reddediliyor —
+ * eski bir sekme ya da önbellekteki sayfa tek savunma olarak istemciye
+ * güvenilemeyeceğini gösteriyor.
  */
+const TUM_ILLER = Object.keys(ilIlceData).sort((a, b) => a.localeCompare(b, 'tr'));
+
 function FormAyarlari() {
     const toast = useToast();
-    const [ayar, setAyar] = useState(null);
+    const [kapali, setKapali] = useState(null);   // null = henüz okunmadı
+    const [acik, setAcik] = useState(false);
+    const [arama, setArama] = useState('');
     const [kaydediliyor, setKaydediliyor] = useState(false);
 
     useEffect(() => {
         let iptal = false;
         api.get('/basvurular/form-ayarlari')
-            .then(({ data }) => { if (!iptal) setAyar(data); })
-            .catch(() => { if (!iptal) setAyar({ ilSecimi: true }); });
+            .then(({ data }) => { if (!iptal) setKapali(data?.kapaliIller || []); })
+            .catch(() => { if (!iptal) setKapali([]); })
         return () => { iptal = true; };
     }, []);
 
-    async function degistir(acik) {
-        const onceki = ayar;
-        setAyar({ ...ayar, ilSecimi: acik });   // iyimser: anahtar anında düşsün
+    async function kaydet(yeniListe) {
+        const onceki = kapali;
+        setKapali(yeniListe);   // iyimser: kutucuk anında dolsun
         setKaydediliyor(true);
         try {
-            await api.put('/basvurular/form-ayarlari', { ilSecimi: acik });
-            toast.success(acik ? 'İl seçimi formda gösterilecek' : 'İl seçimi formdan kaldırıldı');
+            await api.put('/basvurular/form-ayarlari', { kapaliIller: yeniListe });
         } catch (err) {
             console.error(err);
-            setAyar(onceki);
+            setKapali(onceki);
             toast.error('Ayar kaydedilemedi');
         }
         setKaydediliyor(false);
     }
 
-    if (!ayar) return null;
+    if (!kapali) return null;
+
+    const kapaliSet = new Set(kapali);
+    const q = arama.trim().toLocaleLowerCase('tr');
+    const gorunen = q ? TUM_ILLER.filter((il) => il.toLocaleLowerCase('tr').includes(q)) : TUM_ILLER;
+
+    const degistir = (il, kapat) => kaydet(
+        kapat ? [...kapali, il].sort((a, b) => a.localeCompare(b, 'tr'))
+              : kapali.filter((x) => x !== il)
+    );
 
     return (
-        <div className="flex items-start gap-3 rounded-xl border bg-card px-4 py-3">
-            <Settings2 className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <div className="flex flex-col gap-0.5">
-                <div className="flex items-center gap-3">
-                    <Label htmlFor="il-secimi" className="cursor-pointer text-sm font-medium">
-                        Formda il / ilçe sorulsun
-                    </Label>
-                    <Switch
-                        id="il-secimi"
-                        checked={ayar.ilSecimi !== false}
-                        disabled={kaydediliyor}
-                        onCheckedChange={degistir}
-                    />
-                </div>
-                <p className="max-w-[22rem] text-xs text-muted-foreground">
-                    Kapatırsanız sitedeki başvuru formunda il ve ilçe alanları görünmez.
-                    Değişiklik anında geçerli olur, site yeniden yayınlanmaz.
-                </p>
-            </div>
-        </div>
+        <>
+            <Button variant="outline" onClick={() => setAcik(true)}>
+                <Settings2 className="size-4" />
+                Başvuruya açık iller
+                <Badge variant={kapali.length ? 'secondary' : 'outline'} className="ml-1">
+                    {TUM_ILLER.length - kapali.length} / {TUM_ILLER.length}
+                </Badge>
+            </Button>
+
+            <Dialog open={acik} onOpenChange={(a) => { if (!a) { setAcik(false); setArama(''); } }}>
+                <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Başvuruya açık iller</DialogTitle>
+                    </DialogHeader>
+
+                    <p className="text-sm text-muted-foreground">
+                        İşareti kaldırdığınız il, sitedeki başvuru formunun il listesinde
+                        görünmez ve o ilden gelen başvuru kabul edilmez. Değişiklik anında
+                        geçerli olur, site yeniden yayınlanmaz.
+                    </p>
+
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            value={arama}
+                            onChange={(e) => setArama(e.target.value)}
+                            placeholder="İl ara..."
+                            className="h-9 pl-8 pr-8 text-sm"
+                        />
+                        {arama && (
+                            <button type="button" onClick={() => setArama('')}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                                <X className="size-3.5" />
+                            </button>
+                        )}
+                    </div>
+
+                    {kapali.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed p-2.5">
+                            <span className="text-xs font-medium text-muted-foreground">Kapalı:</span>
+                            {kapali.map((il) => (
+                                <Badge key={il} variant="secondary" className="gap-1">
+                                    {il}
+                                    <button type="button" onClick={() => degistir(il, false)} title="Yeniden aç">
+                                        <X className="size-3" />
+                                    </button>
+                                </Badge>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2 md:grid-cols-3">
+                        {gorunen.map((il) => (
+                            <label key={il} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-muted/60">
+                                <Checkbox
+                                    checked={!kapaliSet.has(il)}
+                                    disabled={kaydediliyor}
+                                    onCheckedChange={(v) => degistir(il, !v)}
+                                />
+                                <span className={kapaliSet.has(il) ? 'text-muted-foreground line-through' : ''}>{il}</span>
+                            </label>
+                        ))}
+                        {gorunen.length === 0 && (
+                            <p className="col-span-full py-4 text-center text-sm text-muted-foreground">İl bulunamadı</p>
+                        )}
+                    </div>
+
+                    <DialogFooter>
+                        <Button onClick={() => { setAcik(false); setArama(''); }}>Kapat</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }

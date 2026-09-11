@@ -4,6 +4,7 @@ import { supabase } from '../config/supabase.js';
 import { verifyToken, requirePermission } from '../middleware/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { yeniId, temizNull, veriYaDaHata, isoZ } from '../utils/veri.js';
+import { ILLER } from '../shared/iller.js';
 
 const router = Router();
 
@@ -47,13 +48,18 @@ const basvuruLimiter = oranSiniri({
 // OKUMA UCU KİMLİKSİZ: formu dolduran ziyaretçi giriş yapmış değil. Dönen tek
 // şey formun hangi alanları göstereceği — hassas bilgi yok.
 const FORM_AYAR_ANAHTARI = 'franchise_form';
-const VARSAYILAN_FORM_AYARI = { ilSecimi: true };
+// KAPALI İL LİSTESİ tutuluyor, açık liste değil: 81 il varsayılan olarak açık
+// ve merkez yalnızca kapattığını sayıyor. Açık liste tutulsaydı yeni bir il
+// eklendiğinde (ya da liste bir kez eksik yazıldığında) o il sessizce kapalı
+// kalırdı — varsayılanın "açık" olması daha az sürprizli.
+const VARSAYILAN_FORM_AYARI = { kapaliIller: [] };
 
 async function formAyariOku() {
     try {
         const { data } = await supabase
             .from('ayarlar').select('deger').eq('anahtar', FORM_AYAR_ANAHTARI).maybeSingle();
-        return { ...VARSAYILAN_FORM_AYARI, ...(data?.deger || {}) };
+        const kayit = data?.deger || {};
+        return { kapaliIller: Array.isArray(kayit.kapaliIller) ? kayit.kapaliIller : [] };
     } catch (err) {
         // Ayar okunamazsa form ÇALIŞMAYA DEVAM ETSİN: varsayılan (il sorulur)
         // en az sürprizli davranış.
@@ -76,14 +82,23 @@ router.get(
 
 /**
  * PUT /api/basvurular/form-ayarlari
- * Merkez formun alanlarını açıp kapatır.
+ * Merkez hangi illerin başvuruya kapalı olduğunu belirler.
  */
 router.put(
     '/form-ayarlari',
     verifyToken,
     requirePermission('basvurular.manage'),
     asyncHandler(async (req, res) => {
-        const ayar = { ilSecimi: req.body?.ilSecimi !== false };
+        // RESMÎ LİSTEYE KARŞI SÜZÜLÜYOR: serbest metin kabul edilseydi
+        // "istanbul" / "İstanbul " gibi bir yazım sessizce hiçbir ili
+        // kapatmaz, merkez de kapattığını sanırdı.
+        const gelen = Array.isArray(req.body?.kapaliIller) ? req.body.kapaliIller : [];
+        const gecerliIller = new Set(Object.keys(ILLER));
+        const ayar = {
+            kapaliIller: [...new Set(gelen.map((i) => String(i).trim()))]
+                .filter((i) => gecerliIller.has(i))
+                .sort((a, b) => a.localeCompare(b, 'tr')),
+        };
         veriYaDaHata(
             await supabase.from('ayarlar').upsert(
                 { anahtar: FORM_AYAR_ANAHTARI, deger: ayar, guncelleme: new Date().toISOString() },
@@ -123,14 +138,9 @@ router.post(
             mesaj: temizle(req.body.mesaj, LIMITLER.mesaj),
         };
 
-        // Zorunlu alanlar. İL AYARA BAĞLI: merkez il seçimini kapattıysa form
-        // o alanı hiç göstermiyor, sunucunun da istememesi gerekiyor — yoksa
-        // her başvuru 400 ile geri dönerdi.
-        const formAyari = await formAyariOku();
-        const zorunlu = ['ad', 'soyad', 'email', 'telefon'];
-        if (formAyari.ilSecimi) zorunlu.push('il');
+        // Zorunlu alanlar
         const eksik = [];
-        for (const k of zorunlu) {
+        for (const k of ['ad', 'soyad', 'email', 'telefon', 'il']) {
             if (!veri[k]) eksik.push(k);
         }
         if (eksik.length > 0) {
@@ -138,6 +148,16 @@ router.post(
         }
         if (!gecerliEmail(veri.email)) {
             return res.status(400).json({ error: 'Geçerli bir e-posta adresi girin.' });
+        }
+
+        // KAPALI İL SUNUCUDA DA REDDEDİLİR. Formdaki açılır liste o illeri zaten
+        // göstermiyor ama tek savunma istemci olamaz: eski bir sekme, önbelleğe
+        // alınmış sayfa ya da doğrudan istek kapalı ili yine gönderebilir.
+        const { kapaliIller } = await formAyariOku();
+        if (kapaliIller.includes(veri.il)) {
+            return res.status(400).json({
+                error: `${veri.il} için şu anda franchise başvurusu alınmıyor.`,
+            });
         }
 
         veriYaDaHata(

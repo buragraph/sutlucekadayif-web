@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+
 import { Building2, UserCircle, QrCode, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight, Map as MapIcon,
     UtensilsCrossed, Megaphone, GraduationCap, MessageSquare } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -19,8 +19,6 @@ import BolgeKarti from '../components/BolgeKarti';
 // Çıplak lazy'de bu hata Suspense sınırını aşıp SAYFAYI KOMPLE BEYAZ bırakıyordu;
 // sarmalayıcı hatayı tanıyıp sayfayı bir kez yeniliyor.
 const BranchMap = lazy(() => parcaYukle(() => import('../components/BranchMap'), 'Harita'));
-// recharts da ağır — yalnızca şube sahibi grafiğinde yüklensin
-const HarcamaGrafik = lazy(() => parcaYukle(() => import('../components/HarcamaGrafik'), 'Grafik'));
 
 /**
  * Hızlı eylemler ROLE GÖRE. Şube sahibinin listesi eskiden merkezinkiyle
@@ -94,26 +92,9 @@ const ADMIN_EYLEMLER = [
     },
 ];
 
-// Grafik yüklenirken yer ayıran iskelet — harita ile aynı boyda, layout sıçraması önler
-function GrafikIskelet() {
-    return (
-        <Card className="flex h-full flex-col">
-            <CardHeader>
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-3.5 w-56" />
-            </CardHeader>
-            <CardContent className="flex-1">
-                <Skeleton className="h-full min-h-[280px] w-full" />
-            </CardContent>
-        </Card>
-    );
-}
-
 export default function Dashboard() {
     const { subeSlug, role } = useAuth();
     const [konumlar, setKonumlar] = useState([]);
-    const [harcamaDonemler, setHarcamaDonemler] = useState([]);
-    const [harcamaLoading, setHarcamaLoading] = useState(true);
     const bugun = new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     // Harita admin (tüm şubeler) ve şube sahibi (kendi şubesi) için gösterilir
     const haritaGoster = role === 'admin' || role === 'sube_sahibi';
@@ -130,7 +111,6 @@ export default function Dashboard() {
     const haritaSubeler = role === 'sube_sahibi' ? (kendiSube ? [kendiSube] : []) : konumlar;
     // Grafik alanı: şube sahibinde, yüklenirken VEYA veri varken ayrılır → harita ile
     // yan yana, baştan 2 sütun. Yüklenirken iskelet gösterilir, sıçrama olmaz.
-    const grafikAlani = role === 'sube_sahibi' && (harcamaLoading || harcamaDonemler.length > 0);
 
     // Konumları hafif endpoint'ten çek (admin: tümü, sube_sahibi: kendi şubesi)
     useEffect(() => {
@@ -140,18 +120,6 @@ export default function Dashboard() {
             .catch(() => {});
         // subeSlug bağımlılığı: kullanıcının şubesi değişince harita konumları tazelensin
     }, [haritaGoster, subeSlug]);
-
-    // Şube sahibi: geçmiş dönem harcamaları (donem_ozetleri — backend güncel dönemi filtreler)
-    useEffect(() => {
-        if (role !== 'sube_sahibi' || !subeSlug) { setHarcamaDonemler([]); setHarcamaLoading(false); return; }
-        let aktif = true;
-        setHarcamaLoading(true);
-        api.get(`/reports/sube/${subeSlug}`)
-            .then(({ data }) => { if (aktif) setHarcamaDonemler(data.sube?.donem_ozetleri || []); })
-            .catch(() => { if (aktif) setHarcamaDonemler([]); })
-            .finally(() => { if (aktif) setHarcamaLoading(false); });
-        return () => { aktif = false; };
-    }, [role, subeSlug]);
 
     return (
         <div className="flex flex-col gap-6">
@@ -218,26 +186,12 @@ export default function Dashboard() {
                 dashboard'u şube ağı geneline bakıyor. */}
             {role === 'sube_sahibi' && <SubeMetrikleri subeSlug={subeSlug} />}
 
-            {/* ALT SATIR: harcama grafiği + merkez duyuruları yan yana.
-                Duyurular eskiden sayfa boyunca uzanan serbest bir listeydi;
-                grafikle aynı satırda bir sütun olunca ekran gerçekten pano gibi
-                duruyor. İkisi de içerik yoksa hiç çizilmiyor. */}
-            {grafikAlani ? (
-                <div className="grid gap-4 lg:grid-cols-3">
-                    <div className="lg:col-span-2">
-                        {harcamaDonemler.length > 0 ? (
-                            <Suspense fallback={<GrafikIskelet />}>
-                                <HarcamaGrafik className="h-full" donemler={harcamaDonemler} />
-                            </Suspense>
-                        ) : (
-                            <GrafikIskelet />
-                        )}
-                    </div>
-                    <DuyuruKartlari />
-                </div>
-            ) : (
-                <DuyuruKartlari />
-            )}
+            {/* HARCAMA ÖZETİ GRAFİĞİ KALDIRILDI: dönemsel harcama zaten Reklam
+                bölümünün konusu; panoda ayrıca durması hem tekrar hem de şube
+                sahibinin ilk ekranını para konuşan bir grafikle açıyordu.
+                (Grafiğin kendisi duruyor — HarcamaGrafik bileşeni Reklam
+                sayfasında kullanılıyor.) */}
+            <DuyuruKartlari />
 
             {/* ── Alt bölüm ROLE GÖRE ──
                 Şube sahibinde eski "Aktif Şube / Yönetim Rolü / Müşteri Arayüzü"
