@@ -3,7 +3,8 @@ import { useAuth } from '../../../context/AuthContext';
 import api from '../../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Building2, UserCircle, QrCode, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight, Map as MapIcon } from 'lucide-react';
+import { Building2, UserCircle, QrCode, Layers, Image as ImageIcon, ClipboardList, ArrowUpRight, Map as MapIcon,
+    UtensilsCrossed, Megaphone, GraduationCap, MessageSquare } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { parcaYukle } from '../../../shared/utils/parca-yukle';
 import DuyuruKartlari from '../components/DuyuruKartlari';
@@ -20,6 +21,78 @@ import BolgeKarti from '../components/BolgeKarti';
 const BranchMap = lazy(() => parcaYukle(() => import('../components/BranchMap'), 'Harita'));
 // recharts da ağır — yalnızca şube sahibi grafiğinde yüklensin
 const HarcamaGrafik = lazy(() => parcaYukle(() => import('../components/HarcamaGrafik'), 'Grafik'));
+
+/**
+ * Hızlı eylemler ROLE GÖRE. Şube sahibinin listesi eskiden merkezinkiyle
+ * aynıydı: "Medya Galerisi" ona kapalı bir sayfaya gidiyor, "Menü & Ürünler"
+ * açıklaması ise yetkisi olmayan işleri anlatıyordu (kategori düzenleme, ürün
+ * ekleme merkezde). Metinler artık şubenin gerçekten yapabildiği işi anlatıyor.
+ */
+const SUBE_EYLEMLER = [
+    {
+        Ikon: UtensilsCrossed,
+        baslik: 'Ürünler',
+        metin: 'Şubenizde satılan ürünleri seçin, tükeneni kapatın, serbest fiyatlı ürünlerde fiyatınızı girin.',
+        yol: '/admin/qr-menu',
+    },
+    {
+        Ikon: Megaphone,
+        baslik: 'Reklam',
+        metin: 'Dönemsel reklam harcamanız, erişiminiz ve Google performansınız; bütçe kampanyası bildirimi.',
+        yol: '/admin/reklam',
+    },
+    {
+        Ikon: GraduationCap,
+        baslik: 'Akademi',
+        metin: 'Ürün hazırlama, servis ve hijyen eğitimlerini izleyin, sınavlarınızı tamamlayın.',
+        yol: '/admin/akademi',
+    },
+    {
+        Ikon: MessageSquare,
+        baslik: 'Şikayet ve Geri Bildirim',
+        metin: 'Müşteri şikayetlerini yanıtlayın; merkeze kendi şikayet ve talebinizi iletin.',
+        yol: '/admin/geri-bildirim',
+    },
+    {
+        Ikon: QrCode,
+        baslik: 'QR Menünüz',
+        metin: 'Müşterinizin telefonunda gördüğü menüyü yeni sekmede açın.',
+        dis: true,   // hedef şubeye göre değişiyor, kartta kuruluyor
+    },
+    {
+        Ikon: UserCircle,
+        baslik: 'Profiliniz',
+        metin: 'İletişim bilgilerinizi, fatura ve vergi bilgilerinizi güncelleyin.',
+        yol: '/admin/profil',
+    },
+];
+
+const ADMIN_EYLEMLER = [
+    {
+        Ikon: Layers,
+        baslik: 'Menü & Ürünler',
+        metin: 'Kategorileri düzenleyin, ürün ekleyin, fiyatları ve şube menülerini yönetin.',
+        yol: '/admin/qr-menu',
+    },
+    {
+        Ikon: ImageIcon,
+        baslik: 'Medya Galerisi',
+        metin: 'Ürün görsellerini merkezi kütüphaneye yükleyin, şubeler arasında paylaşın.',
+        yol: '/admin/medya',
+    },
+    {
+        Ikon: ClipboardList,
+        baslik: 'Raporlar',
+        metin: 'Şubelerin dönemsel reklam harcaması, erişimi ve Google metriklerini inceleyin.',
+        yol: '/admin/raporlar',
+    },
+    {
+        Ikon: MessageSquare,
+        baslik: 'Şikayet ve Geri Bildirim',
+        metin: 'Müşteri şikayetleri ve şubelerin merkeze ilettiği talepler tek masada.',
+        yol: '/admin/geri-bildirim',
+    },
+];
 
 // Grafik yüklenirken yer ayıran iskelet — harita ile aynı boyda, layout sıçraması önler
 function GrafikIskelet() {
@@ -161,126 +234,120 @@ export default function Dashboard() {
             {/* Şubenin bulunduğu ilçenin profili — SEGE-2022. */}
             {role === 'sube_sahibi' && <BolgeKarti subeSlug={subeSlug} />}
 
-            {/* Metrik Kartlar Grubu */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <Card className="bg-linear-to-t from-primary/5 to-card transition-all hover:border-muted-foreground/30 rounded-2xl">
-                    <CardHeader className="flex flex-row items-center justify-between pb-3">
-                        <div className="space-y-1">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Aktif Şube</p>
-                            <CardTitle className="text-xl font-bold tracking-tight text-foreground mt-1">
-                                {subeSlug ? (subeSlug.charAt(0).toUpperCase() + subeSlug.slice(1)) : 'Tüm Şubeler'}
-                            </CardTitle>
-                        </div>
-                        <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3]">
-                            <Building2 className="size-4.5" />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
+            {/* ── Alt bölüm ROLE GÖRE ──
+                Şube sahibinde eski "Aktif Şube / Yönetim Rolü / Müşteri Arayüzü"
+                kartları kaldırıldı: ikisi bilgi vermiyordu (şube adı zaten
+                haritanın üstünde, "Sınırlı Şube Erişimi" rozeti ise kullanıcıya
+                ne yapabileceğini değil ne yapamayacağını söylüyordu). Hızlı
+                eylemler de yanlıştı — "Medya Galerisi" şubeye kapalı bir sayfaya,
+                "Kategorileri düzenleyin, ürün ekleyin" ise şubenin yetkisi
+                olmayan işlere götürüyordu. */}
+            {role === 'admin' && (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <OzetKart
+                        etiket="Kapsam"
+                        baslik={kendiSube?.ad || (subeSlug ? subeSlug : 'Tüm Şubeler')}
+                        Ikon={Building2}
+                    >
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            Bağlantı Aktif
+                            <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
+                            {subeSayisi} şube · {ilSayisi} il
                         </span>
-                    </CardContent>
-                </Card>
+                    </OzetKart>
 
-                <Card className="bg-linear-to-t from-primary/5 to-card transition-all hover:border-muted-foreground/30 rounded-2xl">
-                    <CardHeader className="flex flex-row items-center justify-between pb-3">
-                        <div className="space-y-1">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Yönetim Rolü</p>
-                            <CardTitle className="text-xl font-bold tracking-tight text-foreground mt-1">
-                                {role === 'admin' ? 'Genel Yönetici' : 'Şube Yetkilisi'}
-                            </CardTitle>
-                        </div>
-                        <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3]">
-                            <UserCircle className="size-4.5" />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
+                    <OzetKart etiket="Yönetim Rolü" baslik="Genel Yönetici" Ikon={UserCircle}>
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">
-                            {role === 'admin' ? 'Tam Yetkili Erişim' : 'Sınırlı Şube Erişimi'}
+                            Tam Yetkili Erişim
                         </span>
-                    </CardContent>
-                </Card>
+                    </OzetKart>
 
-                <Card className="bg-linear-to-t from-primary/5 to-card transition-all hover:border-muted-foreground/30 rounded-2xl">
-                    <CardHeader className="flex flex-row items-center justify-between pb-3">
-                        <div className="space-y-1">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Müşteri Arayüzü</p>
-                            <CardTitle className="text-xl font-bold tracking-tight text-[#084529] dark:text-[#d8c7a3] mt-1">
-                                QR Menüyü Önizle
-                            </CardTitle>
-                        </div>
-                        <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3]">
-                            <QrCode className="size-4.5" />
-                        </div>
-                    </CardHeader>
-                    <CardContent>
+                    <OzetKart etiket="Müşteri Arayüzü" baslik="QR Menüyü Önizle" Ikon={QrCode} vurgulu>
                         <a
                             href={subeSlug ? `/${subeSlug}` : '/'}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1 rounded-lg bg-[#084529]/10 hover:bg-[#084529]/15 text-[#084529] dark:bg-[#d8c7a3]/10 dark:hover:bg-[#d8c7a3]/15 dark:text-[#d8c7a3] px-3 py-1 text-xs font-bold transition-all group"
+                            className="group inline-flex items-center gap-1 rounded-lg bg-[#084529]/10 px-3 py-1 text-xs font-bold text-[#084529] transition-all hover:bg-[#084529]/15 dark:bg-[#d8c7a3]/10 dark:text-[#d8c7a3] dark:hover:bg-[#d8c7a3]/15"
                         >
                             Menüyü Aç
-                            <ArrowUpRight className="size-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                            <ArrowUpRight className="size-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                         </a>
-                    </CardContent>
-                </Card>
-            </div>
+                    </OzetKart>
+                </div>
+            )}
 
-            {/* Hızlı Eylemler Panel Kartı */}
             <div className="space-y-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground px-1">Hızlı Eylemler</h3>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    <Link to="/admin/qr-menu" className="group">
-                        <Card className="h-full bg-card hover:bg-muted/40 transition-all hover:border-[#084529]/30 rounded-2xl cursor-pointer">
-                            <CardHeader className="pb-2">
-                                <div className="flex items-center gap-3">
-                                    <div className="flex size-8 items-center justify-center rounded-lg bg-[#084529]/10 text-[#084529] dark:bg-[#d8c7a3]/10 dark:text-[#d8c7a3]">
-                                        <Layers className="size-4" />
-                                    </div>
-                                    <CardTitle className="text-sm font-semibold text-foreground group-hover:text-[#084529] dark:group-hover:text-[#d8c7a3] transition-colors">Menü & Ürünler</CardTitle>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-xs text-muted-foreground leading-normal">Kategorileri düzenleyin, ürün ekleyin, fiyatları ve stok durumlarını kontrol edin.</p>
-                            </CardContent>
-                        </Card>
-                    </Link>
-
-                    <Link to="/admin/medya" className="group">
-                        <Card className="h-full bg-card hover:bg-muted/40 transition-all hover:border-[#084529]/30 rounded-2xl cursor-pointer">
-                            <CardHeader className="pb-2">
-                                <div className="flex items-center gap-3">
-                                    <div className="flex size-8 items-center justify-center rounded-lg bg-[#084529]/10 text-[#084529] dark:bg-[#d8c7a3]/10 dark:text-[#d8c7a3]">
-                                        <ImageIcon className="size-4" />
-                                    </div>
-                                    <CardTitle className="text-sm font-semibold text-foreground group-hover:text-[#084529] dark:group-hover:text-[#d8c7a3] transition-colors">Medya Galerisi</CardTitle>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-xs text-muted-foreground leading-normal">Ürün tatlı görsellerini merkezi kütüphaneye yükleyin ve şubeler arası paylaşın.</p>
-                            </CardContent>
-                        </Card>
-                    </Link>
-
-                    <Link to="/admin/raporlar" className="group">
-                        <Card className="h-full bg-card hover:bg-muted/40 transition-all hover:border-[#084529]/30 rounded-2xl cursor-pointer">
-                            <CardHeader className="pb-2">
-                                <div className="flex items-center gap-3">
-                                    <div className="flex size-8 items-center justify-center rounded-lg bg-[#084529]/10 text-[#084529] dark:bg-[#d8c7a3]/10 dark:text-[#d8c7a3]">
-                                        <ClipboardList className="size-4" />
-                                    </div>
-                                    <CardTitle className="text-sm font-semibold text-[#084529] dark:text-[#d8c7a3] transition-colors">Raporlar & Analizler</CardTitle>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <p className="text-xs text-muted-foreground leading-normal">Şubelerinizin QR kod okutma oranlarını ve popüler ürünleri inceleyin.</p>
-                            </CardContent>
-                        </Card>
-                    </Link>
+                <h3 className="px-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                    Hızlı Eylemler
+                </h3>
+                {/* Sütun sayısı öğe sayısına göre: şubede 6 kart (3+3),
+                    merkezde 4 kart tek sırada. Tek başına sarkan kart kalmasın. */}
+                <div className={`grid gap-4 sm:grid-cols-2 ${role === 'admin' ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
+                    {(role === 'admin' ? ADMIN_EYLEMLER : SUBE_EYLEMLER).map((e) => (
+                        <EylemKarti
+                            key={e.baslik}
+                            {...e}
+                            dis={e.dis ? (subeSlug ? `/${subeSlug}` : '/') : undefined}
+                        />
+                    ))}
                 </div>
             </div>
         </div>
     );
+}
+
+/**
+ * Üstteki özet kartların ortak kabuğu — yalnızca merkez panelinde kullanılıyor.
+ *
+ * PROPS TEK NESNE OLARAK OKUNUYOR: projenin eslint kurulumunda
+ * `react/jsx-uses-vars` yok, yani YALNIZCA JSX'te kullanılan bir parametre
+ * "hiç kullanılmamış" sayılıyor. `props.Ikon` üye erişimi olduğu için sorun
+ * çıkmıyor (aynı kalıp components/layout/nav-main.jsx'te de var).
+ */
+function OzetKart(props) {
+    const { etiket, baslik, vurgulu = false, children } = props;
+    return (
+        <Card className="rounded-2xl bg-linear-to-t from-primary/5 to-card transition-all hover:border-muted-foreground/30">
+            <CardHeader className="flex flex-row items-center justify-between pb-3">
+                <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{etiket}</p>
+                    <CardTitle className={`mt-1 text-xl font-bold tracking-tight ${vurgulu ? 'text-[#084529] dark:text-[#d8c7a3]' : 'text-foreground'}`}>
+                        {baslik}
+                    </CardTitle>
+                </div>
+                <div className="flex size-9 items-center justify-center rounded-xl border bg-muted text-[#084529] dark:text-[#d8c7a3]">
+                    <props.Ikon className="size-4.5" />
+                </div>
+            </CardHeader>
+            <CardContent>{children}</CardContent>
+        </Card>
+    );
+}
+
+/**
+ * Hızlı eylem kartı. `dis` verilirse yeni sekmede açılan dış bağlantı
+ * (QR menü müşteri tarafı), yoksa panel içi yönlendirme.
+ */
+function EylemKarti(props) {
+    const { baslik, metin, yol, dis } = props;
+    const govde = (
+        <Card className="h-full cursor-pointer rounded-2xl bg-card transition-all hover:border-[#084529]/30 hover:bg-muted/40">
+            <CardHeader className="pb-2">
+                <div className="flex items-center gap-3">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-[#084529]/10 text-[#084529] dark:bg-[#d8c7a3]/10 dark:text-[#d8c7a3]">
+                        <props.Ikon className="size-4" />
+                    </div>
+                    <CardTitle className="text-sm font-semibold text-foreground transition-colors group-hover:text-[#084529] dark:group-hover:text-[#d8c7a3]">
+                        {baslik}
+                    </CardTitle>
+                    {dis && <ArrowUpRight className="ml-auto size-3.5 text-muted-foreground" />}
+                </div>
+            </CardHeader>
+            <CardContent>
+                <p className="text-xs leading-normal text-muted-foreground">{metin}</p>
+            </CardContent>
+        </Card>
+    );
+    return dis
+        ? <a href={dis} target="_blank" rel="noreferrer" className="group">{govde}</a>
+        : <Link to={yol} className="group">{govde}</Link>;
 }

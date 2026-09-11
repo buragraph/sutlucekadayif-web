@@ -6,14 +6,20 @@ import { AppSidebar } from '../../components/layout/app-sidebar';
 import { AppHeader } from '../../components/layout/app-header';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-import OnboardingWizard from './OnboardingWizard';
 import ParolaDegistirKapisi from './ParolaDegistirKapisi';
+import HosGeldinTuru from './HosGeldinTuru';
+import { tanitimGoruldu } from '../utils/tanitim';
 
 export default function Layout() {
-    // İlk giriş onboarding'i — yalnızca gerçek şube sahipleri için (admin simülasyonu hariç)
-    const { realRole } = useAuth();
-    const [onboarding, setOnboarding] = useState(false); // false=gerekmiyor/bilinmiyor, {prefill}=göster
+    // İlk giriş akışı — yalnızca gerçek şube sahipleri için (admin simülasyonu hariç)
+    const { realRole, user } = useAuth();
     const [parolaGerekli, setParolaGerekli] = useState(false);
+    // ZORUNLU ONBOARDING FORMU ŞİMDİLİK KAPALI. Şube sahibi paneli ilk kez
+    // görüyor; ondan ad/telefon/adres istemeden önce neyin nerede olduğunu
+    // göstermek gerekiyordu. Form geri açılacaksa OnboardingWizard duruyor:
+    // `data.gerekli` durumunu tekrar okuyup aşağıda tanıtımın yerine koymak
+    // yeterli (bkz. git geçmişi, bu satır).
+    const [tanitimKapandi, setTanitimKapandi] = useState(false);
 
     // DURUM HER ROL İÇİN ÇEKİLİYOR. Eskiden yalnızca şube sahibi sorgulanıyordu
     // çünkü tek konu onboarding'di; zorunlu parola değişimi ise role bakmıyor.
@@ -25,15 +31,18 @@ export default function Layout() {
             .then(({ data }) => {
                 if (!aktif) return;
                 setParolaGerekli(data.parolaDegistirGerekli === true);
-                setOnboarding(data.gerekli ? { prefill: data.prefill || {} } : false);
             })
             .catch(() => {
                 if (!aktif) return;
                 setParolaGerekli(false);
-                setOnboarding(false);
             });
         return () => { aktif = false; };
     }, [realRole]);
+
+    // Tanıtım sunucuya sorulmuyor; "bu tarayıcıda gösterildi mi" bilgisi
+    // localStorage'da. Durum yerine TÜRETİLİYOR: efekt içinde setState çağırmak
+    // gereksiz ikinci bir render turu demek.
+    const tanitim = !tanitimKapandi && realRole === 'sube_sahibi' && !tanitimGoruldu(user?.uid);
 
     return (
         <TooltipProvider>
@@ -56,16 +65,12 @@ export default function Layout() {
                     </div>
                 </SidebarInset>
             </SidebarProvider>
-            {/* SIRA ÖNEMLİ: parola kapısı onboarding'in ÖNÜNDE. Onboarding şube
-                bilgisi topluyor; geçici parolayla girmiş biri o bilgiyi
-                yazabilmemeli. */}
+            {/* SIRA ÖNEMLİ: parola kapısı tanıtımın ÖNÜNDE. Geçici parolayla
+                girmiş biri önce kendi parolasını belirlesin, panel turu sonra. */}
             {parolaGerekli ? (
                 <ParolaDegistirKapisi onTamam={() => setParolaGerekli(false)} />
-            ) : onboarding && (
-                <OnboardingWizard
-                    prefill={onboarding.prefill}
-                    onComplete={() => setOnboarding(false)}
-                />
+            ) : tanitim && (
+                <HosGeldinTuru uid={user?.uid} onKapat={() => setTanitimKapandi(true)} />
             )}
         </TooltipProvider>
     );
