@@ -485,9 +485,13 @@ router.get('/sube/:kod/ozet-kartlar', verifyToken, requirePermission('reports.vi
     const { kod } = req.params;
     if (!ensureBranchAccess(req, res, kod)) return;
 
-    // İKİ DÖNEM ÇEKİLİYOR: kartta "geçen döneme göre" değişim gösteriliyor.
-    // Tek başına "3.195 görüntülenme" iyi mi kötü mü belli değil; şube o sayıyı
-    // ancak bir öncekiyle kıyaslayınca okuyabiliyor.
+    // ALTI DÖNEM ÇEKİLİYOR: kart hem "geçen döneme göre" değişimi hem de son
+    // dönemlerin seyrini (mini grafik) gösteriyor. Tek başına "3.195
+    // görüntülenme" iyi mi kötü mü belli değil; şube o sayıyı ancak
+    // öncekilerle birlikte okuyabiliyor.
+    //
+    // ALTI: kartın içindeki grafik bundan fazlasını okunur çizemiyor, azı da
+    // eğilimi göstermiyor. Ek maliyet yok — aynı sorgunun limiti.
     const bugun = new Date().toISOString().slice(0, 10);
     const { data: satirlar, error } = await supabase
       .from('donemler')
@@ -495,7 +499,7 @@ router.get('/sube/:kod/ozet-kartlar', verifyToken, requirePermission('reports.vi
       .eq('sube_kod', kod)
       .lt('bitis', bugun)
       .order('bitis', { ascending: false })
-      .limit(2);
+      .limit(6);
     if (error) throw new Error(error.message);
     const data = satirlar?.[0];
     if (!data) return res.json({ donem: null, kartlar: null });
@@ -511,6 +515,12 @@ router.get('/sube/:kod/ozet-kartlar', verifyToken, requirePermission('reports.vi
       harcama: sayi(d.harcama),
     } : null);
 
+    // Seri ESKİDEN YENİYE: grafik soldan sağa okunuyor.
+    const seri = [...satirlar].reverse().map((d) => ({
+      bitis: d.bitis,
+      ...kartlar(d),
+    }));
+
     res.json({
       donem: { baslangic: data.baslangic, bitis: data.bitis },
       kartlar: kartlar(data),
@@ -518,6 +528,7 @@ router.get('/sube/:kod/ozet-kartlar', verifyToken, requirePermission('reports.vi
       // rozetini o zaman hiç çizmiyor.
       oncekiDonem: onceki ? { baslangic: onceki.baslangic, bitis: onceki.bitis } : null,
       oncekiKartlar: kartlar(onceki),
+      seri,
     });
   } catch (err) {
     console.error('[Reports]', err);
