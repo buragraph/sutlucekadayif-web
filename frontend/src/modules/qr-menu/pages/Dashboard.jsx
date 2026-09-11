@@ -129,7 +129,17 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground">{bugun}</p>
             </div>
 
-            {/* ÜST SATIR: harita + bölge paneli.
+            {/* SAYILAR EN ÜSTTE: şube panele "bu dönem ne oldu" sorusuyla
+                giriyor. Harita kimliğini gösteriyor ama iş bilgisi taşımıyordu;
+                pano rakamla açılıp bağlamla (harita, bölge) devam ediyor.
+                Yalnızca şube sahibinde — merkezin panosu ağ geneline bakıyor,
+                tek şubenin dönem sayısı orada anlamsız olurdu. */}
+            {role === 'sube_sahibi' && <SubeMetrikleri subeSlug={subeSlug} />}
+
+            {/* Bekleyen şikayet uyarısı — ince bir şerit; bekleyen yoksa hiç çizmiyor. */}
+            <SikayetUyarisi />
+
+            {/* harita + bölge paneli.
                 Şube sahibinde harita 2 sütun, TÜİK/SEGE verisi yanında 1 sütun.
                 Eskiden bölge bilgisi sayfanın altında dört kartlık ayrı bir
                 şerittı; şube konumuyla ilgili olduğu için haritanın yanı doğru
@@ -178,13 +188,6 @@ export default function Dashboard() {
 
                 {role === 'sube_sahibi' && <BolgeKarti subeSlug={subeSlug} dikey />}
             </div>
-
-            {/* Bekleyen şikayet uyarısı — ince bir şerit; bekleyen yoksa hiç çizmiyor. */}
-            <SikayetUyarisi />
-
-            {/* Son dönem rapor sayıları — yalnızca şube sahibinde. Admin'in
-                dashboard'u şube ağı geneline bakıyor. */}
-            {role === 'sube_sahibi' && <SubeMetrikleri subeSlug={subeSlug} />}
 
             {/* HARCAMA ÖZETİ GRAFİĞİ KALDIRILDI: dönemsel harcama zaten Reklam
                 bölümünün konusu; panoda ayrıca durması hem tekrar hem de şube
