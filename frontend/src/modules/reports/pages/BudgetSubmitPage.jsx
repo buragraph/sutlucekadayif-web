@@ -4,10 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import {
-    Loader2, Upload, CheckCircle2, Copy, Wallet, FileText, AlertCircle,
+    Loader2, Upload, CheckCircle2, Copy, Wallet, FileText, AlertCircle, Camera,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { tr } from 'date-fns/locale';
@@ -95,6 +92,16 @@ export default function BudgetSubmitPage() {
         fetchData();
     }, []);
 
+    // Seçilen görselin küçük önizlemesi. Blob URL'i dosya değişince serbest
+    // bırakılıyor, yoksa her seçimde bir tane sızıyor.
+    const [dekontOnizleme, setDekontOnizleme] = useState(null);
+    useEffect(() => {
+        if (!dekontFile || !dekontFile.type.startsWith('image/')) { setDekontOnizleme(null); return; }
+        const url = URL.createObjectURL(dekontFile);
+        setDekontOnizleme(url);
+        return () => URL.revokeObjectURL(url);
+    }, [dekontFile]);
+
     const handleFileChange = (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -179,6 +186,11 @@ export default function BudgetSubmitPage() {
         }
     };
 
+    // Seçilen seçeneğin ödenecek tutarı — gönder düğmesinde tekrar gösteriliyor.
+    const secilenSecenek = (kampanya?.bakiye_secenekleri || []).find(
+        (o) => Number(o.bakiye) === Number(selectedBakiye));
+    const odenecek = secilenSecenek ? Number(secilenSecenek.kdv_dahil) : 0;
+
     if (loading) {
         return (
             <div className="flex items-center justify-center py-20">
@@ -250,14 +262,23 @@ export default function BudgetSubmitPage() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
+                        {/* IBAN TELEFONDA TAM SATIR. Tek satırda `truncate` ile
+                            durduğu sürece numara okunmuyordu; havaleyi yapacak
+                            kişi ya elle yazacak ya kopyalayacak — ikisi de
+                            numaranın tamamını istiyor. Kopyala düğmesi de parmak
+                            hedefi olacak kadar büyük (h-11), telefonda tam en. */}
                         {kampanya.iban && (
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium">IBAN:</span>
-                                <code className="text-xs bg-background px-2 py-1 rounded border font-mono flex-1 truncate">
+                            <div className="space-y-2">
+                                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">IBAN</span>
+                                <code className="block break-all rounded border bg-background px-3 py-2 font-mono text-sm">
                                     {kampanya.iban}
                                 </code>
-                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleCopyIban}>
-                                    <Copy className="w-3.5 h-3.5" />
+                                <Button
+                                    type="button" variant="outline"
+                                    className="h-11 w-full sm:h-9 sm:w-auto"
+                                    onClick={handleCopyIban}
+                                >
+                                    <Copy className="mr-2 size-4" /> IBAN'ı kopyala
                                 </Button>
                             </div>
                         )}
@@ -275,106 +296,152 @@ export default function BudgetSubmitPage() {
                     <p className="text-xs text-muted-foreground">
                         <span className="font-medium text-foreground">Reklam bakiyesi</span> reklama harcanan tutardır.
                         Meta, reklam harcaması üzerinden ayrıca <span className="font-medium text-foreground">konum ücreti</span> alır;
-                        KDV bu ikisinin toplamı üzerinden hesaplanır. Bankaya yatıracağınız tutar sağdaki
-                        <span className="font-medium text-foreground"> ödenecek tutar</span> sütunudur.
+                        KDV bu ikisinin toplamı üzerinden hesaplanır. Bankaya yatıracağınız tutar
+                        <span className="font-medium text-foreground"> ödenecek tutar</span>dır.
                     </p>
-                    <Card>
-                        <CardContent className="p-0">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-12"></TableHead>
-                                        <TableHead className="text-right">Reklam Bakiyesi</TableHead>
-                                        {/* TELEFONDA ARA SÜTUNLAR KAPALI: beş sütun 375px'e
-                                            sığmayınca tablo yana kayıyor ve şubenin görmesi
-                                            gereken tek sayı — ÖDENECEK TUTAR — ekran dışında
-                                            kalıyordu. Konum ücreti ve KDV bakiyenin altına iniyor. */}
-                                        <TableHead className="hidden text-right sm:table-cell">Konum Ücreti</TableHead>
-                                        <TableHead className="hidden text-right sm:table-cell">KDV</TableHead>
-                                        <TableHead className="text-right">Ödenecek Tutar</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {(kampanya.bakiye_secenekleri || []).map((opt, i) => {
-                                        const isSelected = Number(selectedBakiye) === Number(opt.bakiye);
-                                        return (
-                                            <TableRow
-                                                key={i}
-                                                className={cn(
-                                                    'cursor-pointer transition-colors',
-                                                    isSelected && 'bg-primary/5 dark:bg-primary/10'
-                                                )}
-                                                onClick={() => setSelectedBakiye(opt.bakiye)}
-                                            >
-                                                <TableCell>
-                                                    <div
-                                                        className={cn(
-                                                            'w-4 h-4 rounded-full border-2 flex items-center justify-center',
-                                                            isSelected
-                                                                ? 'border-primary'
-                                                                : 'border-muted-foreground/30'
-                                                        )}
-                                                    >
-                                                        {isSelected && (
-                                                            <div className="w-2 h-2 rounded-full bg-primary" />
-                                                        )}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="text-right font-medium">
-                                                    {fmtCurrency(opt.bakiye)}
-                                                    {/* Gizlenen sütunların dökümü — yalnızca telefonda. */}
-                                                    <div className="mt-0.5 text-[11px] font-normal text-muted-foreground sm:hidden">
-                                                        {opt.konum_ucreti ? `konum ${fmtCurrency(opt.konum_ucreti)} · ` : ''}
-                                                        KDV {opt.kdv
-                                                            ? fmtCurrency(opt.kdv)
-                                                            : fmtCurrency(Number(opt.kdv_dahil) - Number(opt.bakiye) - Number(opt.konum_ucreti || 0))}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
-                                                    {opt.konum_ucreti ? fmtCurrency(opt.konum_ucreti) : '—'}
-                                                </TableCell>
-                                                <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
-                                                    {opt.kdv
-                                                        ? fmtCurrency(opt.kdv)
-                                                        : fmtCurrency(Number(opt.kdv_dahil) - Number(opt.bakiye) - Number(opt.konum_ucreti || 0))}
-                                                </TableCell>
-                                                <TableCell className="text-right font-semibold">
+                    {/* SEÇİM TABLOSU DEĞİL, SEÇİM KARTLARI.
+                        Bu sayfa telefonda dolduruluyor: şube bankadan havaleyi
+                        yapıp dekontun fotoğrafını yüklüyor. Beş sütunlu tablo
+                        375px'te ya yana kayıyor ya da eziliyordu; satırın kendisi
+                        de 4px'lik bir radyo dairesi kadar hedefti. Artık her
+                        seçenek tam genişlikte bir düğme: telefonda ödenecek tutar
+                        en büyük sayı, ayrıntı altında; sm'den itibaren aynı
+                        kartlar dört sütuna hizalanıyor. */}
+                    <div className="hidden gap-3 px-3 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1.5rem_1fr_1fr_1fr_1.2fr]">
+                        <span />
+                        <span className="text-right">Reklam Bakiyesi</span>
+                        <span className="text-right">Konum Ücreti</span>
+                        <span className="text-right">KDV</span>
+                        <span className="text-right">Ödenecek Tutar</span>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                        {(kampanya.bakiye_secenekleri || []).map((opt, i) => {
+                            const secili = Number(selectedBakiye) === Number(opt.bakiye);
+                            const kdv = opt.kdv
+                                ? Number(opt.kdv)
+                                : Number(opt.kdv_dahil) - Number(opt.bakiye) - Number(opt.konum_ucreti || 0);
+                            return (
+                                <button
+                                    type="button"
+                                    key={i}
+                                    onClick={() => setSelectedBakiye(opt.bakiye)}
+                                    aria-pressed={secili}
+                                    className={cn(
+                                        'w-full rounded-xl border p-3 text-left transition-colors',
+                                        'sm:grid sm:grid-cols-[1.5rem_1fr_1fr_1fr_1.2fr] sm:items-center sm:gap-3 sm:px-3',
+                                        secili
+                                            ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                                            : 'hover:bg-muted/40',
+                                    )}
+                                >
+                                    <span className="flex items-center gap-3 sm:contents">
+                                        <span
+                                            className={cn(
+                                                'flex size-5 shrink-0 items-center justify-center rounded-full border-2',
+                                                secili ? 'border-primary' : 'border-muted-foreground/30',
+                                            )}
+                                        >
+                                            {secili && <span className="size-2.5 rounded-full bg-primary" />}
+                                        </span>
+
+                                        {/* Telefonda başlık ÖDENECEK TUTAR: bankaya yazılacak
+                                            sayı o. Bakiye ve ayrıntı altına iniyor. */}
+                                        <span className="flex min-w-0 flex-1 items-baseline justify-between gap-2 sm:contents">
+                                            <span className="text-sm text-muted-foreground sm:order-1 sm:text-right sm:text-sm sm:text-foreground sm:font-medium">
+                                                <span className="sm:hidden">Bakiye </span>
+                                                {fmtCurrency(opt.bakiye)}
+                                            </span>
+                                            <span className="hidden text-right text-sm text-muted-foreground sm:order-2 sm:block">
+                                                {opt.konum_ucreti ? fmtCurrency(opt.konum_ucreti) : '—'}
+                                            </span>
+                                            <span className="hidden text-right text-sm text-muted-foreground sm:order-3 sm:block">
+                                                {fmtCurrency(kdv)}
+                                            </span>
+                                            <span className="shrink-0 text-right sm:order-4">
+                                                <span className="block whitespace-nowrap text-lg font-semibold tabular-nums text-foreground sm:text-sm">
                                                     {fmtCurrency(opt.kdv_dahil)}
-                                                </TableCell>
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
+                                                </span>
+                                                <span className="block text-[10px] uppercase tracking-wide text-muted-foreground sm:hidden">
+                                                    ödenecek
+                                                </span>
+                                            </span>
+                                        </span>
+                                    </span>
+
+                                    {/* Ayrıntı yalnızca telefonda: masaüstünde kendi sütunlarında. */}
+                                    <span className="mt-1 block pl-8 text-xs text-muted-foreground sm:hidden">
+                                        {opt.konum_ucreti ? `konum ücreti ${fmtCurrency(opt.konum_ucreti)} · ` : ''}
+                                        KDV {fmtCurrency(kdv)}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
 
                 {/* Dekont Yükleme */}
                 <div className="space-y-2">
                     <Label className="text-sm font-medium">Dekont Yükleme</Label>
-                    <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
-                        <input
-                            type="file"
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            onChange={handleFileChange}
-                            className="hidden"
-                            id="dekont-upload"
-                        />
-                        <label htmlFor="dekont-upload" className="cursor-pointer space-y-2">
-                            <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
-                            {dekontFile ? (
-                                <p className="text-sm font-medium text-foreground">{dekontFile.name}</p>
+                    {/* TELEFONDA DEKONT = FOTOĞRAF. Şube havaleyi banka
+                        uygulamasından yapıyor ve dekontu ya ekran görüntüsü ya da
+                        kamerayla çekiyor; tek bir "dosya seç" bağlantısı bu işi
+                        anlatmıyordu. İki düğme: kamera (capture) ve galeri/dosya.
+                        Seçilen görselin küçük önizlemesi de gösteriliyor —
+                        yanlış fotoğrafı göndermek burada pahalı. */}
+                    <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleFileChange}
+                        className="hidden"
+                        id="dekont-kamera"
+                    />
+                    <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        onChange={handleFileChange}
+                        className="hidden"
+                        id="dekont-upload"
+                    />
+
+                    {dekontFile ? (
+                        <div className="flex items-center gap-3 rounded-lg border p-3">
+                            {dekontOnizleme ? (
+                                <img src={dekontOnizleme} alt=""
+                                     className="size-14 shrink-0 rounded-md border object-cover" />
                             ) : (
-                                <p className="text-sm text-muted-foreground">
-                                    Dekont dosyasını yüklemek için tıklayın
-                                </p>
+                                <span className="flex size-14 shrink-0 items-center justify-center rounded-md border bg-muted text-muted-foreground">
+                                    <FileText className="size-6" />
+                                </span>
                             )}
-                            <p className="text-xs text-muted-foreground">
-                                PDF, JPG, PNG · Maks 5 MB
-                            </p>
-                        </label>
-                    </div>
+                            <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-foreground">{dekontFile.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                    {dekontFile.size >= 1024 * 1024
+                                        ? `${(dekontFile.size / 1024 / 1024).toFixed(1)} MB`
+                                        : `${Math.max(1, Math.round(dekontFile.size / 1024))} KB`}
+                                </p>
+                            </div>
+                            <Button type="button" variant="ghost" size="sm" className="h-9 shrink-0"
+                                    onClick={() => setDekontFile(null)}>
+                                Kaldır
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                            <Button asChild type="button" variant="outline" className="h-12 sm:h-10">
+                                <label htmlFor="dekont-kamera" className="cursor-pointer">
+                                    <Camera className="mr-2 size-4" /> Fotoğraf çek
+                                </label>
+                            </Button>
+                            <Button asChild type="button" variant="outline" className="h-12 sm:h-10">
+                                <label htmlFor="dekont-upload" className="cursor-pointer">
+                                    <Upload className="mr-2 size-4" /> Dosya seç
+                                </label>
+                            </Button>
+                        </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">PDF, JPG, PNG · Maks 5 MB</p>
                 </div>
 
                 {/* Notlar */}
@@ -390,18 +457,21 @@ export default function BudgetSubmitPage() {
                     />
                 </div>
 
-                {/* Submit */}
-                <div className="flex items-center gap-3">
-                    <Button type="submit" disabled={submitting || !selectedBakiye} className="min-w-[120px]">
+                {/* GÖNDER TELEFONDA SAYFAYA YAPIŞIK: form uzun, düğme en altta
+                    kalınca seçim yapan kişi "gönderdim mi" diye aşağı iniyordu.
+                    sm'den itibaren eski akışına dönüyor. */}
+                <div className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t bg-background/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:flex-row sm:items-center sm:gap-3 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+                    <Button type="submit" disabled={submitting || !selectedBakiye}
+                            className="h-12 w-full sm:h-9 sm:w-auto sm:min-w-[120px]">
                         {submitting ? (
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         ) : (
                             <CheckCircle2 className="w-4 h-4 mr-2" />
                         )}
-                        Gönder
+                        {selectedBakiye ? `${fmtCurrency(odenecek)} için bildirim gönder` : 'Gönder'}
                     </Button>
                     {!selectedBakiye && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
                             <AlertCircle className="w-3.5 h-3.5" />
                             Bir bakiye seçeneği seçin
                         </p>
