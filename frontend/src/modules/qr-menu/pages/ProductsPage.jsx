@@ -4,7 +4,7 @@ import { fiyatYaz, fiyatGirdi } from '../utils/fiyat';
 import { useAuth } from '../../../context/AuthContext';
 import UrunTalepModal from '../components/UrunTalepModal';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, Store, Send, Printer } from 'lucide-react';
+import { Plus, Trash2, X, Search, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, Store, Send, Printer, CircleCheck, CircleSlash } from 'lucide-react';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
@@ -675,6 +675,33 @@ export default function ProductsPage() {
         setBulkBusy(false);
     }
 
+    // Toplu satışa aç / satıştan kaldır. Tek ürünlük anahtarın toplu hâli
+    // (bkz. backend PUT /products/bulk-availability): 21 ürünlük bir kategoride
+    // yalnızca 3'ünü satan şube kalan 18'i tek tek kapatmak zorunda kalıyordu.
+    async function handleBulkMevcut(mevcut) {
+        if (!gorunenSube) return;
+        setBulkBusy(true);
+        try {
+            const { data } = await api.put('/products/bulk-availability', {
+                items: selectedItems(),
+                mevcut,
+                ...(role === 'admin' ? { subeSlug: gorunenSube } : {}),
+            });
+            if (data.guncellenen === 0) {
+                toast.info(mevcut ? 'Seçilenler zaten satışta' : 'Seçilenler zaten kapalı');
+            } else {
+                toast.success(mevcut
+                    ? `${data.guncellenen} ürün satışa açıldı`
+                    : `${data.guncellenen} ürün satıştan kaldırıldı`);
+            }
+            clearSelection();
+            await loadUrunler(true);
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Toplu güncelleme başarısız');
+        }
+        setBulkBusy(false);
+    }
+
     async function handleBulkDelete() {
         const ok = await confirm(`${selectedIds.size} ürünü silmek istediğinize emin misiniz?`);
         if (!ok) return;
@@ -1046,12 +1073,31 @@ export default function ProductsPage() {
                         {selectedIds.size > 0 && (
                             <div className="flex items-center gap-1.5 mr-1.5 pr-2.5 border-r">
                                 <span className="text-xs font-medium text-foreground whitespace-nowrap">{selectedIds.size} seçili</span>
+                                {/* Satış durumu ŞUBEYE AİT bir bilgi: yalnızca bir şube
+                                    görünürken anlamlı. Katalog görünümünde (admin, şube
+                                    seçilmemiş) hangi şubede kapatılacağı belirsiz. */}
+                                {gorunenSube && (
+                                    <>
+                                        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={bulkBusy}
+                                                onClick={() => handleBulkMevcut(true)}>
+                                            <CircleCheck className="size-3.5 mr-1.5" /> Satışa Aç
+                                        </Button>
+                                        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={bulkBusy}
+                                                onClick={() => handleBulkMevcut(false)}>
+                                            <CircleSlash className="size-3.5 mr-1.5" /> Satıştan Kaldır
+                                        </Button>
+                                    </>
+                                )}
+                                {role === 'admin' && (
                                 <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => { setBulkPriceForm({ mode: 'set', value: '' }); setShowBulkPrice(true); }}>
                                     <Tag className="size-3.5 mr-1.5" /> Toplu Fiyat
                                 </Button>
+                                )}
+                                {role === 'admin' && (
                                 <Button size="sm" variant="outline" className="h-8 text-xs text-destructive hover:text-destructive" onClick={handleBulkDelete} disabled={bulkBusy}>
                                     <Trash2 className="size-3.5 mr-1.5" /> Toplu Sil
                                 </Button>
+                                )}
                                 <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={clearSelection}>Temizle</Button>
                             </div>
                         )}

@@ -663,6 +663,96 @@ router.put(
 );
 
 /**
+ * PUT /api/products/bulk-availability
+ * Seçili ürünleri toplu olarak satışa aç / satıştan kaldır.
+ *
+ * NEDEN VAR: bir kategoride 21 ürün açıkken şube yalnızca 3'ünü satıyorsa
+ * kalan 18'i tek tek kapatmak gerekiyordu.
+ *
+ * TOPLU OKUMA/YAZMA ŞART: tek ürünlük uç gibi döngüde sorgu atılsaydı 20
+ * ürün 60+ alt-istek ederdi; Workers'ta istek başına bütçe 50 (rapor
+ * çekiminde bu sınıra çarpıldı, bkz. CEKIM_CRON_DILIM). Burada okuma üç
+ * sorgu, yazma tek upsert.
+ *
+ * TEK ÜRÜNLÜK UCUN KURALLARI AYNEN GEÇERLİ (bkz. PUT /:id/availability):
+ * yalnızca ortak ürün, şubeden gizlenmemiş ve şubenin MENÜSÜNDE olan ürün.
+ * Ölçütü tutmayan satır sessizce atlanıyor ve yanıtta sayılmıyor.
+ *
+ * NOT: '/:id' kalıbından ÖNCE tanımlı olmalı, yoksa id sanılır.
+ */
+const TOPLU_DILIM = 200;
+
+router.put(
+    '/bulk-availability',
+    verifyToken,
+    requirePermission('products.toggleAvailability'),
+    asyncHandler(async (req, res) => {
+        const { items, mevcut } = req.body;
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ error: 'Ürün seçilmedi' });
+        }
+        const { slug: subeSlug, hata } = hedefSube(req, req.body.subeSlug);
+        if (hata) return res.status(403).json({ error: hata });
+        if (!subeSlug) return res.status(400).json({ error: 'Şube bilgisi gerekli' });
+
+        const idler = [...new Set(items.map((it) => String(it?.id ?? it ?? '')).filter(Boolean))];
+        if (idler.length === 0) return res.status(400).json({ error: 'Ürün seçilmedi' });
+
+        // ── Okuma: üç sorgu, dilimlenerek (PostgREST URL uzunluğu) ──
+        const urunSatirlari = [];
+        const uyeSatirlari = [];
+        for (let i = 0; i < idler.length; i += TOPLU_DILIM) {
+            const parca = idler.slice(i, i + TOPLU_DILIM);
+            urunSatirlari.push(...veriYaDaHata(
+                await supabase.from('urunler').select('id, ad, kategori_id')
+                    .in('id', parca).eq('tur', 'ortak'),
+                'ürünler okunamadı'
+            ));
+            uyeSatirlari.push(...veriYaDaHata(
+                await supabase.from('urun_sube').select('urun_id, menude, gizli, mevcut_degil')
+                    .in('urun_id', parca).eq('sube_kod', subeSlug),
+                'ürün-şube satırları okunamadı'
+            ));
+        }
+        const gizliKat = new Set(veriYaDaHata(
+            await supabase.from('kategoriler').select('id, gizli_subeler'), 'kategoriler okunamadı'
+        ).filter((k) => (k.gizli_subeler || []).includes(subeSlug)).map((k) => k.id));
+
+        const uyeMap = new Map(uyeSatirlari.map((u) => [u.urun_id, u]));
+
+        const yazilacak = [];
+        const gunluk = [];
+        for (const u of urunSatirlari) {
+            const uye = uyeMap.get(u.id);
+            // Merkezin gizlediği ürün şube için yok hükmünde; menüde olmayanın
+            // stok durumu da anlamsız.
+            if (!uye?.menude || uye.gizli || gizliKat.has(u.kategori_id)) continue;
+            const eskiMevcut = !uye.mevcut_degil;
+            if (eskiMevcut === !!mevcut) continue;   // zaten istenen durumda
+            yazilacak.push({ urun_id: u.id, sube_kod: subeSlug, mevcut_degil: !mevcut });
+            gunluk.push({
+                urun_id: u.id, urun_ad: u.ad, islem: 'mevcut_degil',
+                eski: { mevcut: eskiMevcut }, yeni: { mevcut: !!mevcut },
+            });
+        }
+
+        for (let i = 0; i < yazilacak.length; i += 500) {
+            veriYaDaHata(
+                await supabase.from('urun_sube').upsert(yazilacak.slice(i, i + 500), { onConflict: 'urun_id,sube_kod' }),
+                'ürün-şube satırları yazılamadı'
+            );
+        }
+
+        if (gunluk.length > 0) {
+            await menuLogYaz(req, subeSlug, gunluk);
+            await regenerateMenuJson(subeSlug).catch(console.error);
+        }
+
+        res.json({ success: true, guncellenen: yazilacak.length, mevcut: !!mevcut });
+    })
+);
+
+/**
  * POST /api/products/bulk
  * Birden çok ürünü tek seferde oluştur.
  */
