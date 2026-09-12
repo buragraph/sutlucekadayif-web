@@ -132,10 +132,10 @@ router.get('/sube', verifyToken, requirePermission('academy.subeIlerleme'), asyn
 
     // Yayında olmayan kurs listeye girmiyor: kimse izleyemediği için "0/6"
     // göstermek şubeye eksik iş varmış gibi görünürdü.
-    const kurslar = kursSatirlari
+    const yayindakiler = kursSatirlari
         .map((k) => kursYanit(k, { lessonCount: dersSayac[k.id] || 0 }))
-        .filter((k) => k.isPublished)
-        .map((k) => ({ id: k.id, title: k.title, lessonCount: k.lessonCount }));
+        .filter((k) => k.isPublished);
+    const kurslar = yayindakiler.map((k) => ({ id: k.id, title: k.title, lessonCount: k.lessonCount }));
     const kursMap = Object.fromEntries(kurslar.map((k) => [k.id, k]));
 
     const ilerlemeByUid = new Map();
@@ -154,10 +154,17 @@ router.get('/sube', verifyToken, requirePermission('academy.subeIlerleme'), asyn
         console.error('Auth fetch error', e);
     }
 
-    const toplamDers = kurslar.reduce((a, k) => a + k.lessonCount, 0);
+    // PAYDA KİŞİYE GÖRE: kurslar role ve şubeye hedefleniyor. Çalışana yalnızca
+    // "Hizmet ve Kalite" açıkken tüm kursların ders sayısını paydaya koymak
+    // "3/88" gibi hiç ulaşamayacağı bir oran gösteriyordu — kişi hiç açamadığı
+    // dersten sorumlu tutulmuş oluyordu.
+    const toplamDersiHesapla = (kisi) => yayindakiler
+        .filter((k) => courseVisibleToUser(k, kisi))
+        .reduce((a, k) => a + k.lessonCount, 0);
 
     const kisiler = hedefler.map((k) => {
         const { byCourse, totalCompleted, lastActivity } = ozetle(ilerlemeByUid.get(k.uid) || []);
+        const toplamDers = toplamDersiHesapla({ role: k.role, subeSlug: subeSlug });
         return {
             uid: k.uid,
             role: k.role,

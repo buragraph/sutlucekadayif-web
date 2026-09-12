@@ -500,9 +500,16 @@ export default function GeriBildirimPage() {
                                     26px'e indiriyor; başlıklar üst üste biniyordu.
                                     Gönderen/Şube/Tarih dar ekranda gizlenip Konu
                                     hücresinin altına iniyor, Durum yer buluyor. */}
-                                <TableHead className="hidden w-[22%] sm:table-cell">Gönderen</TableHead>
+                                {/* ŞUBE SEKMESİNDE GÖNDEREN = ŞUBE. Kaydı merkeze şube
+                                    açıyor; kişi adı çoğu kayıtta boş ve sütun "—"
+                                    görünüyordu. Hangi şubeden geldiği ise asıl
+                                    aranan bilgi. Admin'in ayrı "Şube" sütunu o
+                                    sekmede tekrar olacağı için kapanıyor. */}
+                                <TableHead className="hidden w-[22%] sm:table-cell">
+                                    {subeSekmesi ? 'Şube' : 'Gönderen'}
+                                </TableHead>
                                 <TableHead>Konu</TableHead>
-                                {isAdmin && <TableHead className="hidden w-[13%] sm:table-cell">Şube</TableHead>}
+                                {isAdmin && !subeSekmesi && <TableHead className="hidden w-[13%] sm:table-cell">Şube</TableHead>}
                                 <TableHead className="hidden w-[9%] sm:table-cell">Tarih</TableHead>
                                 <TableHead className="w-[38%] sm:w-[13%]">Durum</TableHead>
                                 {silebilir && <TableHead className="w-12"></TableHead>}
@@ -515,7 +522,11 @@ export default function GeriBildirimPage() {
                                 return (
                                 <TableRow key={b.id} className="cursor-pointer transition-colors hover:bg-muted/40" onClick={() => detayAc(b)}>
                                     <TableCell className="hidden align-top sm:table-cell">
-                                        <div className="truncate font-medium">{b.ad || '—'} {b.soyad}</div>
+                                        <div className="truncate font-medium">
+                                            {subeSekmesi
+                                                ? (b.subeAd || b.subeSlug || '—')
+                                                : <>{b.ad || '—'} {b.soyad}</>}
+                                        </div>
                                         {/* Rozet ve iletişim bilgisi AYNI SATIRDA: ayrı
                                             satırlarda her kayıt üç satır yer kaplıyordu.
                                             Dış kaynakta iletişim bilgisi YOK — Şikayetvar
@@ -523,9 +534,17 @@ export default function GeriBildirimPage() {
                                             yerine bunu söylemek "eksik veri mi çekilmiş"
                                             sorusunu baştan kapatıyor. */}
                                         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                                            {/* Kaynak rozeti yalnızca müşteri şikayetinde anlamlı:
+                                                şube kaydı hep panelden açılıyor, "Telefon / diğer"
+                                                rozeti her satırda tekrar eden bir gürültüydü.
+                                                Yerine kaydı AÇAN KİŞİ yazıyor. */}
+                                            {subeSekmesi ? (
+                                                b.ad ? <span className="truncate">{b.ad} {b.soyad}</span> : null
+                                            ) : (
                                             <Badge variant="outline" className={`px-1.5 py-0 text-[10px] font-normal ${KAYNAK[b.kaynak || 'qr']?.cls}`}>
                                                 {KAYNAK[b.kaynak || 'qr']?.label || b.kaynak}
                                             </Badge>
+                                            )}
                                             {/* Takip kodu yalnızca QR menüden gelen kayıtta var
                                                 (Şikayetvar kendi numarasını vermiyor). Müşteri
                                                 telefonda kodu okuduğunda kayıt tek tıkla
@@ -559,9 +578,13 @@ export default function GeriBildirimPage() {
                                         </span>
                                         {/* Gizlenen sütunların özeti — yalnızca telefonda. */}
                                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground sm:hidden">
-                                            <span className="truncate font-medium text-foreground">{b.ad || '—'} {b.soyad}</span>
+                                            <span className="truncate font-medium text-foreground">
+                                                {subeSekmesi
+                                                    ? (b.subeAd || b.subeSlug || '—')
+                                                    : <>{b.ad || '—'} {b.soyad}</>}
+                                            </span>
                                             <span>{tarihKisaTR(b.olusturmaZamani)}</span>
-                                            {isAdmin && <span className="truncate">{b.subeAd || b.subeSlug || ''}</span>}
+                                            {isAdmin && !subeSekmesi && <span className="truncate">{b.subeAd || b.subeSlug || ''}</span>}
                                             {acik && gun >= GECIKME_GUN && (
                                                 <span className="flex items-center gap-1 font-medium text-destructive">
                                                     <Clock className="size-3" /> {gun} gün
@@ -569,7 +592,11 @@ export default function GeriBildirimPage() {
                                             )}
                                         </div>
                                     </TableCell>
-                                    {isAdmin && (
+                                    {/* Başlıkla AYNI koşul: biri kapanıp diğeri açık kalınca
+                                        satırdaki hücre sayısı başlıktan fazla oluyor ve tüm
+                                        sütunlar bir sağa kayıyor (şube sekmesinde tarih,
+                                        Tarih sütununda şube adı görünüyordu). */}
+                                    {isAdmin && !subeSekmesi && (
                                         <TableCell className="hidden align-top text-sm text-muted-foreground sm:table-cell">
                                             <span className="block truncate">{b.subeAd || b.subeSlug || '—'}</span>
                                         </TableCell>
