@@ -4,7 +4,7 @@ import { fiyatYaz, fiyatGirdi } from '../utils/fiyat';
 import { useAuth } from '../../../context/AuthContext';
 import UrunTalepModal from '../components/UrunTalepModal';
 import api from '../../../services/api';
-import { Plus, Trash2, X, Search, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, Store, Send, Printer, CircleCheck, CircleSlash } from 'lucide-react';
+import { Plus, Trash2, X, Search, RotateCcw, Trash, ImagePlus, Images, Sparkles, ChevronLeft, ChevronRight, Check, ChevronsUpDown, Tag, ListPlus, Store, Send, Printer, CircleCheck, CircleSlash, ImageOff } from 'lucide-react';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
@@ -1526,7 +1526,11 @@ export default function ProductsPage() {
                                                     </span>
                                                     {u.gorsel
                                                         ? <img src={proxyImageUrl(u.gorsel)} alt="" className="size-9 shrink-0 rounded-md object-cover ring-1 ring-border" />
-                                                        : <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-base">🍮</span>}
+                                                        : (
+                                                            <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground/50">
+                                                                <ImageOff className="size-4" strokeWidth={1.5} />
+                                                            </span>
+                                                        )}
                                                     {/* Kısalan ada tam metni title ile ver: merkezin
                                                         katalogunda içindeki aromaları tek tek sayan
                                                         çok uzun adlar var. */}

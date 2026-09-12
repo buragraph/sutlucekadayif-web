@@ -1,3 +1,4 @@
+import { ImageOff } from 'lucide-react';
 import { proxyImageUrl } from '../../../utils/imageProxy';
 
 export default function ProductCard({ product }) {
@@ -8,7 +9,7 @@ export default function ProductCard({ product }) {
             {gorsel ? (
                 <img src={proxyImageUrl(gorsel)} alt={ad} className="product-image" loading="lazy" />
             ) : (
-                <div className="product-image-placeholder">🍮</div>
+                <div className="product-image-placeholder"><ImageOff size={18} strokeWidth={1.5} /></div>
             )}
             <div className="product-info">
                 <h3>{ad}</h3>

@@ -682,8 +682,19 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 40px;
   background: linear-gradient(135deg, #e8e3d8, #ddd8cc);
+}
+
+/* Görseli olmayan ürünün yer tutucusu: soluk marka işareti.
+   Emoji (🍮) kullanılmıyor — müşteri onu ürünün fotoğrafı sanıyordu. */
+.pm-gorselsiz__marka {
+  width: 58%;
+  max-width: 190px;
+  height: auto;
+  opacity: 0.22;
+  filter: grayscale(1);
+  user-select: none;
+  pointer-events: none;
 }
 
 .pm-card__img-overlay {
@@ -2084,7 +2095,7 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
+  color: var(--admin-text-muted);
 }
 
 .admin-product-info {
@@ -4030,7 +4041,7 @@ input[type=number] {
 .pm-modal__img-placeholder {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 64px;
+  background: linear-gradient(135deg, #e8e3d8, #ddd8cc);
 }
 .pm-modal__body { padding: 22px 22px 28px; }
 .pm-modal__tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }

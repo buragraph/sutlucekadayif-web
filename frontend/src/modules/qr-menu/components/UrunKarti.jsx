@@ -1,4 +1,4 @@
-import { Pencil, Trash2, ListMinus, Tags } from 'lucide-react';
+import { Pencil, Trash2, ListMinus, Tags, ImageOff } from 'lucide-react';
 import { fiyatYaz } from '../utils/fiyat';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -80,10 +80,19 @@ export default function UrunKarti({
                                   className="border-white/70 bg-black/30 backdrop-blur-sm data-[state=checked]:border-primary" />
                     </span>
                 )}
+                {/* GÖRSELSİZ ÜRÜN: eskiden 🍮 emojisi basılıyordu ve bu bir
+                    TATLI FOTOĞRAFI gibi okunuyordu — milkshake'in yerinde puding
+                    görünüyordu. Nötr "görsel yok" işareti kartın eksik olduğunu
+                    söylüyor, yanlış ürün göstermiyor. */}
                 {urun.gorsel
                     ? <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad}
                            className={`absolute inset-0 size-full object-cover ${mevcut ? '' : 'opacity-35'}`} loading="lazy" />
-                    : <div className={`absolute inset-0 flex size-full items-center justify-center text-3xl text-muted-foreground/40 ${mevcut ? '' : 'opacity-35'}`}>🍮</div>}
+                    : (
+                        <div className={`absolute inset-0 flex size-full flex-col items-center justify-center gap-1 text-muted-foreground/45 ${mevcut ? '' : 'opacity-35'}`}>
+                            <ImageOff className="size-6" strokeWidth={1.5} />
+                            <span className="text-[10px] font-medium">Görsel yok</span>
+                        </div>
+                    )}
             </div>
 
             <div className={`flex min-w-0 flex-1 flex-col gap-1 p-2.5 ${mevcut ? '' : 'opacity-50'}`}>

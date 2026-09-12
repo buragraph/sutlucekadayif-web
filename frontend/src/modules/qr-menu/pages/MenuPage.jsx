@@ -129,7 +129,13 @@ function ProductCard({ urun, index, onClick }) {
                 {urun.gorsel ? (
                     <img src={proxyImageUrl(urun.gorselKucuk || urun.gorsel)} alt={urun.ad} className="pm-card__img" loading="lazy" />
                 ) : (
-                    <div className="pm-card__img-placeholder">🍮</div>
+                    /* GÖRSELSİZ ÜRÜN: burada eskiden 🍮 emojisi vardı; müşteriye
+                       bir TATLI FOTOĞRAFI gibi görünüyordu (milkshake'in yerinde
+                       puding). Yerine soluk marka işareti: boşluk kasıtlı durur,
+                       yanlış ürün vaat etmez. */
+                    <div className="pm-card__img-placeholder">
+                        <img src="/sutluce-logo.svg" alt="" className="pm-gorselsiz__marka" />
+                    </div>
                 )}
             </div>
             <div className="pm-card__body">
@@ -174,7 +180,9 @@ function ProductModal({ urun, onClose }) {
                     {urun.gorsel ? (
                         <img src={proxyImageUrl(urun.gorsel)} alt={urun.ad} className="pm-modal__img" />
                     ) : (
-                        <div className="pm-modal__img-placeholder">🍮</div>
+                        <div className="pm-modal__img-placeholder">
+                            <img src="/sutluce-logo.svg" alt="" className="pm-gorselsiz__marka" />
+                        </div>
                     )}
                 </div>
                 <div className="pm-modal__body">
