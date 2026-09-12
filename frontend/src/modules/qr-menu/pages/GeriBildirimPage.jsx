@@ -407,7 +407,11 @@ export default function GeriBildirimPage() {
             )}
 
             <div className="flex flex-wrap items-center gap-2">
-                <div className="relative min-w-0 flex-1 sm:max-w-xs">
+                {/* w-full: flex-wrap satırında `flex-1` (basis 0) arama kutusunu
+                    7px'e kadar büzüp yanına süzgeç rozetlerini dolduruyordu —
+                    telefonda arama alanı görünmez oluyordu. Dar ekranda kendi
+                    satırını alıyor. */}
+                <div className="relative w-full min-w-0 sm:w-auto sm:max-w-xs sm:flex-1">
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                     <Input
                         value={arama}
@@ -491,11 +495,16 @@ export default function GeriBildirimPage() {
                                 {/* Kaynak ayrı sütun değil: her satırda tek bir rozet
                                     tekrar ediyordu ve tabloyu genişletiyordu. Rozet
                                     gönderenin yanına taşındı — bilgi duruyor, sütun gitti. */}
-                                <TableHead className="w-[22%]">Gönderen</TableHead>
+                                {/* TELEFONDA SÜTUN SAYISI DÜŞÜYOR. table-fixed + yüzde
+                                    genişlik 375px'te Tarih'i 31px'e, durum seçicisini
+                                    26px'e indiriyor; başlıklar üst üste biniyordu.
+                                    Gönderen/Şube/Tarih dar ekranda gizlenip Konu
+                                    hücresinin altına iniyor, Durum yer buluyor. */}
+                                <TableHead className="hidden w-[22%] sm:table-cell">Gönderen</TableHead>
                                 <TableHead>Konu</TableHead>
-                                {isAdmin && <TableHead className="w-[13%]">Şube</TableHead>}
-                                <TableHead className="w-[9%]">Tarih</TableHead>
-                                <TableHead className="w-[13%]">Durum</TableHead>
+                                {isAdmin && <TableHead className="hidden w-[13%] sm:table-cell">Şube</TableHead>}
+                                <TableHead className="hidden w-[9%] sm:table-cell">Tarih</TableHead>
+                                <TableHead className="w-[38%] sm:w-[13%]">Durum</TableHead>
                                 {silebilir && <TableHead className="w-12"></TableHead>}
                             </TableRow>
                         </TableHeader>
@@ -505,7 +514,7 @@ export default function GeriBildirimPage() {
                                 const gun = gunFarki(b.olusturmaZamani);
                                 return (
                                 <TableRow key={b.id} className="cursor-pointer transition-colors hover:bg-muted/40" onClick={() => detayAc(b)}>
-                                    <TableCell className="align-top">
+                                    <TableCell className="hidden align-top sm:table-cell">
                                         <div className="truncate font-medium">{b.ad || '—'} {b.soyad}</div>
                                         {/* Rozet ve iletişim bilgisi AYNI SATIRDA: ayrı
                                             satırlarda her kayıt üç satır yer kaplıyordu.
@@ -548,13 +557,24 @@ export default function GeriBildirimPage() {
                                         <span className="mt-1 inline-block text-xs text-muted-foreground">
                                             {KATEGORI[b.kategori] ?? b.kategori}
                                         </span>
+                                        {/* Gizlenen sütunların özeti — yalnızca telefonda. */}
+                                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground sm:hidden">
+                                            <span className="truncate font-medium text-foreground">{b.ad || '—'} {b.soyad}</span>
+                                            <span>{tarihKisaTR(b.olusturmaZamani)}</span>
+                                            {isAdmin && <span className="truncate">{b.subeAd || b.subeSlug || ''}</span>}
+                                            {acik && gun >= GECIKME_GUN && (
+                                                <span className="flex items-center gap-1 font-medium text-destructive">
+                                                    <Clock className="size-3" /> {gun} gün
+                                                </span>
+                                            )}
+                                        </div>
                                     </TableCell>
                                     {isAdmin && (
-                                        <TableCell className="align-top text-sm text-muted-foreground">
+                                        <TableCell className="hidden align-top text-sm text-muted-foreground sm:table-cell">
                                             <span className="block truncate">{b.subeAd || b.subeSlug || '—'}</span>
                                         </TableCell>
                                     )}
-                                    <TableCell className="align-top whitespace-nowrap text-xs text-muted-foreground">
+                                    <TableCell className="hidden align-top whitespace-nowrap text-xs text-muted-foreground sm:table-cell">
                                         {tarihKisaTR(b.olusturmaZamani)}
                                         {/* Yaşlanma yalnızca AÇIK kayıtta: kapanmış şikayetin
                                             "12 gündür bekliyor" demesi yanlış olurdu. */}

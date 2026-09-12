@@ -500,7 +500,10 @@ export default function BranchReklamPage() {
                                                     <TableHeader className="bg-muted/15">
                                                         <TableRow>
                                                             <TableHead className="h-11 p-3 font-medium">Dönem</TableHead>
-                                                            <TableHead className="h-11 p-3 font-medium text-center">Veri Türleri</TableHead>
+                                                            {/* Telefonda gizli: üç sütun 375px'e sığmayınca tablo
+                                                                yana kayıyor ve asıl iş olan İŞLEMLER düğmeleri
+                                                                ekran dışında kalıyordu. Rozetler dönemin altına iniyor. */}
+                                                            <TableHead className="hidden h-11 p-3 text-center font-medium sm:table-cell">Veri Türleri</TableHead>
                                                             <TableHead className="h-11 p-3 font-medium text-right w-[120px]">İşlemler</TableHead>
                                                         </TableRow>
                                                     </TableHeader>
@@ -510,12 +513,28 @@ export default function BranchReklamPage() {
                                                             const hG = !!d.google;
                                                             return (
                                                                 <TableRow key={d.baslangic}>
-                                                                    <TableCell className="p-3 align-middle">
+                                                                    {/* whitespace-normal: hücre varsayılanı `nowrap`, uzun
+                                                                        tarih aralığı ("31 Ağustos 2026 – 29 Eylül 2026")
+                                                                        telefonda tabloyu taşırıyordu; artık satır kırılıyor. */}
+                                                                    <TableCell className="whitespace-normal p-3 align-middle">
                                                                         <span className="font-medium text-sm">
                                                                             {formatDateTR(d.baslangic)} – {formatDateTR(d.bitis)}
                                                                         </span>
+                                                                        {/* Telefonda "Veri Türleri" sütunu kapalı: rozetler burada. */}
+                                                                        <div className="mt-1 flex gap-1.5 sm:hidden">
+                                                                            {hM && (
+                                                                                <Badge variant="outline" className="px-1.5 text-[10px] text-muted-foreground">
+                                                                                    Meta Reklam
+                                                                                </Badge>
+                                                                            )}
+                                                                            {hG && (
+                                                                                <Badge variant="outline" className="px-1.5 text-[10px] text-muted-foreground">
+                                                                                    Google İşletme
+                                                                                </Badge>
+                                                                            )}
+                                                                        </div>
                                                                     </TableCell>
-                                                                    <TableCell className="p-3 align-middle">
+                                                                    <TableCell className="hidden p-3 align-middle sm:table-cell">
                                                                         <div className="flex gap-1.5 items-center justify-center">
                                                                             {hM && (
                                                                                 <Badge variant="outline" className="px-1.5 text-muted-foreground">

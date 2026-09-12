@@ -285,8 +285,12 @@ export default function BudgetSubmitPage() {
                                     <TableRow>
                                         <TableHead className="w-12"></TableHead>
                                         <TableHead className="text-right">Reklam Bakiyesi</TableHead>
-                                        <TableHead className="text-right">Konum Ücreti</TableHead>
-                                        <TableHead className="text-right">KDV</TableHead>
+                                        {/* TELEFONDA ARA SÜTUNLAR KAPALI: beş sütun 375px'e
+                                            sığmayınca tablo yana kayıyor ve şubenin görmesi
+                                            gereken tek sayı — ÖDENECEK TUTAR — ekran dışında
+                                            kalıyordu. Konum ücreti ve KDV bakiyenin altına iniyor. */}
+                                        <TableHead className="hidden text-right sm:table-cell">Konum Ücreti</TableHead>
+                                        <TableHead className="hidden text-right sm:table-cell">KDV</TableHead>
                                         <TableHead className="text-right">Ödenecek Tutar</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -318,11 +322,18 @@ export default function BudgetSubmitPage() {
                                                 </TableCell>
                                                 <TableCell className="text-right font-medium">
                                                     {fmtCurrency(opt.bakiye)}
+                                                    {/* Gizlenen sütunların dökümü — yalnızca telefonda. */}
+                                                    <div className="mt-0.5 text-[11px] font-normal text-muted-foreground sm:hidden">
+                                                        {opt.konum_ucreti ? `konum ${fmtCurrency(opt.konum_ucreti)} · ` : ''}
+                                                        KDV {opt.kdv
+                                                            ? fmtCurrency(opt.kdv)
+                                                            : fmtCurrency(Number(opt.kdv_dahil) - Number(opt.bakiye) - Number(opt.konum_ucreti || 0))}
+                                                    </div>
                                                 </TableCell>
-                                                <TableCell className="text-right text-muted-foreground">
+                                                <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
                                                     {opt.konum_ucreti ? fmtCurrency(opt.konum_ucreti) : '—'}
                                                 </TableCell>
-                                                <TableCell className="text-right text-muted-foreground">
+                                                <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
                                                     {opt.kdv
                                                         ? fmtCurrency(opt.kdv)
                                                         : fmtCurrency(Number(opt.kdv_dahil) - Number(opt.bakiye) - Number(opt.konum_ucreti || 0))}
