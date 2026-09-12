@@ -1,11 +1,12 @@
 import { Router } from '../../../shared/router.js';
 import { supabase } from '../../../config/supabase.js';
-import { verifyToken } from '../../../middleware/auth.js';
+import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import { hesapAlanlari, kullanicilariGetir } from '../../../shared/kullanici-dizini.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import { veriYaDaHata, isoZ, tumSatirlar } from '../../../utils/veri.js';
 import { kursYanit } from '../donusum.js';
-import { courseVisibleToUser } from '../utils.js';
+import { hedefSube } from '../../../shared/hedef-sube.js';
+import { courseVisibleToUser, dersSayilari } from '../utils.js';
 
 const router = Router();
 
@@ -86,6 +87,153 @@ router.get('/all/summary', verifyToken, asyncHandler(async (req, res) => {
     const byCourseCount = {};
     for (const [cId, info] of Object.entries(byCourse)) byCourseCount[cId] = info.count;
     res.json({ byCourse: byCourseCount });
+}));
+
+/**
+ * GET /api/academy/progress/sube
+ * Şube sahibi: KENDİ şubesindeki çalışanların akademi ilerlemesi.
+ * Admin: `?subeSlug=` ile herhangi bir şube.
+ *
+ * NEDEN ÇALIŞANLAR EKRANINDA: şube sahibi "kimi işe aldım, ne öğrendi"
+ * sorusuna kendi çalışan listesinde bakıyor. Akademi bölümü kişinin KENDİ
+ * eğitimi için; merkezin `admin/stats` ekranı ise ağ geneli ve şubeye kapalı.
+ *
+ * İZOLASYON: uid listesi yalnızca hedef şubenin kullanici_sube satırlarından
+ * çıkıyor, ilerleme sorgusu o listeye `.in()` ile bağlanıyor. Şube sahibi
+ * subeSlug gönderse bile hedefSube hata döndürür — kendi şubesi dışına çıkamaz.
+ *
+ * ALT-İSTEK BÜTÇESİ: kişi başına sorgu YOK. Dört okuma (şube kullanıcıları,
+ * ilerleme, kurslar, ders sayıları) + Auth dizini; 50 istek sınırı buna izin
+ * veriyor, kişi başına döngü vermezdi.
+ */
+router.get('/sube', verifyToken, requirePermission('academy.subeIlerleme'), asyncHandler(async (req, res) => {
+    const { slug: subeSlug, hata } = hedefSube(req, req.query.subeSlug);
+    if (hata) return res.status(403).json({ error: hata });
+    if (!subeSlug) return res.status(400).json({ error: 'Şube belirtilmedi.' });
+
+    const kullanicilar = veriYaDaHata(
+        await supabase.from('kullanici_sube').select('uid, role, sube_slug')
+            .eq('sube_slug', subeSlug).range(0, 9999),
+        'şube kullanıcıları okunamadı'
+    );
+    // Merkez hesabı bir şubeye bağlı olsa bile eğitimin hedef kitlesi değil.
+    const hedefler = kullanicilar.filter((k) => k.role !== 'admin');
+    const uidler = hedefler.map((k) => k.uid);
+    if (uidler.length === 0) return res.json({ kisiler: [], kurslar: [] });
+
+    const [ilerlemeler, kursSatirlari, dersSayac] = await Promise.all([
+        supabase.from('ilerleme').select('uid, kurs_id, ders_id, completed_at')
+            .in('uid', uidler).range(0, 9999)
+            .then((r) => veriYaDaHata(r, 'ilerleme okunamadı')),
+        supabase.from('kurslar').select('*').range(0, 9999)
+            .then((r) => veriYaDaHata(r, 'kurslar okunamadı')),
+        dersSayilari(),
+    ]);
+
+    // Yayında olmayan kurs listeye girmiyor: kimse izleyemediği için "0/6"
+    // göstermek şubeye eksik iş varmış gibi görünürdü.
+    const kurslar = kursSatirlari
+        .map((k) => kursYanit(k, { lessonCount: dersSayac[k.id] || 0 }))
+        .filter((k) => k.isPublished)
+        .map((k) => ({ id: k.id, title: k.title, lessonCount: k.lessonCount }));
+    const kursMap = Object.fromEntries(kurslar.map((k) => [k.id, k]));
+
+    const ilerlemeByUid = new Map();
+    for (const satir of ilerlemeler) {
+        if (!ilerlemeByUid.has(satir.uid)) ilerlemeByUid.set(satir.uid, []);
+        ilerlemeByUid.get(satir.uid).push(satir);
+    }
+
+    const authMap = {};
+    try {
+        for (const [uid, u] of await kullanicilariGetir(uidler)) {
+            const hesap = hesapAlanlari(u);
+            authMap[uid] = { displayName: hesap.displayName, email: hesap.email };
+        }
+    } catch (e) {
+        console.error('Auth fetch error', e);
+    }
+
+    const toplamDers = kurslar.reduce((a, k) => a + k.lessonCount, 0);
+
+    const kisiler = hedefler.map((k) => {
+        const { byCourse, totalCompleted, lastActivity } = ozetle(ilerlemeByUid.get(k.uid) || []);
+        return {
+            uid: k.uid,
+            role: k.role,
+            displayName: authMap[k.uid]?.displayName || null,
+            email: authMap[k.uid]?.email || null,
+            tamamlanan: totalCompleted,
+            toplamDers,
+            sonHareket: lastActivity,
+            // Yayından kalkmış kursun kaydı sayıdan düşmüyor ama adı bilinmiyor:
+            // kişi o dersi gerçekten izledi, kaydı silmek geçmişi yalanlar.
+            kurslar: Object.entries(byCourse).map(([kursId, v]) => ({
+                kursId,
+                baslik: kursMap[kursId]?.title || 'Yayından kaldırılmış kurs',
+                tamamlanan: v.count,
+                toplam: kursMap[kursId]?.lessonCount ?? null,
+                sonHareket: v.lastActivity,
+            })).sort((a, b) => (b.sonHareket || '').localeCompare(a.sonHareket || '')),
+        };
+    }).sort((a, b) => (b.sonHareket || '').localeCompare(a.sonHareket || ''));
+
+    res.json({ kisiler, kurslar });
+}));
+
+/**
+ * GET /api/academy/progress/sube/:userId/detay
+ * Bir çalışanın ders ders tamamlama kaydı + sınav denemeleri.
+ *
+ * Kişi ancak İSTEYENİN ŞUBESİNDEYSE açılır: uid tahmin ederek başka şubenin
+ * çalışanına bakılamasın diye şube kontrolü her çağrıda yeniden yapılıyor.
+ * Bulunamayan/başka şubedeki kişi için 403 değil 404 — hangi uid'in var
+ * olduğunu sızdırmamak için ikisi aynı cevabı veriyor.
+ */
+router.get('/sube/:userId/detay', verifyToken, requirePermission('academy.subeIlerleme'), asyncHandler(async (req, res) => {
+    const { slug: subeSlug, hata } = hedefSube(req, req.query.subeSlug);
+    if (hata) return res.status(403).json({ error: hata });
+
+    const { data: kisi } = await supabase.from('kullanici_sube')
+        .select('uid, role, sube_slug').eq('uid', req.params.userId).maybeSingle();
+    if (!kisi || !subeSlug || kisi.sube_slug !== subeSlug) {
+        return res.status(404).json({ error: 'Bu şubede böyle bir çalışan yok.' });
+    }
+
+    const [satirlar, denemeler] = await Promise.all([
+        supabase.from('ilerleme')
+            .select('ders_id, kurs_id, score, completed_at, dersler(title, lesson_type), kurslar(title)')
+            .eq('uid', kisi.uid).range(0, 9999)
+            .then((r) => veriYaDaHata(r, 'ilerleme okunamadı')),
+        supabase.from('sinav_denemeleri')
+            .select('ders_id, kurs_id, score, gecti, baraj, zaman, dersler(title), kurslar(title)')
+            .eq('uid', kisi.uid).range(0, 9999)
+            .then((r) => veriYaDaHata(r, 'sınav denemeleri okunamadı')),
+    ]);
+
+    const detay = satirlar.map((i) => ({
+        kursId: i.kurs_id || null,
+        kurs: i.kurslar?.title || 'Silinmiş kurs',
+        dersId: i.ders_id,
+        ders: i.dersler?.title || 'Silinmiş ders',
+        tur: i.dersler?.lesson_type || null,
+        puan: i.score === null || i.score === undefined ? null : Number(i.score),
+        tamamlandi: isoZ(i.completed_at) || null,
+    })).sort((a, b) => (b.tamamlandi || '').localeCompare(a.tamamlandi || ''));
+
+    // Sınav denemeleri AYRI: `ilerleme` yalnızca GEÇİLEN dersi tutuyor, oysa
+    // şube sahibinin görmesi gereken KALAN denemeler — tek deneme kuralı
+    // yüzünden kişi kursta takılı kalıyor ve hakkı merkezden isteniyor.
+    const sinavlar = denemeler.map((d) => ({
+        kurs: d.kurslar?.title || 'Silinmiş kurs',
+        ders: d.dersler?.title || 'Silinmiş ders',
+        puan: Number(d.score),
+        gecti: d.gecti,
+        baraj: Number(d.baraj),
+        zaman: isoZ(d.zaman),
+    })).sort((a, b) => (b.zaman || '').localeCompare(a.zaman || ''));
+
+    res.json({ detay, sinavlar });
 }));
 
 /**

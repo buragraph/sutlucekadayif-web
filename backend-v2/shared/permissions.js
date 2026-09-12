@@ -66,6 +66,11 @@ const PERMISSIONS = {
 
     // ── Akademi ──
     'academy.view': ['admin', 'sube_sahibi', 'calisan'],
+    // Şube sahibi KENDİ çalışanlarının eğitim ilerlemesini görür (Çalışanlar
+    // ekranında). Çalışanda YOK: kendi ilerlemesi zaten Akademi'de, arkadaşının
+    // sınav notu onu ilgilendirmiyor. Merkezin ağ geneli ekranı ayrı
+    // (academy.manage → /admin/akademi/yonetim).
+    'academy.subeIlerleme': ['admin', 'sube_sahibi'],
     'academy.manage': ['admin'],
 
     // ── Bütçe Toplama ──

@@ -2,7 +2,7 @@ import { Router } from '../../../shared/router.js';
 import { supabase } from '../../../config/supabase.js';
 import { verifyToken, requirePermission } from '../../../middleware/auth.js';
 import { deleteFile, urlToKey, isKeyAllowed } from '../../../config/r2.js';
-import { stripQuizAnswers, courseVisibleToUser } from '../utils.js';
+import { stripQuizAnswers, courseVisibleToUser, dersSayilari } from '../utils.js';
 import { kursYanit, kursSatiri, dersYanit } from '../donusum.js';
 import asyncHandler from '../../../utils/asyncHandler.js';
 import { yeniId, veriYaDaHata, tumSatirlar } from '../../../utils/veri.js';
@@ -21,15 +21,6 @@ function sanitizeTargetRoles(v) {
 function sanitizeTargetSubeler(v) {
     if (!Array.isArray(v)) return [];
     return [...new Set(v.filter((s) => typeof s === 'string' && s.trim()).map((s) => s.trim()))];
-}
-
-/** Kurs başına ders sayısı — eskiden kurs başına bir count() sorgusuydu. */
-async function dersSayilari() {
-    const satirlar = await tumSatirlar(() => supabase.from('dersler').select('kurs_id'),
-        { sirala: 'id', baglam: 'dersler' });
-    const sayac = {};
-    for (const d of satirlar) sayac[d.kurs_id] = (sayac[d.kurs_id] || 0) + 1;
-    return sayac;
 }
 
 /**

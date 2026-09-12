@@ -1,4 +1,5 @@
 import { Router } from '../../../shared/router.js';
+import { hedefSube } from '../../../shared/hedef-sube.js';
 import { ETIKET_ANAHTARLARI } from '../constants/etiketler.js';
 import { acikSubeler } from '../../../shared/sube.js';
 import { supabase } from '../../../config/supabase.js';
@@ -303,26 +304,6 @@ function etkinFiyat(user, urun) {
 function canMutateProduct(req, found) {
     if (req.user.role === 'admin') return true;
     return !urunKilitliMi(req.user, found.urun);
-}
-
-/**
- * Şube menüsünü değiştiren uçların hedef şubesini çözer.
- *
- * Admin gövdedeki şube adına iş yapar (Ürünler sayfasındaki şube seçici).
- * Şube sahibi HER ZAMAN kendi şubesine yazar — ama gövdede BAŞKA bir şube
- * göstermişse bu sessizce kendi şubesine çevrilmez, 403 döner: sessiz
- * yönlendirme istemcideki hatayı gizliyordu ("maltepe'ye yaz" diyen çağrı
- * 200 dönüp denizli'yi değiştiriyordu). Gövdede şube hiç yoksa sorun yok,
- * kendi şubesi kullanılır.
- *
- * @returns {{ slug: string|null, hata: string|null }}
- */
-function hedefSube(req, govdeSlug) {
-    if (req.user.role === 'admin') return { slug: govdeSlug || null, hata: null };
-    if (govdeSlug && govdeSlug !== req.user.subeSlug) {
-        return { slug: null, hata: 'Sadece kendi şubenizde işlem yapabilirsiniz' };
-    }
-    return { slug: req.user.subeSlug || null, hata: null };
 }
 
 // ─────────────────────────────── Rotalar ───────────────────────────────

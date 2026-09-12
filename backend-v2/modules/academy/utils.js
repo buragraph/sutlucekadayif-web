@@ -1,3 +1,6 @@
+import { supabase } from '../../config/supabase.js';
+import { tumSatirlar } from '../../utils/veri.js';
+
 /**
  * Quiz derslerinde doğru cevap (correctOptionId) yalnızca sunucu tarafı
  * puanlamada kullanılır; istemciye sızmamalı. Admin (içerik yöneticisi)
@@ -24,4 +27,19 @@ export function courseVisibleToUser(course, user) {
     const subeler = course.targetSubeler;
     if (Array.isArray(subeler) && subeler.length > 0 && !subeler.includes(user.subeSlug)) return false;
     return true;
+}
+
+/**
+ * Kurs başına ders sayısı — `{ kursId: adet }`.
+ *
+ * Tek sorgu: kurs başına `count()` atmak kurs sayısı kadar alt-istek demekti
+ * ve Workers'ın 50 istek bütçesini kursları çoğaltan her adımda riske atıyordu.
+ * Hem kurs listesi hem şube ilerleme özeti aynı sayacı kullanıyor.
+ */
+export async function dersSayilari() {
+    const satirlar = await tumSatirlar(() => supabase.from('dersler').select('kurs_id'),
+        { sirala: 'id', baglam: 'dersler' });
+    const sayac = {};
+    for (const d of satirlar) sayac[d.kurs_id] = (sayac[d.kurs_id] || 0) + 1;
+    return sayac;
 }

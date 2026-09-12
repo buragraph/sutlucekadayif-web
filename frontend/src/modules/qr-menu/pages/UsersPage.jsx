@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import TopluKullaniciEkle from '../components/TopluKullaniciEkle';
+import CalisanAkademiModal, { AkademiHucresi } from '../components/CalisanAkademi';
 import SubeSecici from '../components/SubeSecici';
 
 // PAROLAYI MERKEZ BELİRLER. Hesap geçici bir parolayla açılır, parola bir kez
@@ -68,6 +69,10 @@ export default function UsersPage() {
     const [topluAcik, setTopluAcik] = useState(false);
     const [yeniKimlik, setYeniKimlik] = useState(null);   // { email, parola } — yaratımdan sonra gösterilir
     const [editingUser, setEditingUser] = useState(null);
+    // Akademi özeti şube sahibi için tek istekte gelir (uid → özet); ders ders
+    // döküm yalnızca pencere açılınca istenir.
+    const [akademi, setAkademi] = useState({});
+    const [akademiKisi, setAkademiKisi] = useState(null);
     const [arama, setArama] = useState('');
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({
@@ -91,6 +96,14 @@ export default function UsersPage() {
             ]);
             setUsers(usersRes.data.users);
             setSubeler(menuRes.data.subeler || []);
+            // İKİNCİL: akademi özeti gelmezse liste yine çalışsın — hücre "—" olur.
+            if (currentRole === 'sube_sahibi') {
+                api.get('/academy/progress/sube')
+                    .then(({ data }) => setAkademi(Object.fromEntries(
+                        (data.kisiler || []).map((k) => [k.uid, k])
+                    )))
+                    .catch(() => setAkademi({}));
+            }
         } catch (err) {
             console.error('Veriler yüklenemedi:', err);
         }
@@ -333,6 +346,9 @@ export default function UsersPage() {
                                 <TableHead>Şube</TableHead>
                                 <TableHead>Rol</TableHead>
                                 <TableHead>Son Erişim</TableHead>
+                                {/* Yalnızca şube sahibinde: merkezin ağ geneli dökümü
+                                    Akademi → Yönetim ekranında, burada tekrarı gereksiz. */}
+                                {isSubeSahibi && <TableHead>Akademi</TableHead>}
                                 <TableHead className="w-24"></TableHead>
                             </TableRow>
                         </TableHeader>
@@ -361,6 +377,14 @@ export default function UsersPage() {
                                             </span>
                                         ) : '—'}
                                     </TableCell>
+                                    {isSubeSahibi && (
+                                        <TableCell>
+                                            <AkademiHucresi
+                                                ozet={akademi[u.uid]}
+                                                onAc={() => setAkademiKisi(akademi[u.uid])}
+                                            />
+                                        </TableCell>
+                                    )}
                                     <TableCell>
                                         <div className="flex gap-1">
                                             <Button variant="ghost" size="icon" className="size-8" onClick={() => openEditModal(u)} title="Düzenle">
@@ -569,6 +593,14 @@ export default function UsersPage() {
                 onKapat={() => setTopluAcik(false)}
                 onBitti={loadData}
             />
+
+            {akademiKisi && (
+                <CalisanAkademiModal
+                    kisi={akademiKisi}
+                    subeSlug={currentSubeSlug}
+                    onKapat={() => setAkademiKisi(null)}
+                />
+            )}
         </div>
     );
 }
