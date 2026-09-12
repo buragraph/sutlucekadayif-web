@@ -140,60 +140,105 @@ export default function HosGeldinTuru({ onKapat }) {
         onKapat();
     }
 
+    // İLK ADIM ODAK İSTİYOR, GERİSİ İSTEMİYOR.
+    //
+    // Karşılama ekranı bir duyuru: kişi paneli ilk kez görüyor, "burada ne var"
+    // cümlesini okumadan gezinmenin anlamı yok — perde iniyor, arka plan
+    // bulanıklaşıyor, kart ortada duruyor.
+    //
+    // Sonraki adımlar TAM TERSİ: anlatılan ekranın kendisine bakılacak. Orada
+    // perde olsaydı tur, gezdirdiği sayfayı kendi eliyle kapatırdı; kart köşeye
+    // çekiliyor ve arkadaki panel tıklanabilir kalıyor.
+    const karsilama = adim === 0;
+
+    const govde = (
+        <>
+            <div className={karsilama ? 'flex flex-col items-center gap-4 text-center' : 'flex items-start gap-3'}>
+                <span className={`flex shrink-0 items-center justify-center rounded-2xl bg-[#0f6b3a]/10 text-[#0f6b3a] dark:bg-[#0f6b3a]/20 dark:text-emerald-400 ${
+                    karsilama ? 'size-14' : 'size-9 rounded-xl'
+                }`}>
+                    <Ikon className={karsilama ? 'size-7' : 'size-5'} />
+                </span>
+                <div className="min-w-0 flex-1">
+                    <h2 className={karsilama
+                        ? 'text-xl font-semibold leading-tight tracking-tight text-foreground'
+                        : 'text-sm font-semibold leading-snug text-foreground'}>
+                        {baslik}
+                    </h2>
+                </div>
+                {!karsilama && (
+                    <Button variant="ghost" size="icon" className="-mr-1 -mt-1 size-7 shrink-0"
+                            onClick={bitir} aria-label="Tanıtımı kapat">
+                        <X className="size-4" />
+                    </Button>
+                )}
+            </div>
+
+            <p className={`text-sm leading-relaxed text-muted-foreground ${karsilama ? 'mt-3 text-center' : 'mt-2'}`}>
+                {metin}
+            </p>
+
+            <div className={`flex items-center gap-1.5 ${karsilama ? 'mt-5 justify-center' : 'mt-3'}`}>
+                {ADIMLAR.map((_, i) => (
+                    <span
+                        key={i}
+                        className={`h-1.5 rounded-full transition-all ${
+                            i === adim ? 'w-5 bg-foreground' : 'w-1.5 bg-muted-foreground/30'
+                        }`}
+                    />
+                ))}
+                {!karsilama && (
+                    <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                        {adim + 1} / {ADIMLAR.length}
+                    </span>
+                )}
+            </div>
+
+            <div className={`flex items-center gap-2 ${karsilama ? 'mt-6' : 'mt-3'}`}>
+                {adim > 0 ? (
+                    <Button variant="outline" size="sm" className="h-10 flex-1 sm:h-8 sm:flex-none"
+                            onClick={() => setAdim((a) => a - 1)}>
+                        <ArrowLeft className="size-4" /> Geri
+                    </Button>
+                ) : (
+                    <Button variant="ghost" size={karsilama ? 'default' : 'sm'}
+                            className={karsilama ? 'h-11 flex-1' : 'h-10 flex-1 sm:h-8 sm:flex-none'}
+                            onClick={bitir}>
+                        Şimdi değil
+                    </Button>
+                )}
+
+                <Button size={karsilama ? 'default' : 'sm'}
+                        className={karsilama ? 'h-11 flex-1' : 'h-10 flex-1 sm:h-8'}
+                        onClick={() => (son ? bitir() : setAdim((a) => a + 1))}>
+                    {son ? 'Panele başla' : karsilama ? 'Turu başlat' : 'İleri'}
+                    {!son && <ArrowRight className="size-4" />}
+                </Button>
+            </div>
+        </>
+    );
+
+    if (karsilama) {
+        return (
+            /* Perde: `backdrop-blur` arkadaki paneli bulanıklaştırıyor, karartma
+               tek başına yetmiyordu — dolu bir pano arkadan okunmaya devam
+               ediyor ve göz kartta durmuyordu. Perdeye tıklamak kapatmıyor:
+               kişi "Şimdi değil" diyene kadar karar verilmiş sayılmaz. */
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
+                <div className="w-full max-w-lg rounded-2xl border bg-card p-6 shadow-2xl sm:p-8">
+                    {govde}
+                </div>
+            </div>
+        );
+    }
+
     return (
         /* Telefonda alta yapışık tam genişlik, masaüstünde sağ altta panel.
            `pointer-events-none` sarmalayıcıda: kartın dışındaki ekran
            tıklanabilir kalıyor. */
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-end p-3 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:p-0">
             <div className="pointer-events-auto w-full max-w-md rounded-2xl border bg-card p-4 shadow-2xl sm:w-96">
-                <div className="flex items-start gap-3">
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#0f6b3a]/10 text-[#0f6b3a] dark:bg-[#0f6b3a]/20 dark:text-emerald-400">
-                        <Ikon className="size-5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                        <h2 className="text-sm font-semibold leading-snug text-foreground">{baslik}</h2>
-                    </div>
-                    <Button variant="ghost" size="icon" className="-mr-1 -mt-1 size-7 shrink-0"
-                            onClick={bitir} aria-label="Tanıtımı kapat">
-                        <X className="size-4" />
-                    </Button>
-                </div>
-
-                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{metin}</p>
-
-                <div className="mt-3 flex items-center gap-1.5">
-                    {ADIMLAR.map((_, i) => (
-                        <span
-                            key={i}
-                            className={`h-1.5 rounded-full transition-all ${
-                                i === adim ? 'w-5 bg-foreground' : 'w-1.5 bg-muted-foreground/30'
-                            }`}
-                        />
-                    ))}
-                    <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                        {adim + 1} / {ADIMLAR.length}
-                    </span>
-                </div>
-
-                <div className="mt-3 flex items-center gap-2">
-                    {adim > 0 ? (
-                        <Button variant="outline" size="sm" className="h-10 flex-1 sm:h-8 sm:flex-none"
-                                onClick={() => setAdim((a) => a - 1)}>
-                            <ArrowLeft className="size-4" /> Geri
-                        </Button>
-                    ) : (
-                        <Button variant="ghost" size="sm" className="h-10 flex-1 sm:h-8 sm:flex-none"
-                                onClick={bitir}>
-                            Atla
-                        </Button>
-                    )}
-
-                    <Button size="sm" className="h-10 flex-1 sm:h-8"
-                            onClick={() => (son ? bitir() : setAdim((a) => a + 1))}>
-                        {son ? 'Panele başla' : 'İleri'}
-                        {!son && <ArrowRight className="size-4" />}
-                    </Button>
-                </div>
+                {govde}
             </div>
         </div>
     );
