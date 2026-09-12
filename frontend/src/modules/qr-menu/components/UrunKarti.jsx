@@ -175,8 +175,11 @@ export default function UrunKarti({
                 </button>
             )}
 
-            {/* Admin'de düzenleme ayrı düğmede: kart tıklaması seçime ayrıldı. */}
-            {tiklamaSecer && onDuzenle && (
+            {/* Kart tıklaması seçime ayrıldığında düzenleme ayrı düğmeye taşınıyor.
+                `!kilitli` ŞART: şube sahibinde de tıklama artık seçiyor (toplu
+                satış aç/kapat için) ve bu şerit koşulsuz çıksaydı ortak ürüne
+                "Düzenle" düğmesi koyardı — o pencere şubede zaten kapalı. */}
+            {tiklamaSecer && onDuzenle && !kilitli && (
                 <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onDuzenle(urun); }}

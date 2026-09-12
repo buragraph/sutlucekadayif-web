@@ -644,8 +644,16 @@ export default function ProductsPage() {
     };
 
     // ── Toplu işlem yardımcıları ──
+    // TOPLU SEÇİM İKİ AYRI İŞE HİZMET EDİYOR: admin'de toplu fiyat/silme —
+    // ürünün DÜZENLENEBİLİR olmasını ister; şube sahibinde toplu satışa
+    // açma/kapatma — kilitli ortak üründe de geçerli, çünkü şube kendi
+    // menüsündeki her ürünün satış durumunu değiştirebiliyor. Tek ölçüt
+    // ikisini birden karşılamıyordu: şube sahibinde seçilebilir liste hep boş
+    // kalıyor, kartlarda kutu çıkmıyor ve "Satıştan Kaldır" şeridi hiç
+    // görünmüyordu — yani toplu kapatma o rolde çalışmıyordu.
     const seciliebilir = (u) => !kilitliMi(u);
-    const secilebilirSayfa = paginatedUrunler.filter(seciliebilir);
+    const kartSecilebilir = (u) => (role === 'admin' ? seciliebilir(u) : true);
+    const secilebilirSayfa = paginatedUrunler.filter(kartSecilebilir);
     const tumuSeciliMi = secilebilirSayfa.length > 0 && secilebilirSayfa.every(u => selectedIds.has(u.id));
     const selectedItems = () => urunler.filter(u => selectedIds.has(u.id)).map(u => ({ id: u.id, sube_slug: u.sube_slug }));
 
@@ -1070,8 +1078,11 @@ export default function ProductsPage() {
                         <span className="text-sm font-normal text-muted-foreground tabular-nums">{sortedUrunler.length} ürün</span>
                     </CardTitle>
                     <CardAction className="flex flex-wrap items-center gap-1.5 self-center max-sm:w-full">
+                        {/* Seçim şeridi telefonda KENDİ SATIRINI alıp sarıyor: yan
+                            yana dizildiğinde 358px'e çıkıyor ve "Temizle" ekranın
+                            dışında kalıyordu. Ayırıcı da kenardan alta geçiyor. */}
                         {selectedIds.size > 0 && (
-                            <div className="flex items-center gap-1.5 mr-1.5 pr-2.5 border-r">
+                            <div className="flex flex-wrap items-center gap-1.5 max-sm:w-full max-sm:border-b max-sm:pb-2 sm:mr-1.5 sm:border-r sm:pr-2.5">
                                 <span className="text-xs font-medium text-foreground whitespace-nowrap">{selectedIds.size} seçili</span>
                                 {/* Satış durumu ŞUBEYE AİT bir bilgi: yalnızca bir şube
                                     görünürken anlamlı. Katalog görünümünde (admin, şube
@@ -1296,7 +1307,7 @@ export default function ProductsPage() {
                             )}
                             {/* "Tümünü seç" tablo başlığındaydı; tablo kalkınca toplu
                                 işlem için tek seçim yolu kart kart tıklamak kalıyordu. */}
-                            {role === 'admin' && secilebilirSayfa.length > 0 && (
+                            {secilebilirSayfa.length > 0 && (
                                 <Button variant="outline" size="sm" className="h-8 text-xs"
                                         onClick={toggleSelectAllPage}>
                                     <Check className="size-3.5 mr-1.5" />
@@ -1378,6 +1389,13 @@ export default function ProductsPage() {
                                 // Admin kartında tablodaki bilgi kaybolmasın: toplu seçim
                                 // kutusu ve "kaç şubede açık" karta taşındı.
                                 const adminKart = role === 'admin';
+                                // Şube sahibinde de seçim kutusu çıkar: toplu satış
+                                // aç/kapat seçime dayanıyor (bkz. kartSecilebilir).
+                                // KİLİTLİ kartta tıklama da seçiyor — o kartın
+                                // düzenlemesi zaten yok ve telefonda 16px'lik kutuyu
+                                // tutturmak zor; düzenlenebilir kartta tıklama eskisi
+                                // gibi düzenleme penceresini açıyor.
+                                const kartSecimi = adminKart || !!gorunenSube;
                                 const acikSube = (urun.menude_subeler || []).length;
                                 return (
                                     <UrunKarti
@@ -1386,8 +1404,8 @@ export default function ProductsPage() {
                                         mevcut={!mevcutDegil.includes(gorunenSube)}
                                         kilitli={kilitliMi(urun)}
                                         bekliyor={mevcutBekleyen.has(urun.id)}
-                                        secili={adminKart ? selectedIds.has(urun.id) : undefined}
-                                        onSecim={adminKart ? toggleSelect : null}
+                                        secili={kartSecimi ? selectedIds.has(urun.id) : undefined}
+                                        onSecim={kartSecimi ? toggleSelect : null}
                                         altBilgi={!adminKart ? null
                                             : gorunenSube
                                                 // Bir şubeye bakılıyorken "90 şubede açık" bilgisi
@@ -1404,7 +1422,7 @@ export default function ProductsPage() {
                                         onMenudenCikar={ortakUrun && menudenCikarilabilir(urun) ? handleMenudenCikar : null}
                                         onSil={handleUrunDelete}
                                         silHepGorunur={adminKart}
-                                        tiklamaSecer={adminKart}
+                                        tiklamaSecer={adminKart || (kartSecimi && kilitliMi(urun))}
                                     />
                                 );
                             })}
