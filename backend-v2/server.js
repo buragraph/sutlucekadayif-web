@@ -96,6 +96,10 @@ app.use(cors({
             'http://localhost:4321', // Astro pazarlama sitesi (franchise formu)
             'https://sutlucekadayif.com',
             'https://www.sutlucekadayif.com',
+            // worker.js'teki listeyle İKİZ — biri güncellenip diğeri unutulursa
+            // Express'e dönüldüğünde panel CORS'a takılır.
+            'https://qr.sutlucekadayif.com',
+            'https://cms.sutlucekadayif.com',
         ];
         // Origin yoksa (server-to-server) veya listedeyse izin ver
         if (!origin || allowedOrigins.includes(origin)) {

@@ -53,6 +53,10 @@ const IZINLI = [
     // Basılı QR kodlar bu alan adını taşıyor (WordPress'ten devralınıyor);
     // listede olmazsa menü sayfasının API yedeği tarayıcıda bloklanır.
     'https://qr.sutlucekadayif.com',
+    // Panel kendi alan adına taşınınca (NS Cloudflare'a geçtikten sonra)
+    // TÜM panel istekleri buradan gelecek; listede olmazsa oturum açma dahil
+    // her çağrı tarayıcıda CORS'a takılır — panel bomboş açılır.
+    'https://cms.sutlucekadayif.com',
 ];
 function kaynakUygun(kaynak) {
     if (!kaynak) return true;
