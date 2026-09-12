@@ -8,7 +8,10 @@
     "directory": "./dist",
     // Astro her rota için klasör/index.html üretir; trailing slash'ı otomatik yönet
     "html_handling": "auto-trailing-slash",
-    // SPA DEĞİL — bilinmeyen yol gerçek 404 dönmeli (yanlış URL'ler ana sayfayı göstermesin)
-    "not_found_handling": "none"
+    // SPA DEĞİL: bilinmeyen yol gerçek 404 döner, ana sayfa gösterilmez.
+    // "none" idi ama o ayar 404.html'i SERVİS ETMİYOR — gövdesi 0 baytlık,
+    // bembeyaz bir 404 dönüyordu. "404-page" yine HTTP 404 döndürüyor, sadece
+    // sayfanın kendisini de veriyor (bkz. src/pages/404.astro).
+    "not_found_handling": "404-page"
   }
 }
