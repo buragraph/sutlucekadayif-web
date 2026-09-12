@@ -1041,14 +1041,22 @@ body {
   min-height: 100vh;
 }
 
-a {
-  color: var(--admin-primary);
-  text-decoration: none;
-  transition: color var(--admin-transition);
-}
+/* @layer base ŞART: katmansız CSS, Tailwind'in utility katmanını HER ZAMAN
+   yener. Bu kural katmansızken `<a className="text-white">` bile admin
+   yeşiline boyanıyordu — akademi PDF'indeki "yeni sekmede aç" düğmesi koyu
+   yeşil zemin üzerinde lacivert yazıyla görünmez hâldeydi. Base katmanında
+   kural yerinde duruyor ama sınıfla verilen renk öne geçiyor.
+   (Aynı tuzak gece modu jetonlarında da yaşandı, bkz. .dark bloğu.) */
+@layer base {
+  a {
+    color: var(--admin-primary);
+    text-decoration: none;
+    transition: color var(--admin-transition);
+  }
 
-a:hover {
-  color: var(--admin-primary-hover);
+  a:hover {
+    color: var(--admin-primary-hover);
+  }
 }
 
 button {

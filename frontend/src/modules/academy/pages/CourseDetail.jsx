@@ -410,15 +410,22 @@ export default function CourseDetail() {
                                         </div>
                                     )}
 
-                                    <div className="mt-5 pt-4 border-t flex justify-between gap-3">
-                                        <Button variant="outline" size="sm" onClick={goToPrevLesson} disabled={currentIdx <= 0} className="w-full sm:w-auto">
+                                    {/* TELEFONDA ALT ALTA. İki düğme de `w-full` ama satır
+                                        yan yana duruyordu: her biri kabın tamamını istedi,
+                                        toplam 618px oldu ve "Sonraki Ders" ekranın dışında
+                                        kaldı — dersler arasında ilerlemek imkânsızdı.
+                                        Uzun kurs adı da düğmeyi şişirmesin diye kırpılıyor. */}
+                                    <div className="mt-5 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:justify-between sm:gap-3">
+                                        <Button variant="outline" size="sm" onClick={goToPrevLesson} disabled={currentIdx <= 0} className="h-10 w-full sm:h-8 sm:w-auto">
                                             <ChevronLeft className="size-4 mr-1" /> Önceki Ders
                                         </Button>
-                                        <Button size="sm" onClick={goToNextLesson} disabled={!sonrakiVar} className="w-full sm:w-auto">
-                                            {sonDers && sonrakiKurs
-                                                ? <>Sonraki Kurs: {sonrakiKurs.title}</>
-                                                : <>Sonraki Ders</>}
-                                            <ChevronRight className="size-4 ml-1" />
+                                        <Button size="sm" onClick={goToNextLesson} disabled={!sonrakiVar} className="h-10 w-full min-w-0 sm:h-8 sm:w-auto">
+                                            <span className="truncate">
+                                                {sonDers && sonrakiKurs
+                                                    ? <>Sonraki Kurs: {sonrakiKurs.title}</>
+                                                    : <>Sonraki Ders</>}
+                                            </span>
+                                            <ChevronRight className="size-4 ml-1 shrink-0" />
                                         </Button>
                                     </div>
                                 </div>
