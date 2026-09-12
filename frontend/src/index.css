@@ -29,6 +29,35 @@
   --admin-transition: 0.15s ease;
 }
 
+/* ─── ADMIN TOKEN'LARI GECE MODUNDA ───
+   NEDEN GEREKLİ: bu dosya app.css'ten SONRA yükleniyor ve aşağıda `body`ye
+   `color: var(--admin-text)` veriyor. app.css'in `body { text-foreground }`
+   kuralı `@layer base` içinde olduğu için katmansız bu kural onu yeniyor
+   (katmansız CSS her zaman katmanlıyı geçer).
+
+   SONUÇ: `.dark` açıldığında shadcn token'ları koyulaşıyor — arka plan
+   siyaha dönüyor — ama body'nin METİN rengi #1f2633'te kalıyor. Kendi renk
+   sınıfı olmayan her metin (sayfa başlıkları, düz paragraflar) bunu miras
+   alıyor ve koyu zeminde koyu yazı olarak GÖRÜNMEZ oluyordu.
+
+   ÇÖZÜM: nötr token'lar gece modunda tasarım sisteminin kendi değerlerine
+   bağlanıyor. Elle hex seçilmedi — sistem paleti değişirse bunlar da peşinden
+   gelsin. Doygun renkler (emerald/amber/blue/red/primary) DOKUNULMADI: koyu
+   zeminde de okunuyorlar ve düğme zeminleri onlara bağlı. */
+.dark {
+  --admin-bg: var(--background);
+  --admin-bg-elevated: var(--card);
+  --admin-bg-card: var(--card);
+  --admin-bg-hover: var(--accent);
+  --admin-surface: var(--muted);
+  --admin-surface-hover: var(--accent);
+  --admin-border: var(--border);
+  --admin-border-hover: var(--input);
+  --admin-text: var(--foreground);
+  --admin-text-secondary: var(--muted-foreground);
+  --admin-text-muted: var(--muted-foreground);
+}
+
 /* ═══════════════════════════════════════════════
    PREMIUM MENU (pm-*) — Apple-style QR Menu
    ═══════════════════════════════════════════════ */
