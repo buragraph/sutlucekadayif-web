@@ -5,7 +5,7 @@ import {
     ArrowRight, ArrowLeft, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { tanitimGorulduYaz } from '../utils/tanitim';
+import api from '../../services/api';
 
 /**
  * Şube sahibine ilk girişte paneli GEZDİREREK anlatan tanıtım.
@@ -25,7 +25,11 @@ import { tanitimGorulduYaz } from '../utils/tanitim';
  * halkaya alınıyor — "bu ekran menüde şurada" bilgisini cümle kurmadan verir.
  * Telefonda kenar çubuğu çekmecede gizli; orada işaret düşer, tur yine çalışır.
  *
- * BİR KEZ GÖSTERİLİR: "görüldü" notu localStorage'da (bkz. utils/tanitim.js).
+ * BİR KEZ GÖSTERİLİR — ÖLÇÜT SUNUCUDA: tur bitince (ya da atlanınca)
+ * `kullanici_sube.onboarded` işaretleniyor (POST /api/onboarding/tanitim-bitti).
+ * Böylece admin Kullanıcılar ekranından turu sıfırlayınca tur GERİ GELİYOR ve
+ * aynı kişi telefonundan girdiğinde tur baştan çıkmıyor. Eskiden bu not
+ * tarayıcıda (localStorage) duruyordu; ikisi de yanlış çalışıyordu.
  */
 const ADIMLAR = [
     {
@@ -96,7 +100,7 @@ const ADIMLAR = [
 // (telefon) eşleşme olmaz; tur yine ilerler.
 const ISARET = ['ring-2', 'ring-primary', 'ring-offset-2', 'ring-offset-background', 'rounded-md'];
 
-export default function HosGeldinTuru({ uid, onKapat }) {
+export default function HosGeldinTuru({ onKapat }) {
     const [adim, setAdim] = useState(0);
     const navigate = useNavigate();
     const konum = useLocation();
@@ -128,7 +132,11 @@ export default function HosGeldinTuru({ uid, onKapat }) {
     }, [adim, yol]);
 
     function bitir() {
-        tanitimGorulduYaz(uid);
+        // Kart ÖNCE kapanır, istek arkada gider: kapatma tıklaması ağı beklemesin.
+        // İstek düşerse tur bir sonraki AÇILIŞTA tekrar çıkar — aynı oturumda
+        // değil (bkz. Layout'taki `tanitimKapandi`). Sessiz tekrar, sessizce
+        // kaybolmaktan iyi: kişi turu görmemişse görmesi gerekiyor.
+        api.post('/onboarding/tanitim-bitti').catch(() => {});
         onKapat();
     }
 

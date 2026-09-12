@@ -201,11 +201,13 @@ export default function UsersPage() {
     }
 
     async function handleResetOnboarding(u) {
-        const ok = await confirm(`${u.displayName || u.email} kullanıcısının ilk giriş formu sıfırlansın mı? Bir sonraki girişinde wizard tekrar çıkar.`);
+        // ZORUNLU FORM KALKTI, YERİNE TUR VAR: bu düğme artık `onboarded`
+        // bayrağını kaldırarak panel turunu geri getiriyor (bkz. HosGeldinTuru).
+        const ok = await confirm(`${u.displayName || u.email} kullanıcısının panel tanıtım turu sıfırlansın mı? Bir sonraki girişinde tur baştan çıkar.`);
         if (!ok) return;
         try {
             await api.post(`/onboarding/reset/${u.uid}`);
-            toast.success('İlk giriş formu sıfırlandı');
+            toast.success('Panel turu sıfırlandı');
             await loadData();   // düğme anında sönsün, ikinci kez basılmasın
         } catch (err) {
             console.error('Sıfırlama hatası:', err);
@@ -376,8 +378,8 @@ export default function UsersPage() {
                                                 // Başlık sarmalayıcı span'de: devre dışı düğme
                                                 // pointer-events almadığı için kendi title'ı görünmüyor.
                                                 <span title={u.onboarded
-                                                    ? 'İlk giriş formunu sıfırla'
-                                                    : 'İlk giriş formu zaten sıfır — kullanıcı henüz doldurmadı'}>
+                                                    ? 'Panel tanıtım turunu sıfırla'
+                                                    : 'Tur zaten sıfır — kullanıcı henüz görmedi'}>
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"

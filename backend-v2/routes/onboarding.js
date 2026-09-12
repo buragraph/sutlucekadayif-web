@@ -126,6 +126,38 @@ router.post(
 );
 
 /**
+ * POST /api/onboarding/tanitim-bitti
+ * Panel turunu tamamlayan (ya da atlayan) şube sahibi için `onboarded`
+ * bayrağını kaldırır — zorunlu form yerine tur gösterildiği için "ilk giriş
+ * tamamlandı" artık bunu ifade ediyor.
+ *
+ * NEDEN SUNUCUDA: bayrak yalnızca tarayıcıda dururken iki şey bozuluyordu.
+ * Bir, admin "Onboarding sıfırla" dediğinde tur geri gelmiyordu — sıfırlama
+ * veritabanındaki satıra bakıyor, tur localStorage'a. İki, aynı kişi
+ * telefonundan girdiğinde tur baştan çıkıyordu. Artık ikisi de aynı bayrağa
+ * bakıyor. (Tarayıcıdaki not silinmedi: sunucuya yazma başarısız olursa tur
+ * aynı oturumda tekrar tekrar açılmasın diye ikinci bir emniyet.)
+ */
+router.post(
+    '/tanitim-bitti',
+    verifyToken,
+    asyncHandler(async (req, res) => {
+        // Yalnızca kendi satırına yazar; şube sahibi olmayanda kayıt yok, sessiz geçilir.
+        const { data: mevcut } = await supabase
+            .from('kullanici_sube').select('uid').eq('uid', req.user.uid).maybeSingle();
+        if (!mevcut) return res.json({ success: true, yazildi: false });
+
+        veriYaDaHata(
+            await supabase.from('kullanici_sube')
+                .update({ onboarded: true, onboarded_at: new Date().toISOString() })
+                .eq('uid', req.user.uid),
+            'tanıtım durumu yazılamadı'
+        );
+        res.json({ success: true, yazildi: true });
+    })
+);
+
+/**
  * POST /api/onboarding/reset/:uid
  * Admin bir kullanıcının ilk-giriş wizard'ını sıfırlar — onboarded bayrağını kaldırır.
  */

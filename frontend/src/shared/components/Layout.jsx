@@ -8,18 +8,20 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
 import ParolaDegistirKapisi from './ParolaDegistirKapisi';
 import HosGeldinTuru from './HosGeldinTuru';
-import { tanitimGoruldu } from '../utils/tanitim';
 
 export default function Layout() {
     // İlk giriş akışı — yalnızca gerçek şube sahipleri için (admin simülasyonu hariç)
-    const { realRole, user } = useAuth();
+    const { realRole } = useAuth();
     const [parolaGerekli, setParolaGerekli] = useState(false);
+    const [onboarded, setOnboarded] = useState(null);
     // ZORUNLU ONBOARDING FORMU ŞİMDİLİK KAPALI. Şube sahibi paneli ilk kez
     // görüyor; ondan ad/telefon/adres istemeden önce neyin nerede olduğunu
     // göstermek gerekiyordu. Form geri açılacaksa OnboardingWizard duruyor:
     // `data.gerekli` durumunu tekrar okuyup aşağıda tanıtımın yerine koymak
     // yeterli (bkz. git geçmişi, bu satır).
     const [tanitimKapandi, setTanitimKapandi] = useState(false);
+    // `onboarded` SUNUCUDAN: turun gösterilip gösterilmeyeceğinin asıl ölçütü.
+    // null = henüz bilinmiyor (istek dönmeden tur açılmasın, sonra kapanmasın).
 
     // DURUM HER ROL İÇİN ÇEKİLİYOR. Eskiden yalnızca şube sahibi sorgulanıyordu
     // çünkü tek konu onboarding'di; zorunlu parola değişimi ise role bakmıyor.
@@ -31,18 +33,26 @@ export default function Layout() {
             .then(({ data }) => {
                 if (!aktif) return;
                 setParolaGerekli(data.parolaDegistirGerekli === true);
+                setOnboarded(data.onboarded !== false);
             })
             .catch(() => {
                 if (!aktif) return;
                 setParolaGerekli(false);
+                // Durum okunamadıysa tur AÇILMAZ: bilinmeyen bir durumda
+                // kullanıcıyı tura sokmak, her açılışta tekrar etme riski taşır.
+                setOnboarded(true);
             });
         return () => { aktif = false; };
     }, [realRole]);
 
-    // Tanıtım sunucuya sorulmuyor; "bu tarayıcıda gösterildi mi" bilgisi
-    // localStorage'da. Durum yerine TÜRETİLİYOR: efekt içinde setState çağırmak
-    // gereksiz ikinci bir render turu demek.
-    const tanitim = !tanitimKapandi && realRole === 'sube_sahibi' && !tanitimGoruldu(user?.uid);
+    // TEK ÖLÇÜT SUNUCUDAKİ `onboarded`. Eskiden "görüldü" notu localStorage'da
+    // tutuluyordu; o not admin "turu sıfırla" dediğinde de yerinde kaldığı için
+    // tur geri GELMİYORDU — yani sıfırlama düğmesi hiçbir işe yaramıyordu. Aynı
+    // kişi telefondan girdiğinde ise tur baştan çıkıyordu. Bayrak tek yerde.
+    // Oturum içinde tekrar açılmasını `tanitimKapandi` engelliyor; Layout
+    // gezinmelerde yeniden kurulmuyor. Durum yerine TÜRETİLİYOR: efekt içinde
+    // setState çağırmak gereksiz ikinci bir render turu demek.
+    const tanitim = !tanitimKapandi && realRole === 'sube_sahibi' && onboarded === false;
 
     return (
         <TooltipProvider>
@@ -70,7 +80,7 @@ export default function Layout() {
             {parolaGerekli ? (
                 <ParolaDegistirKapisi onTamam={() => setParolaGerekli(false)} />
             ) : tanitim && (
-                <HosGeldinTuru uid={user?.uid} onKapat={() => setTanitimKapandi(true)} />
+                <HosGeldinTuru onKapat={() => setTanitimKapandi(true)} />
             )}
         </TooltipProvider>
     );
