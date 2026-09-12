@@ -18,10 +18,25 @@ export function formatForGroup(format: ExportFormat, group: "dessert" | "other")
   return `${format.split("-")[0]}-${group === "dessert" ? "tatli" : "diger"}` as ExportFormat;
 }
 
+/**
+ * Çıktı ölçüleri.
+ *
+ * `width`/`height` RASTER piksel, `pdfWidth`/`pdfHeight` PDF sayfa ölçüsü (pt).
+ *
+ * BASKI FORMATLARINDA sayfa fiziksel ölçü: A4 595×842pt, pleksi 10×21cm, A5
+ * yarım A4. Raster de o ölçüde 300 dpi verecek şekilde seçilmiş.
+ *
+ * LED FARKLI, ÇÜNKÜ LED BASKI DEĞİL. Ekranın santimetresi yok, ölçüsü 1080×1920
+ * PİKSEL. Sayfa 405×720pt açılınca (192 dpi) tasarımcı dosyayı LED boyutuna
+ * getirmek için 2,67 kat büyütmek zorunda kalıyor ve görüntü piksel piksel
+ * görünüyor — bildirilen kusur buydu. Sayfa artık 1080×1920pt: Illustrator'da
+ * 1pt = 1px olduğu için LED tuvaline BÜYÜTMEDEN, birebir oturuyor.
+ * (PNG/JPEG zaten 1080×1920 raster veriyordu, o yüzden onlarda sorun yoktu.)
+ */
 export const outputSpecs: Record<ExportFormat, { width: number; height: number; pdfWidth: number; pdfHeight: number; label: string }> = {
   a4: { width: 2480, height: 3508, pdfWidth: 595.28, pdfHeight: 841.89, label: "A4" },
-  "led-tatli": { width: 1080, height: 1920, pdfWidth: 405, pdfHeight: 720, label: "LED-1" },
-  "led-diger": { width: 1080, height: 1920, pdfWidth: 405, pdfHeight: 720, label: "LED-2" },
+  "led-tatli": { width: 1080, height: 1920, pdfWidth: 1080, pdfHeight: 1920, label: "LED-1" },
+  "led-diger": { width: 1080, height: 1920, pdfWidth: 1080, pdfHeight: 1920, label: "LED-2" },
   "pleksi-tatli": { width: 1181, height: 2480, pdfWidth: 283.46, pdfHeight: 595.28, label: "Pleksi-On-Yuz" },
   "pleksi-diger": { width: 1181, height: 2480, pdfWidth: 283.46, pdfHeight: 595.28, label: "Pleksi-Arka-Yuz" },
   "a5-tatli": { width: 1748, height: 2480, pdfWidth: 419.53, pdfHeight: 595.28, label: "A5-On-Yuz" },
