@@ -25,3 +25,9 @@ create index if not exists kurumsal_materyal_olusturma_idx on kurumsal_materyal 
 
 comment on table kurumsal_materyal is
   'Merkezin yüklediği, şube sahiplerinin indirdiği kurumsal dosyalar. Dosya R2 kurumsal/ önekinde.';
+
+-- RLS AÇIK, POLİTİKA YOK — projedeki diğer tabloların deseni. Backend
+-- `service_role` ile bağlanıp RLS'i atlıyor, tenant izolasyonu rota
+-- gövdelerinde. Açık kalsaydı tablo, frontend'de gömülü anon anahtarla
+-- doğrudan okunup yazılabilirdi. (Ayrıca 0042'de uygulandı.)
+alter table kurumsal_materyal enable row level security;
