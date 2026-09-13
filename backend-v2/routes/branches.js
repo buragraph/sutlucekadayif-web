@@ -15,6 +15,22 @@ import { menuyuCekirdekKatalogdanKur } from '../modules/qr-menu/services/sube-me
 const router = Router();
 
 /**
+ * Şubeyi işleten şirket. Merkezin şube listesindeki "ŞİRKET CARİ" sütununun
+ * karşılığı; `sirket_tipi` ile karıştırılmamalı — o, şubenin kendi hukuki
+ * biçimi (şahıs/ltd) ve faturada kullanılıyor.
+ *
+ * Boş değer SERBEST: merkez listesinde karşılığı olmayan eski kayıtlar var
+ * (bkz. migration 0039); zorunlu tutmak onları uydurma bir şirkete iterdi.
+ */
+const SIRKETLER = ['ums', 'beylikduzu'];
+function sirketDegeri(ham) {
+    const v = String(ham ?? '').trim();
+    if (!v) return { deger: null, hata: null };
+    if (!SIRKETLER.includes(v)) return { deger: null, hata: 'Geçersiz şirket.' };
+    return { deger: v, hata: null };
+}
+
+/**
  * İl + ilçe metnini koordinata çevirir (OpenStreetMap Nominatim, ücretsiz/anahtarsız).
  * Harita işaretçisini ilçe seviyesinde konumlandırmak için kullanılır.
  * Best-effort: başarısız olursa null döner (harita il merkezine düşer).
@@ -222,7 +238,9 @@ router.post(
     verifyToken,
     requirePermission('branches.create'),
     asyncHandler(async (req, res) => {
-        const { slug, ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi, il, ilce } = req.body;
+        const { slug, ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi, sirket, il, ilce } = req.body;
+        const { deger: sirketVal, hata: sirketHata } = sirketDegeri(sirket);
+        if (sirketHata) return res.status(400).json({ error: sirketHata });
 
         if (!slug || !slug.trim()) {
             return res.status(400).json({ error: 'Şube slug zorunludur (URL kısmı, örn: ankara)' });
@@ -248,6 +266,7 @@ router.post(
             fatura_adresi: fatura_adresi?.trim() || '',
             vkn: vkn?.trim() || '',
             sirket_tipi: sirket_tipi?.trim() || '',
+            sirket: sirketVal,
             il: il?.trim() || '',
             ilce: ilce?.trim() || '',
         };
@@ -290,7 +309,7 @@ router.put(
     asyncHandler(async (req, res) => {
         const { slug } = req.params;
         const {
-            ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi, il, ilce,
+            ad, adres, telefon, yetkili_adi, fatura_adresi, vkn, sirket_tipi, sirket, il, ilce,
             kapanma_tarihi, kapanma_notu,
         } = req.body;
 
@@ -307,6 +326,11 @@ router.put(
         if (fatura_adresi !== undefined) updateData.fatura_adresi = fatura_adresi.trim();
         if (vkn !== undefined) updateData.vkn = vkn.trim();
         if (sirket_tipi !== undefined) updateData.sirket_tipi = sirket_tipi.trim();
+        if (sirket !== undefined) {
+            const { deger, hata } = sirketDegeri(sirket);
+            if (hata) return res.status(400).json({ error: hata });
+            updateData.sirket = deger;   // boş gönderilirse atama kaldırılır
+        }
         if (il !== undefined) updateData.il = il.trim();
         if (ilce !== undefined) updateData.ilce = ilce.trim();
 

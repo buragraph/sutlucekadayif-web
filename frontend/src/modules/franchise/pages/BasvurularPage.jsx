@@ -335,11 +335,29 @@ function FormAyarlari() {
     const [arama, setArama] = useState('');
     const [kaydediliyor, setKaydediliyor] = useState(false);
 
+    // İl → o ilde şubesi olan şirketler. Kapatma kararı "orada kim işletiyor"
+    // bilgisi olmadan verilemiyordu: merkez ili kapatırken hangi şirketin
+    // bölgesine dokunduğunu görmeli. Şubelerden TÜRETİLİYOR; ayrı bir
+    // "il şu şirkete ait" tablosu tutmak ikinci bir doğruluk kaynağı olurdu.
+    const [ilSirket, setIlSirket] = useState({});
+
     useEffect(() => {
         let iptal = false;
         api.get('/basvurular/form-ayarlari')
             .then(({ data }) => { if (!iptal) setKapali(data?.kapaliIller || []); })
             .catch(() => { if (!iptal) setKapali([]); })
+        // Şube listesi ikincil: gelmezse iller tek grupta kalır, kapatma çalışır.
+        api.get('/branches')
+            .then(({ data }) => {
+                if (iptal) return;
+                const harita = {};
+                for (const sube of data.subeler || []) {
+                    if (!sube.il || !sube.sirket) continue;
+                    (harita[sube.il] = harita[sube.il] || new Set()).add(sube.sirket);
+                }
+                setIlSirket(Object.fromEntries(Object.entries(harita).map(([il, k]) => [il, [...k]])));
+            })
+            .catch(() => {});
         return () => { iptal = true; };
     }, []);
 
@@ -362,6 +380,24 @@ function FormAyarlari() {
     const kapaliSet = new Set(kapali);
     const q = arama.trim().toLocaleLowerCase('tr');
     const gorunen = q ? TUM_ILLER.filter((il) => il.toLocaleLowerCase('tr').includes(q)) : TUM_ILLER;
+
+    // Gruplar: iki şirketin de şubesi olan il "her ikisi" altında — orayı
+    // kapatmak iki şirketi birden etkiliyor, ayrı görünmesi gerekiyor.
+    const grupAnahtari = (il) => {
+        const k = ilSirket[il] || [];
+        if (k.length === 0) return 'yok';
+        if (k.length > 1) return 'ikisi';
+        return k[0];
+    };
+    const GRUPLAR = [
+        { key: 'ums', baslik: 'UMS bölgesi' },
+        { key: 'beylikduzu', baslik: 'Beylikdüzü bölgesi' },
+        { key: 'ikisi', baslik: 'Her iki şirket' },
+        { key: 'yok', baslik: 'Şube yok' },
+    ];
+    const gruplu = GRUPLAR
+        .map((g) => ({ ...g, iller: gorunen.filter((il) => grupAnahtari(il) === g.key) }))
+        .filter((g) => g.iller.length > 0);
 
     const degistir = (il, kapat) => kaydet(
         kapat ? [...kapali, il].sort((a, b) => a.localeCompare(b, 'tr'))
@@ -420,19 +456,33 @@ function FormAyarlari() {
                         </div>
                     )}
 
-                    <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2 md:grid-cols-3">
-                        {gorunen.map((il) => (
-                            <label key={il} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-muted/60">
-                                <Checkbox
-                                    checked={!kapaliSet.has(il)}
-                                    disabled={kaydediliyor}
-                                    onCheckedChange={(v) => degistir(il, !v)}
-                                />
-                                <span className={kapaliSet.has(il) ? 'text-muted-foreground line-through' : ''}>{il}</span>
-                            </label>
+                    <div className="flex flex-col gap-4">
+                        {gruplu.map((g) => (
+                            <div key={g.key} className="flex flex-col gap-1.5">
+                                <div className="flex items-baseline gap-2 border-b pb-1">
+                                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                        {g.baslik}
+                                    </h4>
+                                    <span className="text-xs tabular-nums text-muted-foreground">
+                                        {g.iller.filter((il) => !kapaliSet.has(il)).length}/{g.iller.length} açık
+                                    </span>
+                                </div>
+                                <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2 md:grid-cols-3">
+                                    {g.iller.map((il) => (
+                                        <label key={il} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-muted/60">
+                                            <Checkbox
+                                                checked={!kapaliSet.has(il)}
+                                                disabled={kaydediliyor}
+                                                onCheckedChange={(v) => degistir(il, !v)}
+                                            />
+                                            <span className={kapaliSet.has(il) ? 'text-muted-foreground line-through' : ''}>{il}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
                         ))}
                         {gorunen.length === 0 && (
-                            <p className="col-span-full py-4 text-center text-sm text-muted-foreground">İl bulunamadı</p>
+                            <p className="py-4 text-center text-sm text-muted-foreground">İl bulunamadı</p>
                         )}
                     </div>
 

@@ -23,7 +23,10 @@ export default function BranchesPage() {
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState(null);
     const [saving, setSaving] = useState(false);
-    const [form, setForm] = useState({ slug: '', ad: '', adres: '', telefon: '', yetkili_adi: '', fatura_adresi: '', vkn: '', sirket_tipi: '' });
+    const [form, setForm] = useState({ slug: '', ad: '', adres: '', telefon: '', yetkili_adi: '', fatura_adresi: '', vkn: '', sirket_tipi: '', sirket: '' });
+    // Şirket süzgeci: liste iki şirketin şubelerini bir arada tutuyor, ama
+    // muhasebe/raporlama tarafı çoğu zaman tek şirkete bakıyor.
+    const [sirketFiltre, setSirketFiltre] = useState('tumu');   // 'tumu' | 'ums' | 'beylikduzu' | 'yok'
     // Kapalı şubeler varsayılan olarak gizli: liste günlük işte açık şubeler
     // için kullanılıyor. Geçmiş kayıt hâlâ duruyor, sekmeyle görünür.
     const [durum, setDurum] = useState('acik');   // 'acik' | 'kapali' | 'tumu'
@@ -41,7 +44,7 @@ export default function BranchesPage() {
 
     function openAdd() {
         setEditing(null);
-        setForm({ slug: '', ad: '', adres: '', telefon: '', yetkili_adi: '', fatura_adresi: '', vkn: '', sirket_tipi: '', il: '', ilce: '' });
+        setForm({ slug: '', ad: '', adres: '', telefon: '', yetkili_adi: '', fatura_adresi: '', vkn: '', sirket_tipi: '', sirket: '', il: '', ilce: '' });
         setShowModal(true);
     }
 
@@ -56,6 +59,7 @@ export default function BranchesPage() {
             fatura_adresi: sube.fatura_adresi || '',
             vkn: sube.vkn || '',
             sirket_tipi: sube.sirket_tipi || '',
+            sirket: sube.sirket || '',
             il: sube.il || '',
             ilce: sube.ilce || '',
         });
@@ -76,9 +80,15 @@ export default function BranchesPage() {
 
     const acikSayi = aranan.filter((s) => !s.kapanma_tarihi).length;
     const kapaliSayi = aranan.length - acikSayi;
-    const gorunenSubeler = aranan.filter((s) =>
-        durum === 'tumu' ? true : durum === 'kapali' ? !!s.kapanma_tarihi : !s.kapanma_tarihi
-    );
+    const sirketSayi = {
+        ums: aranan.filter((s) => s.sirket === 'ums').length,
+        beylikduzu: aranan.filter((s) => s.sirket === 'beylikduzu').length,
+        yok: aranan.filter((s) => !s.sirket).length,
+    };
+    const gorunenSubeler = aranan
+        .filter((s) => (durum === 'tumu' ? true : durum === 'kapali' ? !!s.kapanma_tarihi : !s.kapanma_tarihi))
+        .filter((s) => (sirketFiltre === 'tumu' ? true
+            : sirketFiltre === 'yok' ? !s.sirket : s.sirket === sirketFiltre));
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -93,6 +103,7 @@ export default function BranchesPage() {
                     fatura_adresi: form.fatura_adresi,
                     vkn: form.vkn,
                     sirket_tipi: form.sirket_tipi,
+                    sirket: form.sirket,
                     il: form.il,
                     ilce: form.ilce,
                 });
@@ -206,6 +217,32 @@ export default function BranchesPage() {
                 ))}
             </div>
 
+            {/* ŞİRKET ŞERİDİ AYRI SATIRDA: durum (açık/kapalı) ile aynı satıra
+                dizilince dokuz rozet yan yana geliyor ve hangisinin neyi
+                süzdüğü karışıyor. */}
+            <div className="flex flex-wrap items-center gap-1.5">
+                <span className="mr-0.5 text-xs text-muted-foreground">Şirket:</span>
+                {[
+                    { key: 'tumu', etiket: 'Tümü', adet: aranan.length },
+                    { key: 'ums', etiket: 'UMS', adet: sirketSayi.ums },
+                    { key: 'beylikduzu', etiket: 'Beylikdüzü', adet: sirketSayi.beylikduzu },
+                    // Atanmamışlar gizlenmiyor: merkez listesinde karşılığı
+                    // olmayan şubeler var, görünmezse kimse eşleştirmez.
+                    ...(sirketSayi.yok > 0 ? [{ key: 'yok', etiket: 'Atanmamış', adet: sirketSayi.yok }] : []),
+                ].map((t) => (
+                    <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => setSirketFiltre(t.key)}
+                        className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                            sirketFiltre === t.key ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground hover:bg-muted/70'
+                        }`}
+                    >
+                        {t.etiket} <span className="ml-1 tabular-nums opacity-70">{t.adet}</span>
+                    </button>
+                ))}
+            </div>
+
             {loading ? (
                 <div className="flex flex-col items-center justify-center gap-3 py-16"><Spinner className="size-8" /><p className="text-sm text-muted-foreground">Şubeler yükleniyor...</p></div>
             ) : gorunenSubeler.length === 0 ? (
@@ -222,6 +259,7 @@ export default function BranchesPage() {
                                 <TableHead>Şube Adı</TableHead>
                                 <TableHead className="max-w-[280px]">Adres</TableHead>
                                 <TableHead>Telefon</TableHead>
+                                <TableHead>Şirket</TableHead>
                                 <TableHead>Menüdeki Ürün</TableHead>
                                 <TableHead>Fatura</TableHead>
                                 <TableHead className="w-24">İşlemler</TableHead>
@@ -246,6 +284,17 @@ export default function BranchesPage() {
                                         <div className="truncate" title={sube.adres || ''}>{sube.adres || '—'}</div>
                                     </TableCell>
                                     <TableCell className="text-sm text-muted-foreground">{sube.telefon || '—'}</TableCell>
+                                    <TableCell>
+                                        {sube.sirket ? (
+                                            <Badge variant="outline" className={sube.sirket === 'ums'
+                                                ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-300'
+                                                : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300'}>
+                                                {sube.sirket === 'ums' ? 'UMS' : 'Beylikdüzü'}
+                                            </Badge>
+                                        ) : (
+                                            <span className="text-xs text-muted-foreground">atanmamış</span>
+                                        )}
+                                    </TableCell>
                                     {/* Şubenin menüsünde kaç ürün satılıyor (urun_sube üyeliği).
                                         Şubeye ÖZEL ürün sayısı DEĞİL — öyle ürün hiç yok,
                                         sütun bu yüzden her şubede 0 gösteriyordu. */}
@@ -379,6 +428,22 @@ export default function BranchesPage() {
                                 <div className="space-y-1.5 col-span-2">
                                     <Label>Fatura Adresi</Label>
                                     <Input type="text" value={form.fatura_adresi} onChange={(e) => setForm({ ...form, fatura_adresi: e.target.value })} placeholder="Fatura adresi" />
+                                </div>
+                                {/* İŞLETEN ŞİRKET — "Şirket Tipi"nden ayrı bir şey:
+                                    o, şubenin hukuki biçimi (şahıs/ltd) ve faturada
+                                    kullanılıyor; bu ise şubenin hangi şirkete bağlı
+                                    işletildiği. Yeni şube açılırken seçiliyor. */}
+                                <div className="space-y-1.5">
+                                    <Label>İşleten Şirket</Label>
+                                    <Select value={form.sirket} onValueChange={(val) => setForm({ ...form, sirket: val })}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seçiniz" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ums">UMS</SelectItem>
+                                            <SelectItem value="beylikduzu">Beylikdüzü</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label>Şirket Tipi</Label>
