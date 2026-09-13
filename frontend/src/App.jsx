@@ -17,6 +17,7 @@ import CategoriesPage from './modules/qr-menu/pages/CategoriesPage';
 import UrunTalepleriPage from './modules/qr-menu/pages/UrunTalepleriPage';
 import MenuLogPage from './modules/qr-menu/pages/MenuLogPage';
 import DuyurularPage from './modules/qr-menu/pages/DuyurularPage';
+import MateryalPage from './modules/qr-menu/pages/MateryalPage';
 import FiyatListesiPage from './modules/qr-menu/pages/FiyatListesiPage';
 import PhotoLibraryPage from './modules/qr-menu/pages/PhotoLibraryPage';
 import AcademyDashboard from './modules/academy/pages/AcademyDashboard';
@@ -68,6 +69,7 @@ export default function App() {
                 gösterip hata varmış gibi görünmesine yol açardı. */}
             <Route path="/admin/qr-menu/menu-gunlugu" element={<ProtectedRoute role="admin"><MenuLogPage /></ProtectedRoute>} />
             <Route path="/admin/duyurular" element={<ProtectedRoute permission="duyuru.manage"><DuyurularPage /></ProtectedRoute>} />
+            <Route path="/admin/materyal" element={<ProtectedRoute permission="materyal.view"><MateryalPage /></ProtectedRoute>} />
             <Route path="/admin/medya" element={<ProtectedRoute role="admin"><PhotoLibraryPage /></ProtectedRoute>} />
             <Route path="/admin/basvurular" element={<ProtectedRoute role="admin"><BasvurularPage /></ProtectedRoute>} />
             <Route path="/admin/geri-bildirim" element={<ProtectedRoute permission="geribildirim.view"><GeriBildirimPage /></ProtectedRoute>} />

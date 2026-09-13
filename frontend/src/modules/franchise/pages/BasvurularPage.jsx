@@ -16,11 +16,13 @@ import ilIlceData from '../../../data/tr-iller-ilceler.json';
 
 // Durum meta — etiket + rozet rengi (permissions/route ile aynı anahtarlar)
 const DURUM = {
-    yeni: { label: 'Yeni', cls: 'border-blue-200 bg-blue-50 text-blue-700' },
-    inceleniyor: { label: 'İnceleniyor', cls: 'border-amber-200 bg-amber-50 text-amber-700' },
-    gorusuldu: { label: 'Görüşüldü', cls: 'border-purple-200 bg-purple-50 text-purple-700' },
-    olumlu: { label: 'Olumlu', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-    olumsuz: { label: 'Olumsuz', cls: 'border-rose-200 bg-rose-50 text-rose-700' },
+    yeni: { label: 'Yeni', cls: 'border-blue-200 bg-blue-50 text-blue-700', satir: 'bg-blue-50/40 hover:bg-blue-50/70 dark:bg-blue-950/20 dark:hover:bg-blue-950/30' },
+    inceleniyor: { label: 'İnceleniyor', cls: 'border-amber-200 bg-amber-50 text-amber-700', satir: 'bg-amber-50/40 hover:bg-amber-50/70 dark:bg-amber-950/20 dark:hover:bg-amber-950/30' },
+    gorusuldu: { label: 'Görüşüldü', cls: 'border-purple-200 bg-purple-50 text-purple-700', satir: 'bg-purple-50/40 hover:bg-purple-50/70 dark:bg-purple-950/20 dark:hover:bg-purple-950/30' },
+    olumlu: { label: 'Olumlu', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700', satir: 'bg-emerald-50/50 hover:bg-emerald-50/80 dark:bg-emerald-950/25 dark:hover:bg-emerald-950/40' },
+    // Olumsuz kayıt SOLUK: liste açık talepler için taranıyor, kapanmış olan
+    // göz akışını bölmemeli. Rengi var ama öne çıkmıyor.
+    olumsuz: { label: 'Olumsuz', cls: 'border-rose-200 bg-rose-50 text-rose-700', satir: 'bg-rose-50/30 opacity-70 hover:opacity-100 hover:bg-rose-50/60 dark:bg-rose-950/15 dark:hover:bg-rose-950/30' },
 };
 const DURUM_KEYS = Object.keys(DURUM);
 
@@ -208,7 +210,13 @@ export default function BasvurularPage() {
                             {gosterilen.map((b) => (
                                 <TableRow
                                     key={b.id}
-                                    className="cursor-pointer"
+                                    /* SATIR RENGİ DURUMDAN: rozet tek başına
+                                       yetmiyordu — 30 satırlık listede hangi
+                                       talebin hangi aşamada olduğu ancak
+                                       satır satır okunarak anlaşılıyordu.
+                                       Renk soluk tutuldu; tablo alacalı bir
+                                       şeye dönüşmesin, sadece gruplansın. */
+                                    className={`cursor-pointer transition-colors ${(DURUM[b.durum] || {}).satir || ''}`}
                                     onClick={() => detayAc(b)}
                                 >
                                     <TableCell className="font-medium">

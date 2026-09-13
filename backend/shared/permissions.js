@@ -90,6 +90,12 @@ const PERMISSIONS = {
     'basvurular.view': ['admin'],
     'basvurular.manage': ['admin'],
 
+    // Kurumsal materyal (logo, şablon, marka kılavuzu): merkez yükler, şube
+    // indirir. Çalışanda YOK — bunlar şubenin dış dünyaya kullandığı marka
+    // dosyaları, kararı şube sahibinde.
+    'materyal.view': ['admin', 'sube_sahibi'],
+    'materyal.manage': ['admin'],
+
     // ── Şikayet & Geri Bildirim (QR menüsü) ──
     // Şube sahibi YALNIZCA kendi şubesinin kayıtlarını görür/günceller (kapsam
     // backend'de token'daki subeSlug ile zorlanır). Silme yalnızca admin'de:

@@ -6,6 +6,7 @@ import {
     FolderOpen,
     ImagePlus,
     GraduationCap,
+    Palette,
     PieChart,
     Wallet,
     Megaphone,
@@ -31,6 +32,9 @@ export function getNavGroups(can, role) {
                 ] : []),
                 ...(role === 'admin' ? [{ title: 'Medya', url: '/admin/medya', icon: ImagePlus }] : []),
                 { title: 'Akademi', url: '/admin/akademi', icon: GraduationCap },
+                // Kurumsal materyal hem merkezde hem şubede aynı yerde:
+                // merkez yükler, şube indirir (izin ayrımı sayfanın içinde).
+                ...(can('materyal.view') ? [{ title: 'Kurumsal Materyal', url: '/admin/materyal', icon: Palette }] : []),
                 // Şikayet masası QR Menü'nün ALTINDA DEĞİL: artık yalnızca QR
                 // formundan beslenmiyor (Şikayetvar + elle eklenenler de aynı
                 // gelen kutusunda) ve günlük iş akışında menü yönetiminden
