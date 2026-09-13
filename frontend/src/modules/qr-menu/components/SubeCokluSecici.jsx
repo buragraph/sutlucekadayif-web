@@ -59,7 +59,7 @@ export function SubeCokluSecici({ subeler = [], secili = [], onChange, placehold
 
     return (
         <div className="space-y-2">
-            <Popover open={acik} onOpenChange={setAcik}>
+            <Popover modal open={acik} onOpenChange={setAcik}>
                 <PopoverTrigger asChild>
                     <Button
                         type="button"

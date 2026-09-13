@@ -37,7 +37,13 @@ export default function SubeSecici({
     const secili = subeler.find((s) => s.slug === deger);
 
     return (
-        <Popover open={acik} onOpenChange={(a) => { setAcik(a); if (!a) setArama(''); }}>
+        /* modal ŞART: bu liste bir PENCERE İÇİNDE açılıyor. Popover içeriği
+           portalla belgenin köküne taşınıyor, Dialog'un kaydırma kilidi
+           (react-remove-scroll) kendi ağacı DIŞINDAKİ tekerlek olaylarını
+           engelliyor — 288px kutuda 3140px içerik olmasına rağmen scrollTop
+           hep 0 kalıyordu. `modal` Popover'ı kendi kilidini yöneten katman
+           yapıyor, tekerlek geri geliyor. */
+        <Popover modal open={acik} onOpenChange={(a) => { setAcik(a); if (!a) setArama(''); }}>
             <PopoverTrigger asChild>
                 <Button
                     type="button"

@@ -36,6 +36,28 @@ const BOS = {
     tarihli: false, baslangic: '', bitis: '', hedefSubeler: [],
 };
 
+/**
+ * Şirket hedeflemesi. Duyuru kaydında ayrı bir "şirket" alanı YOK; hedef hep
+ * şube listesi olarak yazılıyor. Şirket seçmek o şirketin şubelerini listeye
+ * DOLDURUYOR — böylece kayıt "kimlere gitti" sorusuna tek başına cevap
+ * veriyor ve eski duyurular sonradan açılan bir şubeye geriye dönük
+ * genişlemiyor. Liste tam olarak bir şirketin şubelerine eşitse rozet o
+ * şirketin adını yazıyor.
+ */
+const SIRKETLER = [
+    { key: 'ums', ad: 'UMS' },
+    { key: 'beylikduzu', ad: 'Beylikdüzü' },
+];
+const sirketSubeleri = (subeler, key) => subeler.filter((s) => s.sirket === key).map((s) => s.slug);
+function sirketEslesmesi(hedef, subeler) {
+    if (!hedef?.length) return null;
+    for (const s of SIRKETLER) {
+        const kume = sirketSubeleri(subeler, s.key);
+        if (kume.length > 0 && kume.length === hedef.length && kume.every((x) => hedef.includes(x))) return s;
+    }
+    return null;
+}
+
 const tarihYaz = (d) => {
     if (!d) return null;
     try { return new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
@@ -203,9 +225,11 @@ export default function DuyurularPage() {
                                                 <Store className="size-3" />
                                                 {hedef.length === 0
                                                     ? 'Tüm şubeler'
-                                                    : hedef.length <= 3
-                                                        ? hedef.map(subeAdi).join(', ')
-                                                        : `${hedef.length} şube`}
+                                                    : (sirketEslesmesi(hedef, subeler)
+                                                        ? `${sirketEslesmesi(hedef, subeler).ad} şubeleri (${hedef.length})`
+                                                        : hedef.length <= 3
+                                                            ? hedef.map(subeAdi).join(', ')
+                                                            : `${hedef.length} şube`)}
                                             </span>
                                             {(d.baslangic || d.bitis) && (
                                                 <span>
@@ -315,12 +339,14 @@ export default function DuyurularPage() {
 
                             <div className="flex flex-col gap-1.5">
                                 <Label>Hedef şubeler</Label>
-                                <Popover open={subeSecici} onOpenChange={setSubeSecici}>
+                                <Popover modal open={subeSecici} onOpenChange={setSubeSecici}>
                                     <PopoverTrigger asChild>
                                         <Button variant="outline" role="combobox" className="justify-between font-normal">
                                             {form.hedefSubeler.length === 0
                                                 ? 'Tüm şubeler'
-                                                : `${form.hedefSubeler.length} şube seçili`}
+                                                : (sirketEslesmesi(form.hedefSubeler, subeler)
+                                                    ? `${sirketEslesmesi(form.hedefSubeler, subeler).ad} şubeleri (${form.hedefSubeler.length})`
+                                                    : `${form.hedefSubeler.length} şube seçili`)}
                                             <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
                                         </Button>
                                     </PopoverTrigger>
@@ -337,6 +363,25 @@ export default function DuyurularPage() {
                                                         <Check className={`mr-2 size-3.5 ${form.hedefSubeler.length === 0 ? '' : 'opacity-0'}`} />
                                                         Tüm şubeler
                                                     </CommandItem>
+                                                    {/* Şirketin tamamını tek tıkla seçmek: 60 şubeyi
+                                                        elle işaretlemek pratikte kimsenin yapmadığı
+                                                        bir iş, o yüzden şirket ayrımı ancak kestirme
+                                                        varsa işe yarıyor. */}
+                                                    {SIRKETLER.map((sir) => {
+                                                        const kume = sirketSubeleri(subeler, sir.key);
+                                                        if (kume.length === 0) return null;
+                                                        const secili = !!sirketEslesmesi(form.hedefSubeler, subeler)
+                                                            && sirketEslesmesi(form.hedefSubeler, subeler).key === sir.key;
+                                                        return (
+                                                            <CommandItem key={sir.key} value={`__${sir.key}`}
+                                                                onSelect={() => setForm((f) => ({ ...f, hedefSubeler: secili ? [] : kume }))}
+                                                            >
+                                                                <Check className={`mr-2 size-3.5 ${secili ? '' : 'opacity-0'}`} />
+                                                                {sir.ad} şubeleri
+                                                                <span className="ml-1 tabular-nums text-muted-foreground">({kume.length})</span>
+                                                            </CommandItem>
+                                                        );
+                                                    })}
                                                     {subeler.map((s) => {
                                                         const secili = form.hedefSubeler.includes(s.slug);
                                                         return (
@@ -350,6 +395,11 @@ export default function DuyurularPage() {
                                                             >
                                                                 <Check className={`mr-2 size-3.5 ${secili ? '' : 'opacity-0'}`} />
                                                                 {s.ad}
+                                                                {s.sirket && (
+                                                                    <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
+                                                                        {s.sirket === 'ums' ? 'UMS' : 'Beylikdüzü'}
+                                                                    </span>
+                                                                )}
                                                             </CommandItem>
                                                         );
                                                     })}
@@ -359,7 +409,9 @@ export default function DuyurularPage() {
                                     </PopoverContent>
                                 </Popover>
                                 <p className="text-xs text-muted-foreground">
-                                    Hiç şube seçilmezse duyuru tüm şubelere gider.
+                                    Hiç şube seçilmezse duyuru tüm şubelere gider. Şirket seçmek o
+                                    şirketin şubelerini işaretler; sonradan açılan şube bu duyuruyu
+                                    görmez.
                                 </p>
                             </div>
 
