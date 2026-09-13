@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format as tarihBicim } from 'date-fns';
 import { tr } from 'date-fns/locale';
-import { ArrowLeft, Download, FileImage, FileText, CalendarIcon } from 'lucide-react';
+import { ArrowLeft, Download, FileImage, FileText, CalendarIcon, Info } from 'lucide-react';
 import api from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,9 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+    Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { MenuPreview } from '../fiyat-listesi/menu-svg';
 import { createFormatFile, formats } from '../fiyat-listesi/export-utils';
 import { kategoriSirasiniAyarla } from '../fiyat-listesi/data';
@@ -40,6 +43,10 @@ const subeSlugAd = (slug) => String(slug || '')
     .replace(/\S+/g, (k) => k.charAt(0).toLocaleUpperCase('tr') + k.slice(1));
 
 export default function FiyatListesiPage() {
+    // Sayfa her açılışında bir kez: çıktı almaya gelen kişi kapsamı okumadan
+    // ilerlemesin. Oturum boyunca değil, ziyaret boyunca — liste her basışta
+    // farklı olabiliyor (ürün kapatıp açmak bir tıklık iş).
+    const [kapsamAcik, setKapsamAcik] = useState(true);
     const { role, subeSlug } = useAuth();
     const navigate = useNavigate();
     const [params, setParams] = useSearchParams();
@@ -152,6 +159,30 @@ export default function FiyatListesiPage() {
 
     return (
         <div className="flex flex-col gap-5">
+            {/* ÇIKTININ NEYİ KAPSADIĞI ÖNCE SÖYLENİYOR. Aynı cümle aşağıdaki gri
+                kutuda da duruyor ama orada gözden kaçıyordu: şube listeyi basıp
+                asıyor, sonra "kapattığım ürün neden yok" ya da tersi soruluyor.
+                Kapatılana kadar bekleyen bir pencere, kâğıt çıkmadan önce
+                okunmasını garanti eden tek yer. */}
+            <Dialog open={kapsamAcik} onOpenChange={setKapsamAcik}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Info className="size-5" /> Listede ne basılacak?
+                        </DialogTitle>
+                        <DialogDescription className="pt-1 text-base leading-relaxed text-foreground">
+                            Menünüzde satışta olan ürünler basılır; “mevcut değil”
+                            işaretledikleriniz hariç.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button className="w-full sm:w-auto" onClick={() => setKapsamAcik(false)}>
+                            Anladım
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <div className="flex items-start gap-3">
                 <Button variant="ghost" size="icon" className="shrink-0" onClick={() => navigate('/admin/qr-menu')}>
                     <ArrowLeft className="size-5" />
