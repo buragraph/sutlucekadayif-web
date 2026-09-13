@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../../services/api';
-import { Mail, Phone, MapPin, Trash2, Inbox, Settings2, Search, X } from 'lucide-react';
+import { Mail, Phone, MapPin, Trash2, Inbox, Settings2, Search, X, Plus, Globe, PhoneCall } from 'lucide-react';
 import { useToast, useConfirm } from '../../../shared/components/Toast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@/components/ui/spinner';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import ilIlceData from '../../../data/tr-iller-ilceler.json';
 
 // Durum meta — etiket + rozet rengi (permissions/route ile aynı anahtarlar)
@@ -22,6 +23,16 @@ const DURUM = {
     olumsuz: { label: 'Olumsuz', cls: 'border-rose-200 bg-rose-50 text-rose-700' },
 };
 const DURUM_KEYS = Object.keys(DURUM);
+
+/**
+ * Başvurunun geliş kanalı. Telefonla arayanın kaydını merkez panelden
+ * giriyor; iki kanal aynı listede ama karıştırılmamalı — web başvurusunda
+ * kişi formu kendi doldurmuş, telefonda ise bilgiyi not alan kişi yazmış.
+ */
+const KAYNAK = {
+    web: { label: 'Web', Ikon: Globe, cls: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-300' },
+    telefon: { label: 'Telefon', Ikon: PhoneCall, cls: 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300' },
+};
 
 function tarihTR(iso) {
     if (!iso) return '—';
@@ -37,6 +48,8 @@ export default function BasvurularPage() {
     const [sayac, setSayac] = useState({});
     const [loading, setLoading] = useState(true);
     const [filtre, setFiltre] = useState('hepsi');
+    const [kaynakFiltre, setKaynakFiltre] = useState('hepsi');   // 'hepsi' | 'web' | 'telefon'
+    const [elleAcik, setElleAcik] = useState(false);
     const [secili, setSecili] = useState(null); // detay modalındaki başvuru
     const [not, setNot] = useState('');
     const [saving, setSaving] = useState(false);
@@ -118,7 +131,11 @@ export default function BasvurularPage() {
         setNot(b.not || '');
     }
 
-    const gosterilen = filtre === 'hepsi' ? basvurular : basvurular.filter((b) => b.durum === filtre);
+    const kaynakli = kaynakFiltre === 'hepsi'
+        ? basvurular
+        : basvurular.filter((b) => (b.kaynak || 'web') === kaynakFiltre);
+    const gosterilen = filtre === 'hepsi' ? kaynakli : kaynakli.filter((b) => b.durum === filtre);
+    const kaynakSayim = (k) => basvurular.filter((b) => (b.kaynak || 'web') === k).length;
 
     return (
         <div className="space-y-4">
@@ -126,10 +143,29 @@ export default function BasvurularPage() {
                 <div>
                     <h1 className="text-3xl leading-none tracking-tight">Franchise Başvuruları</h1>
                     <p className="mt-1.5 text-sm text-muted-foreground">
-                        Siteden gelen franchise talepleri
+                        Siteden ve telefonla gelen franchise talepleri
                     </p>
                 </div>
-                <FormAyarlari />
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button onClick={() => setElleAcik(true)}>
+                        <Plus className="size-4" /> Telefon Başvurusu
+                    </Button>
+                    <FormAyarlari />
+                </div>
+            </div>
+
+            {/* KANAL ŞERİDİ DURUMDAN AYRI SATIRDA: ikisi aynı satıra dizilince
+                sekiz çip yan yana geliyor ve hangisinin neyi süzdüğü karışıyor. */}
+            <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-muted-foreground">Kanal:</span>
+                <FilterChip active={kaynakFiltre === 'hepsi'} onClick={() => setKaynakFiltre('hepsi')}>
+                    Tümü <span className="opacity-60">({basvurular.length})</span>
+                </FilterChip>
+                {Object.entries(KAYNAK).map(([k, m]) => (
+                    <FilterChip key={k} active={kaynakFiltre === k} onClick={() => setKaynakFiltre(k)}>
+                        {m.label} <span className="opacity-60">({kaynakSayim(k)})</span>
+                    </FilterChip>
+                ))}
             </div>
 
             {/* Durum filtre çipleri */}
@@ -160,6 +196,7 @@ export default function BasvurularPage() {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Ad Soyad</TableHead>
+                                <TableHead className="w-24">Kanal</TableHead>
                                 <TableHead>İletişim</TableHead>
                                 <TableHead>Konum</TableHead>
                                 <TableHead>Tarih</TableHead>
@@ -180,9 +217,21 @@ export default function BasvurularPage() {
                                             <span className="ml-2 text-xs text-muted-foreground">✉︎ mesaj var</span>
                                         )}
                                     </TableCell>
+                                    <TableCell>
+                                        {(() => {
+                                            const m = KAYNAK[b.kaynak || 'web'];
+                                            return (
+                                                <Badge variant="outline" className={`gap-1 ${m.cls}`}>
+                                                    <m.Ikon className="size-3" /> {m.label}
+                                                </Badge>
+                                            );
+                                        })()}
+                                    </TableCell>
                                     <TableCell className="text-sm">
+                                        {/* Telefon başvurusunda e-posta çoğu zaman yok:
+                                            zorunlu tutmak uydurma adres girdiriyordu. */}
                                         <div className="flex items-center gap-1.5 text-muted-foreground">
-                                            <Mail className="size-3.5" /> {b.email}
+                                            <Mail className="size-3.5" /> {b.email || '—'}
                                         </div>
                                         <div className="flex items-center gap-1.5 text-muted-foreground">
                                             <Phone className="size-3.5" /> {b.telefon}
@@ -290,7 +339,114 @@ export default function BasvurularPage() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            {elleAcik && (
+                <TelefonBasvurusu
+                    onKapat={() => setElleAcik(false)}
+                    onKaydedildi={() => { setElleAcik(false); load(); }}
+                />
+            )}
         </div>
+    );
+}
+
+/**
+ * Telefonla gelen başvurunun panelden kaydı.
+ *
+ * ZORUNLU ALANLAR AZ: ad, telefon, il. Web formunda e-posta ve soyad da
+ * zorunlu ama telefonda konuşurken çoğu kişi e-posta bırakmıyor; zorunlu
+ * tutmak uydurma adres girilmesine yol açıyor. Kaydın değeri numarada.
+ */
+function TelefonBasvurusu({ onKapat, onKaydedildi }) {
+    const toast = useToast();
+    const [form, setForm] = useState({ ad: '', soyad: '', telefon: '', email: '', il: '', ilce: '', mesaj: '' });
+    const [kaydediliyor, setKaydediliyor] = useState(false);
+
+    const ilceler = form.il ? (ilIlceData[form.il] || []) : [];
+
+    async function kaydet() {
+        if (!form.ad.trim() || !form.telefon.trim() || !form.il) {
+            toast.error('Ad, telefon ve il zorunlu.');
+            return;
+        }
+        setKaydediliyor(true);
+        try {
+            await api.post('/basvurular/elle', form);
+            toast.success('Başvuru kaydedildi.');
+            onKaydedildi();
+        } catch (err) {
+            toast.error(err.response?.data?.error || 'Başvuru kaydedilemedi.');
+        }
+        setKaydediliyor(false);
+    }
+
+    return (
+        <Dialog open onOpenChange={(a) => !a && onKapat()}>
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <PhoneCall className="size-5" /> Telefon Başvurusu
+                    </DialogTitle>
+                </DialogHeader>
+
+                <p className="text-sm text-muted-foreground">
+                    Merkezi arayan kişinin talebini buraya kaydedin. Kayıt listede
+                    “Telefon” kanalıyla görünür.
+                </p>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                        <Label>Ad *</Label>
+                        <Input value={form.ad} onChange={(e) => setForm({ ...form, ad: e.target.value })} autoFocus />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label>Soyad</Label>
+                        <Input value={form.soyad} onChange={(e) => setForm({ ...form, soyad: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label>Telefon *</Label>
+                        <Input value={form.telefon} onChange={(e) => setForm({ ...form, telefon: e.target.value })}
+                               placeholder="05xx xxx xx xx" />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label>E-posta</Label>
+                        <Input type="email" value={form.email}
+                               onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="opsiyonel" />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label>İl *</Label>
+                        <Select value={form.il} onValueChange={(v) => setForm({ ...form, il: v, ilce: '' })}>
+                            <SelectTrigger><SelectValue placeholder="Seçiniz" /></SelectTrigger>
+                            <SelectContent>
+                                {TUM_ILLER.map((il) => <SelectItem key={il} value={il}>{il}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label>İlçe</Label>
+                        <Select value={form.ilce} onValueChange={(v) => setForm({ ...form, ilce: v })} disabled={!form.il}>
+                            <SelectTrigger><SelectValue placeholder={form.il ? 'Seçiniz' : 'Önce il'} /></SelectTrigger>
+                            <SelectContent>
+                                {ilceler.map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                        <Label>Görüşme notu</Label>
+                        <Textarea rows={3} value={form.mesaj}
+                                  onChange={(e) => setForm({ ...form, mesaj: e.target.value })}
+                                  placeholder="Ne konuşuldu, ne istiyor?" />
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={onKapat}>Vazgeç</Button>
+                    <Button onClick={kaydet} disabled={kaydediliyor}>
+                        {kaydediliyor ? 'Kaydediliyor…' : 'Kaydet'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 

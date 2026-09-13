@@ -23,6 +23,7 @@ const yanit = (b) => temizNull({
     ad: b.ad, soyad: b.soyad, email: b.email, telefon: b.telefon,
     il: b.il, ilce: b.ilce, mesaj: b.mesaj,
     durum: b.durum,
+    kaynak: b.kaynak || 'web',
     not: b.admin_notu,
     olusturmaZamani: isoZ(b.olusturma),
     guncellemeZamani: isoZ(b.guncelleme),
@@ -165,6 +166,7 @@ router.post(
                 id: yeniId(),
                 ...veri,
                 durum: 'yeni',
+                kaynak: 'web',
                 admin_notu: '',
                 olusturma: new Date().toISOString(),
             }),
@@ -172,6 +174,74 @@ router.post(
         );
 
         res.json({ success: true });
+    })
+);
+
+/**
+ * POST /api/basvurular/elle
+ * Merkezi TELEFONLA arayan kişinin başvurusunu panelden kaydeder.
+ *
+ * HERKESE AÇIK UÇTAN AYRI: o uç bir formdan geliyor ve savunma katmanları
+ * ona göre — IP limiti, honeypot, kapalı il reddi. Buradaki kayıt ise merkez
+ * çalışanının not aldığı bir telefon görüşmesi:
+ *
+ * - IP limiti YOK: art arda on kişi arayabilir, merkezi kendi kaydına karşı
+ *   korumak anlamsız.
+ * - KAPALI İL ENGELİ YOK: il kapalıyken arayan biri "sıraya yazın" diyor;
+ *   kaydı reddetmek bilgiyi kaybettirir, merkez zaten durumla yönetiyor.
+ *   (Form tarafında engel duruyor — orası ziyaretçiye verilmiş bir söz.)
+ * - E-POSTA ZORUNLU DEĞİL: telefonda çoğu kişi e-posta bırakmıyor; zorunlu
+ *   tutmak uydurma adres girilmesine yol açardı. Telefon zorunlu.
+ */
+router.post(
+    '/elle',
+    verifyToken,
+    requirePermission('basvurular.manage'),
+    asyncHandler(async (req, res) => {
+        const veri = {
+            ad: temizle(req.body.ad, LIMITLER.ad),
+            soyad: temizle(req.body.soyad, LIMITLER.soyad),
+            email: temizle(req.body.email, LIMITLER.email),
+            telefon: temizle(req.body.telefon, LIMITLER.telefon),
+            il: temizle(req.body.il, LIMITLER.il),
+            ilce: temizle(req.body.ilce, LIMITLER.ilce),
+            mesaj: temizle(req.body.mesaj, LIMITLER.mesaj),
+        };
+
+        const eksik = [];
+        for (const k of ['ad', 'telefon', 'il']) if (!veri[k]) eksik.push(k);
+        if (eksik.length > 0) {
+            return res.status(400).json({ error: 'Ad, telefon ve il zorunlu.', eksik });
+        }
+        if (veri.email && !gecerliEmail(veri.email)) {
+            return res.status(400).json({ error: 'Geçerli bir e-posta adresi girin.' });
+        }
+        // ILLER bir DİZİ DEĞİL, il → ilçeler nesnesi (bkz. shared/iller.js).
+        // İlçe de doğrulanıyor: telefonda not alınırken yanlış ilin ilçesi
+        // yazılırsa kayıt sessizce tutarsız kalıyordu.
+        if (!(veri.il in ILLER)) {
+            return res.status(400).json({ error: 'Geçersiz il.' });
+        }
+        if (veri.ilce && !ILLER[veri.il].includes(veri.ilce)) {
+            return res.status(400).json({ error: `${veri.ilce}, ${veri.il} ilçesi değil.` });
+        }
+
+        const id = yeniId();
+        veriYaDaHata(
+            await supabase.from('franchise_basvurulari').insert({
+                id,
+                ...veri,
+                durum: 'yeni',
+                kaynak: 'telefon',
+                // Kaydı kimin açtığı nota düşüyor: telefon başvurusunda "bunu
+                // kim aldı" sorusu bir hafta sonra mutlaka soruluyor.
+                admin_notu: `Telefonla alındı — ${req.user.email || req.user.uid}`,
+                olusturma: new Date().toISOString(),
+            }),
+            'başvuru kaydedilemedi'
+        );
+
+        res.status(201).json({ success: true, id });
     })
 );
 
